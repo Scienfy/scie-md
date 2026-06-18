@@ -2,7 +2,7 @@
   "name": "sciemd-vscode",
   "displayName": "ScieMD Markdown Editor",
   "description": "WYSIWYG Markdown editor for scientific writing: papers, theses, lab notes, LaTeX math, citations, Mermaid diagrams, visual styles, and LLM-assisted revision.",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "publisher": "scienfy",
   "author": "Scienfy Inc.",
   "license": "AGPL-3.0-or-later",

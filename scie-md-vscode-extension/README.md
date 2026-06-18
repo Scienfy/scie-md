@@ -1,41 +1,46 @@
 # ScieMD Markdown Editor for VS Code
 
+[![Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/scienfy.sciemd-vscode)](https://marketplace.visualstudio.com/items?itemName=scienfy.sciemd-vscode)
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/scienfy.sciemd-vscode)](https://marketplace.visualstudio.com/items?itemName=scienfy.sciemd-vscode)
+[![Rating](https://img.shields.io/visual-studio-marketplace/r/scienfy.sciemd-vscode)](https://marketplace.visualstudio.com/items?itemName=scienfy.sciemd-vscode)
+[![License](https://img.shields.io/badge/license-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+
 ScieMD is a WYSIWYG Markdown editor for scientific writing: research papers,
 theses, lab notes, technical reports, LaTeX math, citations, Mermaid diagrams,
 visual reading styles, and LLM-assisted revision.
+
+## Screenshots
+
+Scientific Markdown in the ScieMD visual editor:
+
+![ScieMD visual editor for scientific Markdown](https://raw.githubusercontent.com/scienfy/scie-md/main/docs/screenshots/vscode-main-editor.png)
+
+Direct **Note to LLM** guidance attached to the relevant manuscript text:
+
+![ScieMD Note to LLM workflow](https://raw.githubusercontent.com/scienfy/scie-md/main/docs/screenshots/vscode-note-to-llm.png)
+
+One-click visual styles for scientific drafts, journal-like views, lab notebooks,
+and reading modes:
+
+![ScieMD visual style selector](https://raw.githubusercontent.com/scienfy/scie-md/main/docs/screenshots/vscode-visual-styles.png)
+
+Text versions for comparing alternate titles, abstracts, claims, and paragraph
+revisions:
+
+![ScieMD text versions in Markdown](https://raw.githubusercontent.com/scienfy/scie-md/main/docs/screenshots/vscode-text-versions.png)
 
 This VS Code extension brings the ScieMD visual editor into VS Code. The full
 ScieMD product is primarily a Rust/Tauri desktop application from Scienfy Inc.,
 with installable Windows and macOS builds published on GitHub:
 
-- Desktop app downloads: https://github.com/Scienfy/scie-md/releases/latest
-- Source code: https://github.com/Scienfy/scie-md
+- Desktop app downloads: https://github.com/scienfy/scie-md/releases/latest
+- Source code: https://github.com/scienfy/scie-md
 - Scienfy: https://scienfy.com
 
 Use the desktop app when you want the complete local-first ScieMD experience,
 including desktop packaging and export workflows. Use this VS Code extension when
 your writing project already lives in VS Code and you want to open `.md` files in a
 scientific visual editor without leaving your workspace.
-
-## Screenshots
-
-Scientific Markdown in the ScieMD visual editor:
-
-![ScieMD visual editor for scientific Markdown](https://raw.githubusercontent.com/Scienfy/scie-md/main/docs/screenshots/vscode-main-editor.png)
-
-Direct **Note to LLM** guidance attached to the relevant manuscript text:
-
-![ScieMD Note to LLM workflow](https://raw.githubusercontent.com/Scienfy/scie-md/main/docs/screenshots/vscode-note-to-llm.png)
-
-One-click visual styles for scientific drafts, journal-like views, lab notebooks,
-and reading modes:
-
-![ScieMD visual style selector](https://raw.githubusercontent.com/Scienfy/scie-md/main/docs/screenshots/vscode-visual-styles.png)
-
-Text versions for comparing alternate titles, abstracts, claims, and paragraph
-revisions:
-
-![ScieMD text versions in Markdown](https://raw.githubusercontent.com/Scienfy/scie-md/main/docs/screenshots/vscode-text-versions.png)
 
 ## Scientific Markdown
 
@@ -57,6 +62,19 @@ It supports:
 Markdown is a strong format for hybrid human and LLM writing because it is portable,
 transparent, easy to diff, and easy for external LLMs to read without a proprietary
 document parser.
+
+## How ScieMD Compares
+
+| Feature | ScieMD | Markdown All in One | Markdown Preview Enhanced |
+| --- | --- | --- | --- |
+| WYSIWYG visual editing | Yes | No | No |
+| Plain Markdown source of truth | Yes | Yes | Yes |
+| Scientific blocks for figures, results, and notes | Yes | No | Partial |
+| Multiple manuscript visual styles | Yes | No | No |
+| Text versions inside the document | Yes | No | No |
+| LLM-aware notes stored in Markdown | Yes | No | No |
+| LaTeX-style math preview | Yes | No | Yes |
+| Mermaid diagrams | Yes | No | Yes |
 
 ## Hybrid Writing With LLMs
 
@@ -164,7 +182,7 @@ and external document change behavior still follow VS Code's editor model.
 
 Many users should start with the desktop app rather than the extension.
 
-1. Open https://github.com/Scienfy/scie-md/releases/latest
+1. Open https://github.com/scienfy/scie-md/releases/latest
 2. Expand **Assets**.
 3. Download the installer for your operating system:
    - Windows: `ScieMD_*_x64-setup.exe`
@@ -190,8 +208,8 @@ If you downloaded a `.vsix` file manually:
 
 Command-line installation:
 
-```powershell
-code --install-extension .\sciemd-vscode-1.0.1.vsix --force
+```bash
+code --install-extension sciemd-vscode-1.0.3.vsix --force
 ```
 
 ## Who This Is For
@@ -241,7 +259,7 @@ Commercial licensing inquiries: info@scienfy.com
 
 The extension source is part of the ScieMD repository:
 
-https://github.com/Scienfy/scie-md
+https://github.com/scienfy/scie-md
 
 Bug reports and feature requests are welcome through GitHub Issues.
 
@@ -259,11 +277,11 @@ This section is for contributors working on the extension internals.
 
 Build and test:
 
-```powershell
+```bash
 npm install
 npm run test
 npm run build
 npm run package
 ```
 
-The package command creates `sciemd-vscode-1.0.1.vsix` in this folder.
+The package command creates `sciemd-vscode-1.0.3.vsix` in this folder.
