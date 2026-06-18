@@ -61,7 +61,7 @@
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "dompurify": "^3.4.7",
     "i18next": "^26.2.0",
-    "katex": "^0.16.47",
+    "katex": "^0.17.0",
     "lucide-react": "^1.16.0",
     "markdown-it": "^14.1.1",
     "markdown-it-deflist": "^3.0.0",
