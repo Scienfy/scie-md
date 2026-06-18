@@ -1,0 +1,574 @@
+:root {
+  color-scheme: light dark;
+  font-family: var(--vscode-font-family, sans-serif);
+  --scie-bg: var(--vscode-editor-background, #1f1f1f);
+  --scie-fg: var(--vscode-editor-foreground, #d4d4d4);
+  --scie-muted: var(--vscode-descriptionForeground, #a6a6a6);
+  --scie-border: var(--vscode-panel-border, #3c3c3c);
+  --scie-panel: var(--vscode-editorGroupHeader-tabsBackground, #252526);
+  --scie-sidebar: var(--vscode-sideBar-background, #181818);
+  --scie-widget: var(--vscode-editorWidget-background, #252526);
+  --scie-input-bg: var(--vscode-input-background, #2a2a2a);
+  --scie-input-fg: var(--vscode-input-foreground, #d4d4d4);
+  --scie-code-bg: var(--vscode-textCodeBlock-background, #2b2b2b);
+  --scie-button-bg: var(--vscode-button-secondaryBackground, #3a3d41);
+  --scie-button-fg: var(--vscode-button-secondaryForeground, #ffffff);
+  --scie-button-hover: var(--vscode-button-secondaryHoverBackground, #45494e);
+  --scie-primary-bg: var(--vscode-button-background, #0e639c);
+  --scie-primary-fg: var(--vscode-button-foreground, #ffffff);
+  --scie-link: var(--vscode-textLink-foreground, #4ea1f3);
+  --scie-ok: var(--vscode-testing-iconPassed, #89d185);
+  --scie-warn: var(--vscode-notificationsWarningIcon-foreground, #cca700);
+  --scie-error: var(--vscode-errorForeground, #f48771);
+  --scie-warning-bg: var(--vscode-inputValidation-warningBackground, #352a05);
+  --bg-primary: var(--scie-bg);
+  --bg-secondary: var(--scie-sidebar);
+  --bg-elevated: var(--scie-widget);
+  --text-primary: var(--scie-fg);
+  --text-secondary: var(--scie-muted);
+  --border-subtle: var(--scie-border);
+  --accent-primary: var(--scie-primary-bg);
+  --accent-soft: color-mix(in srgb, var(--scie-primary-bg) 18%, transparent);
+  --shadow-soft: 0 16px 42px rgb(0 0 0 / 22%);
+  --editor-font: var(--vscode-editor-font-family, monospace);
+  background: var(--scie-bg);
+  color: var(--scie-fg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--scie-bg);
+  color: var(--scie-fg);
+}
+
+button,
+select,
+input,
+textarea {
+  font: inherit;
+}
+
+button,
+select {
+  border: 1px solid var(--vscode-button-border, transparent);
+  background: var(--scie-button-bg);
+  color: var(--scie-button-fg);
+  min-height: 30px;
+  border-radius: 4px;
+  padding: 0 10px;
+}
+
+button:hover,
+select:hover {
+  background: var(--scie-button-hover);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button.selected,
+button[type="submit"] {
+  background: var(--scie-primary-bg);
+  color: var(--scie-primary-fg);
+}
+
+.boot-banner {
+  position: fixed;
+  z-index: 100;
+  top: 8px;
+  right: 8px;
+  max-width: min(520px, calc(100vw - 16px));
+  border: 1px solid var(--scie-border);
+  border-left: 3px solid var(--scie-link);
+  border-radius: 4px;
+  padding: 8px 10px;
+  background: var(--scie-widget);
+  color: var(--scie-fg);
+  box-shadow: var(--shadow-soft);
+}
+
+.boot-banner.hidden {
+  display: none;
+}
+
+.vscode-scie-shell {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  height: 100vh;
+  min-height: 0;
+  background: var(--scie-bg);
+  color: var(--scie-fg);
+}
+
+.vscode-scie-topbar,
+.vscode-scie-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--scie-border);
+}
+
+.vscode-scie-topbar {
+  background: var(--scie-panel);
+}
+
+.vscode-scie-toolbar {
+  flex-wrap: wrap;
+  background: var(--scie-sidebar);
+}
+
+.vscode-scie-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.vscode-scie-logo {
+  position: relative;
+  display: inline-grid;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  background: transparent;
+  color: var(--scie-fg);
+}
+
+.vscode-scie-logo:hover,
+.vscode-scie-logo:focus-visible {
+  background: transparent;
+}
+
+.vscode-scie-logo-circle {
+  position: absolute;
+  width: 17px;
+  height: 17px;
+  border: 2px solid currentColor;
+  border-radius: 999px;
+  opacity: 0.96;
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 160ms ease,
+    box-shadow 180ms ease,
+    opacity 160ms ease;
+}
+
+.vscode-scie-logo-circle.left {
+  transform: translateX(-4px);
+}
+
+.vscode-scie-logo-circle.right {
+  transform: translateX(4px);
+}
+
+.vscode-scie-logo:hover .vscode-scie-logo-circle.left,
+.vscode-scie-logo:focus-visible .vscode-scie-logo-circle.left {
+  transform: translateX(-8px);
+}
+
+.vscode-scie-logo:hover .vscode-scie-logo-circle.right,
+.vscode-scie-logo:focus-visible .vscode-scie-logo-circle.right {
+  transform: translateX(8px);
+}
+
+.vscode-scie-logo.is-reacting .vscode-scie-logo-circle {
+  animation: vscode-scie-logo-flash 720ms ease-in-out both;
+}
+
+.vscode-scie-logo.is-reacting .vscode-scie-logo-circle.left {
+  transform: translateX(-4px);
+}
+
+.vscode-scie-logo.is-reacting .vscode-scie-logo-circle.right {
+  transform: translateX(4px);
+}
+
+.vscode-scie-identity span {
+  color: var(--scie-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes vscode-scie-logo-flash {
+  0%,
+  100% {
+    border-color: currentColor;
+    box-shadow: none;
+    opacity: 0.96;
+  }
+  18%,
+  58% {
+    border-color: var(--scie-accent);
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--scie-accent), transparent 80%);
+    opacity: 1;
+  }
+  36%,
+  76% {
+    border-color: currentColor;
+    box-shadow: none;
+    opacity: 0.9;
+  }
+}
+
+.vscode-scie-mode-toggle {
+  display: inline-flex;
+  border: 1px solid var(--scie-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.vscode-scie-mode-toggle button {
+  border: 0;
+  border-radius: 0;
+}
+
+.vscode-scie-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--scie-muted);
+  font-size: 12px;
+}
+
+.vscode-scie-select select {
+  max-width: 180px;
+  height: 30px;
+  color: var(--scie-button-fg);
+}
+
+.vscode-scie-status {
+  margin-left: auto;
+  border: 1px solid var(--scie-border);
+  color: var(--scie-muted);
+  border-radius: 999px;
+  padding: 3px 8px;
+  min-width: 72px;
+  text-align: center;
+}
+
+.vscode-scie-status.dirty {
+  color: var(--scie-warn);
+}
+
+.vscode-scie-banner {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--scie-border);
+  color: var(--scie-warn);
+  background: var(--scie-warning-bg);
+}
+
+.vscode-scie-metrics {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  color: var(--scie-muted);
+  font-size: 12px;
+}
+
+.startup-panel {
+  display: grid;
+  gap: 4px;
+  margin: 18px;
+  max-width: 680px;
+  border: 1px solid var(--scie-border);
+  border-left: 3px solid var(--scie-link);
+  border-radius: 6px;
+  padding: 12px;
+  background: var(--scie-widget);
+}
+
+.startup-panel span {
+  color: var(--scie-muted);
+}
+
+.vscode-scie-editor-stage {
+  min-height: 0;
+  overflow: auto;
+  background: var(--scie-bg);
+}
+
+.vscode-scie-editor-stage .milkdown {
+  min-height: 100%;
+}
+
+.vscode-scie-editor-stage .milkdown .editor {
+  min-height: calc(100vh - 112px);
+}
+
+.vscode-scie-editor-stage .cm-editor {
+  min-height: calc(100vh - 112px);
+  background: var(--scie-bg);
+  color: var(--scie-fg);
+}
+
+.vscode-scie-editor-stage .cm-scroller {
+  font-family: var(--editor-font);
+}
+
+.vscode-scie-review-panel {
+  border-bottom: 1px solid var(--scie-border);
+  background: var(--scie-widget);
+  max-height: 42vh;
+  overflow: auto;
+}
+
+.vscode-scie-review-panel header,
+.vscode-scie-review-panel footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--scie-border);
+}
+
+.vscode-scie-review-panel header button {
+  margin-left: auto;
+}
+
+.vscode-scie-review-units {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.vscode-scie-review-unit {
+  border: 1px solid var(--scie-border);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.vscode-scie-review-unit.rejected {
+  border-color: var(--scie-error);
+}
+
+.vscode-scie-review-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.vscode-scie-review-grid pre {
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: var(--scie-code-bg);
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.vscode-scie-toast {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 30;
+  max-width: min(520px, calc(100vw - 28px));
+  border: 1px solid var(--scie-border);
+  border-left: 3px solid var(--scie-link);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--scie-widget);
+  box-shadow: var(--shadow-soft);
+}
+
+.vscode-scie-toast.success {
+  border-left-color: var(--scie-ok);
+}
+
+.vscode-scie-toast.warning {
+  border-left-color: var(--scie-warn);
+}
+
+.vscode-scie-toast.error {
+  border-left-color: var(--scie-error);
+}
+
+.vscode-scie-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 48%);
+  z-index: 20;
+}
+
+.vscode-scie-modal {
+  width: min(680px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--scie-border);
+  border-radius: 8px;
+  background: var(--scie-widget);
+  padding: 18px;
+  box-shadow: var(--shadow-soft);
+}
+
+.vscode-scie-modal-close {
+  float: right;
+}
+
+.vscode-scie-modal h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+.vscode-scie-modal form {
+  display: grid;
+  gap: 12px;
+}
+
+.vscode-scie-modal label {
+  display: grid;
+  gap: 5px;
+}
+
+.vscode-scie-modal input,
+.vscode-scie-modal textarea {
+  width: 100%;
+  border: 1px solid var(--vscode-input-border, var(--scie-border));
+  border-radius: 4px;
+  background: var(--scie-input-bg);
+  color: var(--scie-input-fg);
+  padding: 8px;
+}
+
+.vscode-scie-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 760px) {
+  .vscode-scie-topbar,
+  .vscode-scie-toolbar {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .vscode-scie-identity {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .vscode-scie-status,
+  .vscode-scie-metrics {
+    margin-left: 0;
+  }
+
+  .vscode-scie-select {
+    width: calc(50% - 4px);
+  }
+
+  .vscode-scie-select select {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --scie-bg: Canvas;
+    --scie-fg: CanvasText;
+    --scie-muted: CanvasText;
+    --scie-border: ButtonBorder;
+    --scie-panel: Canvas;
+    --scie-sidebar: Canvas;
+    --scie-widget: Canvas;
+    --scie-input-bg: Field;
+    --scie-input-fg: FieldText;
+    --scie-code-bg: Canvas;
+    --scie-button-bg: ButtonFace;
+    --scie-button-fg: ButtonText;
+    --scie-button-hover: Highlight;
+    --scie-primary-bg: Highlight;
+    --scie-primary-fg: HighlightText;
+    --scie-link: LinkText;
+    --scie-warn: Mark;
+    --scie-error: Mark;
+    --scie-warning-bg: Canvas;
+    --bg: Canvas;
+    --bg-primary: Canvas;
+    --bg-secondary: Canvas;
+    --bg-elevated: Canvas;
+    --surface: Canvas;
+    --surface-alt: Canvas;
+    --text: CanvasText;
+    --text-primary: CanvasText;
+    --text-secondary: CanvasText;
+    --muted: CanvasText;
+    --border: ButtonBorder;
+    --border-subtle: ButtonBorder;
+    --accent: Highlight;
+    --accent-primary: Highlight;
+    --accent-soft: Highlight;
+    --visual-page-bg: Canvas;
+    --visual-text: CanvasText;
+    --visual-heading: CanvasText;
+    --visual-muted: CanvasText;
+    --visual-border: ButtonBorder;
+    --visual-link: LinkText;
+    --shadow-soft: none;
+  }
+
+  * {
+    forced-color-adjust: auto;
+  }
+
+  button,
+  select,
+  input,
+  textarea,
+  .vscode-scie-status,
+  .vscode-scie-review-unit,
+  .vscode-scie-modal,
+  .vscode-scie-toast,
+  .startup-panel {
+    border-color: ButtonBorder;
+  }
+
+  button.selected,
+  button[type="submit"] {
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .vscode-scie-editor-stage,
+  .vscode-scie-editor-stage .visual-editor,
+  .vscode-scie-editor-stage .ProseMirror,
+  .vscode-scie-editor-stage .cm-editor {
+    background: Canvas !important;
+    color: CanvasText !important;
+  }
+
+  .vscode-scie-editor-stage .ProseMirror :is(h1, h2, h3, h4, h5, h6, p, li, blockquote, td, th),
+  .vscode-scie-editor-stage .cm-content {
+    color: CanvasText !important;
+  }
+
+  .vscode-scie-editor-stage .ProseMirror a {
+    color: LinkText !important;
+  }
+}

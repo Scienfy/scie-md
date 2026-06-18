@@ -1,0 +1,16 @@
+Scie Sans FONTLOG
+=================
+
+2026-05-23: Scie Sans 1.320
+- Strengthened the v0.4.2 compact-width family pass after Helvetica Neue Compact comparison showed a much stronger prose-width reduction.
+- Derived normal-width Light, Regular, Medium, Bold, and matching italic fonts from Inter 4.1.
+- Derived compact-width Light, Regular, and Medium fonts from the Scie Sans design pass.
+- Renamed all user-facing font names and PostScript names from Inter to Scie Sans.
+- Softened functional bars on capital I, the right-foot terminal on lowercase l, and the base foot on digit 1.
+- Narrowed the plain zero outline so O/0 remain distinct without making slashed zero the default.
+- Tuned U+2212 minus to tabular figure width and standardized U+202F narrow no-break space.
+- Added U+2219 bullet operator coverage via the centered-dot glyph.
+- Added Scie Sans copyright, license metadata, and Reserved Font Name notice.
+- Kept WOFF2 files in the ScieMD runtime bundle and full TTF artifacts under ignored release artifacts.
+
+This is a Modified Version under the SIL Open Font License 1.1 and is not an official Inter release.

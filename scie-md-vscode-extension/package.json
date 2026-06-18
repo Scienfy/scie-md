@@ -1,0 +1,172 @@
+{
+  "name": "sciemd-vscode",
+  "displayName": "ScieMD Markdown Editor",
+  "description": "VS Code custom editor for ScieMD scientific Markdown, live preview, and hybrid LLM editing workflows.",
+  "version": "1.0.0",
+  "publisher": "scienfy",
+  "author": "Scienfy Inc.",
+  "license": "AGPL-3.0-or-later",
+  "homepage": "https://scienfy.com",
+  "bugs": {
+    "url": "https://github.com/scienfy/scie-md/issues"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "markdown",
+    "scientific-writing",
+    "custom-editor",
+    "llm"
+  ],
+  "activationEvents": [
+    "onCustomEditor:scieMd.visualMarkdown",
+    "onCommand:scieMd.openWithVisualEditor",
+    "onCommand:scieMd.copyLlmSkill",
+    "onCommand:scieMd.generateLlmSkillFile"
+  ],
+  "main": "./dist/extension/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "scieMd.visualMarkdown",
+        "displayName": "ScieMD Markdown Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          },
+          {
+            "filenamePattern": "*.scie.md"
+          },
+          {
+            "filenamePattern": "*.sciemd.md"
+          }
+        ],
+        "priority": "option"
+      }
+    ],
+    "commands": [
+      {
+        "command": "scieMd.openWithVisualEditor",
+        "title": "Open With ScieMD Markdown Editor",
+        "category": "ScieMD"
+      },
+      {
+        "command": "scieMd.copyLlmSkill",
+        "title": "Copy ScieMD LLM Skill",
+        "category": "ScieMD"
+      },
+      {
+        "command": "scieMd.generateLlmSkillFile",
+        "title": "Generate ScieMD_LLM_skill.md Beside Document",
+        "category": "ScieMD"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "scieMd.openWithVisualEditor"
+        },
+        {
+          "command": "scieMd.copyLlmSkill"
+        },
+        {
+          "command": "scieMd.generateLlmSkillFile"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "scieMd.openWithVisualEditor",
+          "when": "resourceLangId == markdown"
+        },
+        {
+          "command": "scieMd.generateLlmSkillFile",
+          "when": "resourceLangId == markdown"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "scieMd.openWithVisualEditor",
+          "when": "resourceExtname == .md"
+        },
+        {
+          "command": "scieMd.generateLlmSkillFile",
+          "when": "resourceExtname == .md"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "typecheck:extension": "tsc -p tsconfig.extension.json --noEmit",
+    "typecheck:webview": "tsc -p tsconfig.webview.json --noEmit",
+    "typecheck": "npm run typecheck:extension && npm run typecheck:webview",
+    "verify:shared-core": "node scripts/verify-shared-core-sync.mjs",
+    "build:extension": "esbuild src/extension/extension.ts --bundle --platform=node --format=cjs --target=es2022 --external:vscode --outfile=dist/extension/extension.js",
+    "build:webview": "vite build",
+    "build": "npm run clean && npm run verify:shared-core && npm run typecheck && npm run build:extension && npm run build:webview",
+    "test": "vitest run",
+    "package": "npm run build && vsce package --no-dependencies"
+  },
+  "capabilities": {
+    "virtualWorkspaces": {
+      "supported": "limited",
+      "description": "ScieMD can preview and edit Markdown documents when the file-system provider supports text edits. Commands that write sibling files are limited to file-backed documents."
+    },
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Preview, source editing, and clipboard commands work in Restricted Mode. Commands that write sibling files may be blocked by the workspace or file-system provider."
+    }
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.20.2",
+    "@codemirror/commands": "^6.10.3",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/search": "^6.7.0",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.43.0",
+    "@milkdown/kit": "^7.21.2",
+    "@milkdown/react": "^7.21.2",
+    "@milkdown/theme-nord": "^7.21.2",
+    "@milkdown/utils": "^7.21.2",
+    "@tauri-apps/api": "^2.11.1",
+    "katex": "^0.16.47",
+    "markdown-it-deflist": "^3.0.1",
+    "markdown-it-footnote": "^4.0.0",
+    "markdown-it-task-lists": "^2.1.1",
+    "mermaid": "^11.15.0"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^20.14.10",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "@vscode/vsce": "^3.6.0",
+    "dompurify": "^3.2.6",
+    "esbuild": "^0.28.1",
+    "jsdom": "^26.1.0",
+    "markdown-it": "^14.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "^4.1.8",
+    "yaml": "^2.9.0"
+  },
+  "icon": "assets/icon.png",
+  "galleryBanner": {
+    "color": "#203f73",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/scienfy/scie-md.git"
+  }
+}

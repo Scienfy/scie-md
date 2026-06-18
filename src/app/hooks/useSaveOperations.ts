@@ -1,0 +1,327 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
+import type { AutosaveStatus, FileMetadata } from '../documentState';
+import { DEFAULT_METADATA, UNTITLED_NAME, metadataChanged } from '../documentState';
+import { BACKUP_INTERVAL_MS, markAutosaveBackupCreated, shouldCreateAutosaveBackup } from '../../services/autosaveService';
+import { createBackupSnapshot, pickSavePath, statFile, writeTextFileAtomic } from '../../services/fileService';
+import { rememberRecentFile } from '../../services/settingsService';
+import type { PersistedSettings } from '../../services/settingsService';
+import type { ConfirmState } from './useDialogs';
+import { clearFileDraft, saveFileDraft } from '../../services/draftRecoveryService';
+import { parseFrontmatter } from '../../domain/document/frontmatter';
+import { flushVisualEditorState } from '../../components/visualEditorStateSync';
+
+interface SaveOperationsParams {
+  filePath: string | null;
+  fileMetadata: FileMetadata;
+  markdown: string;
+  setFilePath: (path: string) => void;
+  setFileMetadata: (metadata: FileMetadata) => void;
+  setLastSavedMarkdown: (markdown: string) => void;
+  setAutosaveStatus: (status: AutosaveStatus) => void;
+  setLastAutosavedAt: (timestamp: number | null) => void;
+  setExternalConflict: (conflict: boolean) => void;
+  setSettings: Dispatch<SetStateAction<PersistedSettings>>;
+  confirmText: (state: ConfirmState) => Promise<boolean>;
+  pushToast: (text: string, tone?: 'info' | 'success' | 'warning' | 'error') => void;
+}
+
+export function useSaveOperations({
+  filePath,
+  fileMetadata,
+  markdown,
+  setFilePath,
+  setFileMetadata,
+  setLastSavedMarkdown,
+  setAutosaveStatus,
+  setLastAutosavedAt,
+  setExternalConflict,
+  setSettings,
+  confirmText,
+  pushToast,
+}: SaveOperationsParams) {
+  const backupScheduleRef = useRef({ sessionBackupDone: false, lastBackupAtMs: 0 });
+  const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const saveQueueDepthRef = useRef(0);
+  const filePathRef = useRef(filePath);
+  const fileMetadataRef = useRef(fileMetadata);
+  const markdownRef = useRef(markdown);
+  const [saveQueueDepth, setSaveQueueDepth] = useState(0);
+
+  useEffect(() => {
+    filePathRef.current = filePath;
+  }, [filePath]);
+
+  useEffect(() => {
+    fileMetadataRef.current = fileMetadata;
+  }, [fileMetadata]);
+
+  useEffect(() => {
+    markdownRef.current = markdown;
+  }, [markdown]);
+
+  const updateSaveQueueDepth = useCallback((delta: number) => {
+    saveQueueDepthRef.current = Math.max(0, saveQueueDepthRef.current + delta);
+    setSaveQueueDepth(saveQueueDepthRef.current);
+  }, []);
+
+  const resetBackupSession = useCallback(() => {
+    backupScheduleRef.current = { sessionBackupDone: false, lastBackupAtMs: 0 };
+  }, []);
+
+  const saveCurrent = useCallback(async (options: { autosave?: boolean; forceSaveAs?: boolean; forceOverwrite?: boolean } = {}) => {
+    const requestedOptions = {
+      autosave: options.autosave ?? false,
+      forceSaveAs: options.forceSaveAs ?? false,
+      forceOverwrite: options.forceOverwrite ?? false,
+    };
+
+    const runSave = async (): Promise<string | false> => {
+      const flushedMarkdown = flushVisualEditorState();
+      if (flushedMarkdown !== null) {
+        markdownRef.current = flushedMarkdown;
+      }
+      const snapshot = {
+        ...requestedOptions,
+        sourcePath: filePathRef.current,
+        sourceMetadata: fileMetadataRef.current,
+        sourceMarkdown: markdownRef.current,
+      };
+      let targetPath: string | null = null;
+      try {
+        targetPath = snapshot.forceSaveAs || !snapshot.sourcePath
+          ? await pickSavePath(suggestedMarkdownSavePath(snapshot.sourceMarkdown, snapshot.sourcePath))
+          : snapshot.sourcePath;
+      } catch (error) {
+        console.error(error);
+        setAutosaveStatus('error');
+        pushToast(error instanceof Error ? error.message : 'Could not open the Save As dialog.', 'error');
+        return false;
+      }
+      if (!targetPath) return false;
+
+      setAutosaveStatus('saving');
+
+      let metadataForWrite = targetPath === snapshot.sourcePath ? snapshot.sourceMetadata : DEFAULT_METADATA;
+      let existingMetadata: FileMetadata | null = null;
+      let externalBackupCreated = false;
+      let forceOverwriteConfirmed = false;
+      const confirmForceOverwrite = async () => {
+        if (!snapshot.forceOverwrite || forceOverwriteConfirmed) return true;
+        const overwrite = await confirmText({
+          title: 'Overwrite disk version?',
+          message: 'This writes your current ScieMD document over the changed disk file. A backup of the disk version will be created first.',
+          okLabel: 'Overwrite',
+          cancelLabel: 'Cancel',
+        });
+        forceOverwriteConfirmed = overwrite;
+        return overwrite;
+      };
+
+      try {
+        const preliminaryMetadata = await statFile(targetPath, { contentHash: false });
+        if (isCloudPlaceholderMetadata(preliminaryMetadata)) {
+          setAutosaveStatus('error');
+          saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+          pushToast(
+            snapshot.autosave
+              ? 'Autosave paused: this file is cloud-only. Download or pin it locally, then save again.'
+              : 'This file is cloud-only. Download or pin it locally before saving so ScieMD does not block on cloud rehydration.',
+            'warning',
+          );
+          return false;
+        }
+        existingMetadata = await statFile(targetPath, { contentHash: true });
+        if (targetPath !== snapshot.sourcePath) metadataForWrite = existingMetadata;
+      } catch (error) {
+        if (targetPath !== snapshot.sourcePath && isMissingFileStatError(error)) {
+          existingMetadata = null;
+        } else {
+          setAutosaveStatus('error');
+          saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+          pushToast(
+            snapshot.autosave
+              ? 'Autosave paused: ScieMD could not verify the disk file before saving. Your in-memory draft was preserved.'
+              : `Could not verify the disk file before saving: ${error instanceof Error ? error.message : String(error)}`,
+            'error',
+          );
+          return false;
+        }
+      }
+
+      if (targetPath !== snapshot.sourcePath && existingMetadata && !snapshot.autosave) {
+        const replace = await confirmText({
+          title: 'Replace existing Markdown file?',
+          message: 'The selected Save As target already exists. Replace it with this ScieMD document? A backup of the target file will be created first.',
+          okLabel: 'Replace',
+          cancelLabel: 'Cancel',
+        });
+        if (!replace) {
+          setAutosaveStatus(filePathRef.current ? 'pending' : 'idle');
+          return false;
+        }
+      }
+
+      if (targetPath === snapshot.sourcePath && existingMetadata && metadataChanged(snapshot.sourceMetadata, existingMetadata)) {
+        setAutosaveStatus('conflict');
+        setExternalConflict(true);
+        saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+        if (snapshot.autosave) return false;
+        if (snapshot.forceOverwrite) {
+          if (!(await confirmForceOverwrite())) return false;
+        } else {
+          const overwrite = await confirmText({
+            title: 'External change detected',
+            message: 'This file changed outside ScieMD. Overwrite the disk version? A backup of the disk version will be created first.',
+            okLabel: 'Overwrite',
+            cancelLabel: 'Cancel',
+          });
+          if (!overwrite) return false;
+        }
+        await createBackupSnapshot(targetPath, 'external');
+        externalBackupCreated = true;
+        metadataForWrite = existingMetadata;
+      }
+
+      try {
+        if (targetPath === snapshot.sourcePath) {
+          const preWriteMetadata = await statFile(targetPath, { contentHash: true }).catch(() => null);
+          if (preWriteMetadata && metadataChanged(metadataForWrite, preWriteMetadata)) {
+            existingMetadata = preWriteMetadata;
+            metadataForWrite = preWriteMetadata;
+            externalBackupCreated = false;
+            if (!snapshot.forceOverwrite) {
+              setAutosaveStatus('conflict');
+              setExternalConflict(true);
+              saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+              pushToast(
+                snapshot.autosave
+                  ? 'Autosave paused: the file changed on disk just before saving. Your in-memory draft was preserved.'
+                  : 'External change detected just before saving. Review disk changes or use Save Anyway.',
+                'warning',
+              );
+              return false;
+            }
+            if (!(await confirmForceOverwrite())) return false;
+          }
+        }
+
+        if (existingMetadata) {
+          if (!snapshot.autosave && !externalBackupCreated) {
+            await createBackupSnapshot(targetPath, 'manual');
+          } else if (snapshot.autosave && shouldCreateAutosaveBackup(backupScheduleRef.current, Date.now(), BACKUP_INTERVAL_MS)) {
+            await createBackupSnapshot(targetPath, 'autosave');
+            backupScheduleRef.current = markAutosaveBackupCreated(backupScheduleRef.current, Date.now());
+          }
+        }
+
+        const expectedMetadata = targetPath === snapshot.sourcePath
+          ? existingMetadata ?? snapshot.sourceMetadata
+          : existingMetadata;
+        const nextMetadata = await writeTextFileAtomic(targetPath, snapshot.sourceMarkdown, metadataForWrite, expectedMetadata);
+        filePathRef.current = targetPath;
+        fileMetadataRef.current = nextMetadata;
+        markdownRef.current = snapshot.sourceMarkdown;
+        setFilePath(targetPath);
+        setFileMetadata(nextMetadata);
+        setLastSavedMarkdown(snapshot.sourceMarkdown);
+        setAutosaveStatus('saved');
+        setLastAutosavedAt(Date.now());
+        setExternalConflict(false);
+        setSettings(rememberRecentFile(targetPath));
+        clearFileDraft(targetPath);
+        if (!snapshot.autosave) pushToast('Saved', 'success');
+        return targetPath;
+      } catch (error) {
+        console.error(error);
+        if (isExternalChangeSaveError(error)) {
+          setAutosaveStatus('conflict');
+          setExternalConflict(true);
+          if (snapshot.sourcePath) saveFileDraft(snapshot.sourcePath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+          pushToast(
+            snapshot.autosave
+              ? 'Autosave paused: the file changed on disk. Your in-memory draft was preserved for recovery.'
+              : 'External change detected. Reload, Save As, or use Save Anyway after reviewing the disk version.',
+            'warning',
+          );
+          return false;
+        }
+        setAutosaveStatus('error');
+        if (snapshot.sourcePath) saveFileDraft(snapshot.sourcePath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+        pushToast(
+          snapshot.autosave
+            ? `Autosave failed: ${error instanceof Error ? error.message : 'Save failed.'}`
+            : error instanceof Error ? error.message : 'Save failed.',
+          'error',
+        );
+        return false;
+      }
+    };
+
+    updateSaveQueueDepth(1);
+    const queuedSave = saveQueueRef.current.then(runSave, runSave);
+    saveQueueRef.current = queuedSave
+      .catch((error) => {
+        console.error('Save queue chain error:', error);
+        setAutosaveStatus('error');
+        pushToast(error instanceof Error ? error.message : 'Save queue failed before the document could be written.', 'error');
+        return undefined;
+      })
+      .finally(() => updateSaveQueueDepth(-1));
+    return queuedSave;
+  }, [confirmText, pushToast, setAutosaveStatus, setExternalConflict, setFileMetadata, setFilePath, setLastAutosavedAt, setLastSavedMarkdown, setSettings, updateSaveQueueDepth]);
+
+  const ensureDocumentPathForAssets = useCallback(async () => {
+    if (filePath) return filePath;
+    const savedPath = await saveCurrent({ forceSaveAs: true });
+    return typeof savedPath === 'string' ? savedPath : null;
+  }, [filePath, saveCurrent]);
+
+  return { saveCurrent, ensureDocumentPathForAssets, resetBackupSession, saveQueueDepth };
+}
+
+function isCloudPlaceholderMetadata(metadata: FileMetadata | null): boolean {
+  return metadata?.cloudState === 'cloud-placeholder' || metadata?.cloudState === 'cloud-recall-on-open';
+}
+
+export function suggestedMarkdownSavePath(markdown: string, sourcePath: string | null): string {
+  if (sourcePath) return sourcePath;
+  const title = documentTitleForFilename(markdown);
+  if (!title) return UNTITLED_NAME;
+  return `${slugifyFilename(title)}.md`;
+}
+
+function documentTitleForFilename(markdown: string): string | null {
+  const frontmatter = parseFrontmatter(markdown);
+  const title = typeof frontmatter.data.title === 'string' ? frontmatter.data.title.trim() : '';
+  if (title) return title;
+  const rawTitle = frontmatter.raw.match(/^title:\s*["']?(.+?)["']?\s*$/m)?.[1]?.trim() ?? '';
+  if (rawTitle) return rawTitle.replace(/^["']|["']$/g, '').trim();
+  const heading = markdown.match(/^#{1,6}\s+(.+?)\s*#*\s*$/m)?.[1]?.trim() ?? '';
+  return heading || null;
+}
+
+function slugifyFilename(value: string): string {
+  const cleaned = value
+    .normalize('NFC')
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 96);
+  const slug = cleaned
+    .replace(/[^\p{L}\p{N}._ -]+/gu, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[ .-]+|[ .-]+$/g, '');
+  return slug || 'Untitled';
+}
+
+function isExternalChangeSaveError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /changed on disk|changed before ScieMD could save|changed before Scienfy could save/i.test(message);
+}
+
+function isMissingFileStatError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /could not resolve file path|not found|cannot find|no such file|os error 2/i.test(message);
+}

@@ -1,0 +1,14 @@
+src/**
+test/**
+scripts/**
+*.vsix
+tsconfig*.json
+vite.config.ts
+vitest.config.ts
+node_modules/.vite/**
+node_modules/.cache/**
+node_modules/**
+coverage/**
+desktop-build-smoke/**
+.runtime-test/**
+runtime-*.png

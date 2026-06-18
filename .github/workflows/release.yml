@@ -1,0 +1,145 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Build Windows installers
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build release artifacts
+        run: npm run release:local
+
+      - name: Stage Windows release assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-assets/windows | Out-Null
+          Copy-Item artifacts/ScieMD.exe release-assets/windows/
+          Copy-Item artifacts/installers/*.exe release-assets/windows/
+          Copy-Item artifacts/installers/*.msi release-assets/windows/
+          Copy-Item artifacts/installers/*.vsix release-assets/windows/
+          Copy-Item artifacts/SHA256SUMS.txt release-assets/windows/SHA256SUMS-windows.txt
+
+      - name: Upload Windows release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-assets
+          path: release-assets/windows/*
+
+  macos:
+    name: Build macOS installers
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate release
+        run: npm run validate:release
+
+      - name: Build macOS desktop bundles
+        run: npm run build:desktop
+
+      - name: Stage macOS release assets
+        shell: bash
+        run: |
+          mkdir -p release-assets/macos
+          find src-tauri/target/release/bundle -type f \( -name '*.dmg' -o -name '*.app.tar.gz' \) -exec cp {} release-assets/macos/ \;
+          cd release-assets/macos
+          shasum -a 256 * > SHA256SUMS-macos.txt
+
+      - name: Upload macOS release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-release-assets
+          path: release-assets/macos/*
+
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - windows
+      - macos
+
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Create release notes
+        run: |
+          cat > RELEASE_NOTES.md <<'NOTES'
+          ScieMD desktop preview build.
+
+          Download the installer for your operating system from the assets below.
+
+          Windows:
+          - Use `ScieMD_*_x64-setup.exe` for normal installation.
+          - Use the `.msi` only if your environment requires MSI installers.
+          - `ScieMD.exe` is a portable smoke-test build.
+
+          VS Code:
+          - Install `sciemd-vscode-*.vsix` from VS Code's Extensions view or with `code --install-extension`.
+
+          macOS:
+          - Use the `.dmg` asset.
+          - Unsigned preview builds may require right-clicking the app and choosing Open.
+
+          Verify downloads with the included SHA-256 checksum files.
+          NOTES
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" --clobber \
+              release-assets/windows-release-assets/* \
+              release-assets/macos-release-assets/*
+          else
+            gh release create "$TAG" \
+              --title "ScieMD $TAG" \
+              --notes-file RELEASE_NOTES.md \
+              release-assets/windows-release-assets/* \
+              release-assets/macos-release-assets/*
+          fi

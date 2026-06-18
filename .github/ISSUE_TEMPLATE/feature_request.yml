@@ -1,0 +1,38 @@
+name: Feature Request
+description: Suggest a ScieMD improvement.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Scientific writing problem
+      description: What workflow, collaboration, export, or review problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior you want in ScieMD.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - Desktop app
+        - VS Code extension
+        - Markdown syntax
+        - Export
+        - Documentation
+        - Build or release process
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional, but useful for understanding tradeoffs.

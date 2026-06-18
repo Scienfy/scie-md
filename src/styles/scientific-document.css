@@ -1,0 +1,1469 @@
+.visual-editor [data-milkdown-root] {
+  height: 100%;
+  overflow: auto;
+  background: var(--editor-bg);
+}
+
+.visual-editor .milkdown {
+  max-width: var(--content-width);
+  min-height: 100%;
+  margin: 0 auto;
+  padding:
+    calc(var(--document-pad-y) * var(--visual-padding-scale))
+    calc(var(--document-pad-x) * var(--visual-padding-scale))
+    calc(var(--document-pad-bottom) * var(--visual-padding-scale));
+  background: var(--editor-bg);
+}
+
+.visual-editor .ProseMirror {
+  min-height: calc(100vh - 220px);
+  outline: none;
+  color: var(--text);
+  font-size: calc(var(--document-body-size) * var(--font-scale));
+  font-weight: var(--document-body-weight, 400);
+  line-height: var(--editor-line-height);
+  letter-spacing: var(--visual-body-letter-spacing);
+}
+
+.visual-editor .ProseMirror:focus-visible {
+  box-shadow: none;
+}
+
+.visual-editor .ProseMirror h1,
+.visual-editor .ProseMirror h2,
+.visual-editor .ProseMirror h3,
+.visual-editor .ProseMirror h4 {
+  color: var(--text-strong);
+  line-height: 1.22;
+  font-weight: var(--visual-heading-weight);
+}
+
+.visual-editor .ProseMirror h1 {
+  margin: 0 0 calc(var(--document-h1-bottom) * var(--visual-heading-gap-scale));
+  font-size: calc(var(--document-h1-size) * var(--font-scale));
+}
+
+.visual-editor .ProseMirror h2 {
+  margin:
+    calc(var(--document-h2-top) * var(--visual-heading-gap-scale))
+    0
+    calc(var(--document-h2-bottom) * var(--visual-heading-gap-scale));
+  border-bottom: var(--visual-heading-border);
+  padding-bottom: calc(4px * var(--visual-heading-gap-scale));
+  font-size: calc(var(--document-h2-size) * var(--font-scale));
+}
+
+.visual-editor .ProseMirror h3 {
+  margin:
+    calc(var(--document-h3-top) * var(--visual-heading-gap-scale))
+    0
+    calc(var(--document-h3-bottom) * var(--visual-heading-gap-scale));
+  font-size: calc(var(--document-h3-size) * var(--font-scale));
+}
+
+.visual-editor .ProseMirror h4 {
+  margin:
+    calc(var(--document-h3-top) * var(--visual-heading-gap-scale) * 0.85)
+    0
+    calc(var(--document-h3-bottom) * var(--visual-heading-gap-scale));
+  color: var(--text-strong);
+  font-size: calc(var(--document-h4-size) * var(--font-scale));
+}
+
+.visual-editor .ProseMirror strong {
+  color: var(--text-strong);
+  font-weight: 760;
+}
+
+.visual-editor .ProseMirror a {
+  color: var(--visual-link-color);
+  text-decoration: none;
+}
+
+.visual-editor .ProseMirror a:hover {
+  text-decoration: underline;
+}
+
+.visual-editor .ProseMirror p,
+.visual-editor .ProseMirror ul,
+.visual-editor .ProseMirror ol,
+.visual-editor .ProseMirror blockquote,
+.visual-editor .ProseMirror pre,
+.visual-editor .ProseMirror table {
+  margin-top: 0;
+  margin-bottom: calc(var(--document-block-gap) * var(--visual-block-scale));
+}
+
+.visual-editor .ProseMirror li {
+  margin: 0.32em 0;
+}
+
+.visual-editor .ProseMirror li > p {
+  margin-bottom: 0.35em;
+}
+
+.visual-editor .ProseMirror hr {
+  height: 1px;
+  margin:
+    calc(var(--document-block-gap) * var(--visual-block-scale) * 1.25)
+    0;
+  border: 0;
+  background: var(--visual-hr-color);
+}
+
+.visual-editor .ProseMirror blockquote {
+  border-left: 4px solid var(--accent-soft);
+  margin-left: 0;
+  padding-left: calc(var(--blockquote-pad-x) * var(--visual-padding-scale));
+  color: var(--text-muted);
+}
+
+.visual-editor .ProseMirror code {
+  border-radius: var(--visual-inline-code-radius);
+  padding: var(--visual-inline-code-pad-y) var(--visual-inline-code-pad-x);
+  background: var(--visual-inline-code-bg);
+  color: var(--visual-inline-code-color);
+  font-family: var(--mono-font);
+  font-size: var(--document-code-size);
+}
+
+.visual-editor .ProseMirror pre {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: calc(var(--code-block-pad) * var(--visual-padding-scale));
+  background: var(--visual-code-bg);
+  color: var(--visual-code-color);
+}
+
+.visual-editor .ProseMirror pre code {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.visual-editor .ProseMirror table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--table-bg);
+  color: var(--table-text);
+  font-size: calc(var(--document-table-size) * var(--font-scale));
+}
+
+.visual-editor .ProseMirror th,
+.visual-editor .ProseMirror td {
+  border: 1px solid var(--table-border);
+  padding:
+    calc(var(--table-cell-pad-y) * var(--visual-table-scale))
+    calc(var(--table-cell-pad-x) * var(--visual-table-scale));
+  background: var(--table-bg);
+  color: var(--table-text);
+  text-align: left;
+  vertical-align: top;
+}
+
+.visual-editor .ProseMirror th {
+  background: var(--table-head-bg);
+  color: var(--table-head-text);
+  font-weight: 700;
+}
+
+.visual-editor .ProseMirror tbody tr:nth-child(even) td {
+  background: var(--table-alt-bg);
+}
+
+.visual-editor .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+}
+
+:root[data-visual-style="codex"] .visual-editor [data-milkdown-root],
+:root[data-visual-style="codex"] .visual-editor .milkdown {
+  background: var(--editor-bg);
+}
+
+:root[data-visual-style="codex"] .visual-editor .ProseMirror {
+  color: #0d1117;
+}
+
+:root[data-theme="dark"][data-visual-style="codex"] .visual-editor .ProseMirror {
+  color: var(--text);
+}
+
+:root[data-visual-style="codex"] .visual-editor .ProseMirror h1 {
+  letter-spacing: 0;
+}
+
+:root[data-visual-style="codex"] .visual-editor .ProseMirror h2 {
+  padding-bottom: 0;
+}
+
+:root[data-visual-style="codex"] .visual-editor .ProseMirror blockquote {
+  border-left-width: 2px;
+  border-left-color: var(--visual-hr-color);
+  color: var(--text-strong);
+  font-style: italic;
+}
+
+:root[data-visual-style="codex"] .visual-editor .ProseMirror ul,
+:root[data-visual-style="codex"] .visual-editor .ProseMirror ol {
+  padding-left: 1.55em;
+}
+
+:root[data-visual-style="codex"] .visual-editor .ProseMirror li {
+  margin: 0.4em 0;
+}
+
+:root[data-visual-style="codex"] .visual-editor .ProseMirror table {
+  width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+:root[data-visual-style="codex"] .visual-editor .ProseMirror th,
+:root[data-visual-style="codex"] .visual-editor .ProseMirror td {
+  border-width: 0 0 1px;
+  border-color: var(--visual-hr-color);
+  padding: 7px 6px;
+}
+
+:root[data-visual-style="codex"] .visual-editor .ProseMirror th {
+  background: var(--table-head-bg);
+  color: var(--table-head-text);
+  font-weight: 760;
+}
+
+:root[data-visual-style="codex"] .visual-editor .ProseMirror td {
+  color: var(--table-text);
+}
+
+:root[data-visual-style="codex"] .visual-editor .ProseMirror pre {
+  border-color: #d0d7de;
+  border-radius: 6px;
+}
+
+:root[data-visual-style="amin"] .visual-editor [data-milkdown-root],
+:root[data-visual-style="amin"] .visual-editor .milkdown {
+  background: var(--editor-bg);
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror {
+  color: var(--text);
+  hyphens: auto;
+  font-stretch: 96%;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror p {
+  max-width: none;
+  text-align: justify;
+  text-wrap: pretty;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror h1,
+:root[data-visual-style="amin"] .visual-editor .ProseMirror h2,
+:root[data-visual-style="amin"] .visual-editor .ProseMirror h3,
+:root[data-visual-style="amin"] .visual-editor .ProseMirror h4 {
+  font-family: "Scie Sans", sans-serif;
+  color: #3f4482;
+  letter-spacing: 0.01em;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror h1 {
+  max-width: 30ch;
+  font-weight: 400;
+  line-height: 1.16;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror h2 {
+  border-top: 1px solid var(--visual-hr-color);
+  padding-top: 22px;
+  padding-bottom: 0;
+  font-weight: 650;
+  line-height: 1.18;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror h3 {
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror h4 {
+  color: #d81924;
+  font-weight: 500;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror h5,
+:root[data-visual-style="amin"] .visual-editor .ProseMirror h6 {
+  margin:
+    calc(var(--document-h3-top) * var(--visual-heading-gap-scale) * 0.75)
+    0
+    calc(var(--document-h3-bottom) * var(--visual-heading-gap-scale));
+  color: #d81924;
+  font-family: "Scie Sans", sans-serif;
+  font-size: calc(18px * var(--font-scale));
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror strong {
+  color: #111827;
+  font-weight: 760;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror a {
+  color: #3f4482;
+  font-weight: 650;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror a:hover {
+  color: #d81924;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror hr {
+  height: 1px;
+  margin: 34px 0;
+  background: var(--visual-hr-color);
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror blockquote {
+  border-left-width: 2px;
+  border-left-color: #d81924;
+  color: #3f4482;
+  font-style: normal;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror ul,
+:root[data-visual-style="amin"] .visual-editor .ProseMirror ol {
+  padding-left: 1.45em;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror li {
+  margin: 0.55em 0;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror table {
+  width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror th,
+:root[data-visual-style="amin"] .visual-editor .ProseMirror td {
+  border-width: 0 0 1px;
+  border-color: #d9dce5;
+  padding: 9px 8px;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror th {
+  background: var(--table-head-bg);
+  color: var(--table-head-text);
+  font-weight: 760;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror td {
+  color: var(--table-text);
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror code {
+  font-weight: 600;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror pre {
+  border-color: #3f4482;
+  border-radius: 4px;
+  padding: 18px 22px;
+}
+
+:root[data-visual-style="amin"] .visual-editor .ProseMirror pre code {
+  font-size: calc(15.5px * var(--font-scale));
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror h1,
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror h2,
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror h3 {
+  color: #ffdfa0;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror h4,
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror h5,
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror h6 {
+  color: #e9b356;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror strong {
+  color: #fff0cf;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror a {
+  color: #ffd06f;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror a:hover {
+  color: #ffe0a1;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror blockquote {
+  border-left-color: #e9b356;
+  color: #f2d497;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror th,
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror td {
+  border-color: var(--table-border);
+  background: var(--table-bg) !important;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror th {
+  color: var(--table-head-text);
+  background: var(--table-head-bg) !important;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror td {
+  color: var(--table-text);
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror tr:nth-child(even) td {
+  background: var(--table-alt-bg) !important;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror tr:nth-child(odd) td {
+  background: var(--table-bg) !important;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror table * {
+  box-shadow: none;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .visual-editor .ProseMirror pre {
+  border-color: #b7833d;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor [data-milkdown-root],
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .milkdown {
+  background: var(--editor-bg);
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror {
+  font-family: var(--doc-font, "Scie Sans");
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror {
+  color: var(--text);
+  font-feature-settings: "liga" 1, "kern" 1, "calt" 1;
+  font-stretch: normal;
+  hyphens: auto;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror p {
+  max-width: none;
+  text-wrap: pretty;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror h1,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror h2,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror h3,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror h4,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror h5,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror h6 {
+  font-family: var(--doc-font, "Scie Sans");
+  color: var(--text-strong);
+  letter-spacing: 0;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror h1 {
+  max-width: 30ch;
+  font-weight: 400;
+  line-height: 1.15;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror h2 {
+  border-top: 1px solid var(--visual-hr-color);
+  padding-top: 20px;
+  padding-bottom: 0;
+  font-weight: 700;
+  line-height: 1.18;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror h3 {
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror h4,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror h5,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror h6 {
+  margin:
+    calc(var(--document-h3-top) * var(--visual-heading-gap-scale) * 0.75)
+    0
+    calc(var(--document-h3-bottom) * var(--visual-heading-gap-scale));
+  color: var(--accent);
+  font-family: var(--doc-font, "Scie Sans");
+  font-size: calc(18px * var(--font-scale));
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror strong,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror em,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror a,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror li,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror p,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror blockquote,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror figcaption,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror table,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror code,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror pre,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror pre code,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .block-handle-grip,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .directive-missing-image,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .directive-render-header,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .directive-render-header strong,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .directive-render-body,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .directive-card-body-rendered,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .scie-md-visual-atom-content > .directive-card header strong {
+  font-family: var(--doc-font, "Scie Sans");
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror strong {
+  color: var(--text-strong);
+  font-weight: 700;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror a {
+  color: var(--visual-link-color);
+  font-weight: 500;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror a:hover {
+  color: var(--accent);
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror hr {
+  height: 1px;
+  margin: 32px 0;
+  background: var(--visual-hr-color);
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror blockquote {
+  border-left-width: 3px;
+  border-left-color: var(--accent);
+  color: var(--text-strong);
+  font-style: normal;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror ul,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror ol {
+  padding-left: 1.45em;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror li {
+  margin: 0.48em 0;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror table {
+  width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+  font-feature-settings: "tnum" 1, "zero" 0;
+  line-height: 1.38;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror th,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror td {
+  border-width: 0 0 1px;
+  border-color: var(--visual-hr-color);
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror th {
+  background: var(--table-head-bg);
+  color: var(--table-head-text);
+  font-weight: 700;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror td {
+  color: var(--table-text);
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror code {
+  font-feature-settings: "tnum" 1, "zero" 0, "liga" 0;
+  font-weight: 500;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror pre {
+  border-color: var(--visual-hr-color);
+  border-radius: 4px;
+  padding: 18px 22px;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .ProseMirror pre code {
+  font-size: calc(15.5px * var(--font-scale));
+  font-feature-settings: "tnum" 1, "zero" 1, "liga" 0;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .axis-tick,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .table-number {
+  font-feature-settings: "tnum" 1, "zero" 0;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .sample-id,
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) .visual-editor .technical-label {
+  font-feature-settings: "tnum" 1, "zero" 1;
+}
+
+:root[data-visual-style="scie-sans-compact"] .visual-editor .ProseMirror h2,
+:root[data-visual-style="scie-sans-compact"] .visual-editor .ProseMirror h3,
+:root[data-visual-style="scie-sans-compact"] .visual-editor .ProseMirror strong,
+:root[data-visual-style="scie-sans-compact"] .visual-editor .ProseMirror th,
+:root[data-visual-style="scie-sans-compact"] .visual-editor .directive-render-header strong,
+:root[data-visual-style="scie-sans-compact"] .visual-editor .scie-md-visual-atom-content > .directive-card header strong {
+  font-weight: 500;
+}
+
+:root[data-visual-style="scie-sans-compact"] .visual-editor .directive-card.is-rendered.directive-tip .directive-render-body,
+:root[data-visual-style="scie-sans-compact"] .visual-editor .scie-md-visual-atom-content > .directive-card.is-rendered.directive-tip .directive-card-body-rendered {
+  font-family: var(--doc-font, "Scie Sans Compact");
+  font-style: normal;
+  font-weight: 500;
+}
+
+:root[data-visual-style="scienfy"] .visual-editor .ProseMirror h1,
+:root[data-visual-style="scienfy"] .visual-editor .ProseMirror h2,
+:root[data-visual-style="scienfy"] .visual-editor .ProseMirror h3,
+:root[data-visual-style="scienfy"] .visual-editor .ProseMirror h4,
+:root[data-visual-style="scienfy"] .visual-editor .ProseMirror h5,
+:root[data-visual-style="scienfy"] .visual-editor .ProseMirror h6 {
+  color: var(--text-strong);
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+:root[data-visual-style="scienfy"] .visual-editor .ProseMirror h1 {
+  max-width: 26ch;
+  font-weight: 760;
+  line-height: 1.08;
+}
+
+:root[data-visual-style="scienfy"] .visual-editor .ProseMirror h2 {
+  border-top: 1px solid color-mix(in srgb, var(--accent), var(--visual-hr-color) 72%);
+  padding-top: 18px;
+  color: var(--text-strong);
+  font-weight: 720;
+  line-height: 1.14;
+}
+
+:root[data-visual-style="scienfy"] .visual-editor .ProseMirror h3 {
+  color: color-mix(in srgb, var(--text-strong), var(--accent) 12%);
+  font-weight: 660;
+  line-height: 1.18;
+}
+
+:root[data-visual-style="scienfy"] .visual-editor .ProseMirror h4,
+:root[data-visual-style="scienfy"] .visual-editor .ProseMirror h5,
+:root[data-visual-style="scienfy"] .visual-editor .ProseMirror h6 {
+  color: color-mix(in srgb, var(--text-strong), var(--accent) 18%);
+  font-size: calc(var(--document-h4-size) * var(--font-scale));
+  font-weight: 640;
+}
+
+:root[data-visual-style="scienfy"] .visual-editor .directive-card.is-rendered:not(.directive-figure),
+:root[data-visual-style="scienfy"] .visual-editor .scie-md-visual-atom-content > .directive-card:not(.directive-figure),
+:root[data-visual-style="scienfy"] .visual-editor .scie-md-visual-atom-content > .directive-card.is-rendered:not(.directive-figure),
+:root[data-visual-style="scienfy"] .visual-editor .directive-render-header,
+:root[data-visual-style="scienfy"] .visual-editor .directive-render-header strong,
+:root[data-visual-style="scienfy"] .visual-editor .directive-render-body,
+:root[data-visual-style="scienfy"] .visual-editor .directive-card-body-rendered,
+:root[data-visual-style="scienfy"] .visual-editor .scie-md-visual-atom-content > .directive-card header strong,
+:root[data-visual-style="scienfy"] .visual-editor .directive-figure-content figcaption,
+:root[data-visual-style="scienfy"] .visual-editor .ProseMirror figcaption,
+:root[data-visual-style="scienfy"] .visual-editor .directive-table-caption,
+:root[data-visual-style="scienfy"] .visual-editor .directive-table-caption strong,
+:root[data-visual-style="scienfy"] .visual-editor .directive-caption-prefix {
+  font-family: "Scie Sans Compact";
+  font-style: normal;
+  font-weight: 500;
+}
+
+:root[data-visual-style="scienfy"] .visual-editor .directive-card.is-rendered:not(.directive-figure) .directive-render-body::before {
+  font-family: "Scie Sans Compact";
+  font-weight: 500;
+}
+
+:root[data-visual-style="scienfy"] .visual-editor .milkdown {
+  position: relative;
+  background-color: var(--editor-bg);
+  background-image:
+    radial-gradient(circle at 1px 1px, var(--scienfy-reading-page-dot, var(--scienfy-reading-dot-color)) 0 1px, transparent 1.25px);
+  background-position: 0 0;
+  background-size:
+    var(--scienfy-reading-dot-space)
+    var(--scienfy-reading-dot-space);
+  box-shadow:
+    inset 0 0 0 1px var(--scienfy-reading-frame-color),
+    inset 28px 0 0 -27px color-mix(in srgb, var(--scienfy-reading-frame-color), transparent 48%),
+    inset -28px 0 0 -27px color-mix(in srgb, var(--scienfy-reading-frame-color), transparent 48%);
+}
+
+:root[data-visual-style="science"] .visual-editor [data-milkdown-root],
+:root[data-visual-style="science"] .visual-editor .milkdown {
+  background: var(--editor-bg);
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror {
+  color: var(--text);
+  hyphens: auto;
+  font-feature-settings: "liga" 1, "kern" 1;
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror p {
+  text-wrap: pretty;
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror h1,
+:root[data-visual-style="science"] .visual-editor .ProseMirror h2,
+:root[data-visual-style="science"] .visual-editor .ProseMirror h3,
+:root[data-visual-style="science"] .visual-editor .ProseMirror h4,
+:root[data-visual-style="science"] .visual-editor .ProseMirror h5,
+:root[data-visual-style="science"] .visual-editor .ProseMirror h6 {
+  font-family: "IBM Plex Sans", sans-serif;
+  letter-spacing: 0;
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror h1 {
+  max-width: 20ch;
+  border-top: 5px solid var(--accent);
+  padding-top: 20px;
+  font-weight: 830;
+  line-height: 1.08;
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror h2 {
+  border-top: 1px solid var(--visual-hr-color);
+  padding-top: 14px;
+  padding-bottom: 0;
+  font-weight: 830;
+  line-height: 1.15;
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror h3 {
+  font-size: calc(var(--document-h3-size) * var(--font-scale));
+  font-weight: 820;
+  line-height: 1.16;
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror h4,
+:root[data-visual-style="science"] .visual-editor .ProseMirror h5,
+:root[data-visual-style="science"] .visual-editor .ProseMirror h6 {
+  margin:
+    calc(var(--document-h3-top) * 0.78)
+    0
+    calc(var(--document-h3-bottom) * 0.8);
+  color: var(--accent);
+  font-size: calc(15.5px * var(--font-scale));
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.18;
+  text-transform: none;
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror blockquote {
+  margin: 32px 0;
+  border-top: 4px solid var(--accent);
+  border-left: 0;
+  padding: 26px 30px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: calc(var(--document-body-size) * var(--font-scale));
+  line-height: 1.42;
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror strong {
+  color: var(--text-strong);
+  font-family: "IBM Plex Sans", sans-serif;
+  font-weight: 820;
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror a {
+  color: var(--visual-link-color);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.13em;
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror hr {
+  margin: 36px 0;
+  background: var(--visual-hr-color);
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror ul,
+:root[data-visual-style="science"] .visual-editor .ProseMirror ol {
+  padding-left: 1.35em;
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror li {
+  margin: 0.42em 0;
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror img {
+  display: block;
+  width: 100%;
+  margin: 28px 0 12px;
+  border-top: 1px solid var(--visual-hr-color);
+  padding-top: 20px;
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror table {
+  border-collapse: collapse;
+  border-top: 3px solid var(--accent);
+  font-family: "IBM Plex Sans", sans-serif;
+  line-height: 1.45;
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror th,
+:root[data-visual-style="science"] .visual-editor .ProseMirror td {
+  border-width: 0 0 1px;
+  border-color: var(--visual-hr-color);
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror th {
+  background: var(--table-head-bg);
+  color: var(--table-head-text);
+  font-weight: 820;
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror tr:nth-child(even) td {
+  background: var(--table-alt-bg);
+}
+
+:root[data-visual-style="science"] .visual-editor .ProseMirror pre {
+  border-color: var(--visual-hr-color);
+  border-radius: 0;
+}
+
+:root[data-theme="dark"][data-visual-style="science"] .visual-editor .ProseMirror blockquote {
+  background: #232323;
+}
+
+:root[data-theme="dark"][data-visual-style="science"] .visual-editor .ProseMirror th {
+  background: var(--table-head-bg);
+}
+
+:root[data-visual-style="nature"] .visual-editor [data-milkdown-root],
+:root[data-visual-style="nature"] .visual-editor .milkdown {
+  background: var(--editor-bg);
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror {
+  color: var(--text);
+  font-feature-settings: "liga" 1, "kern" 1;
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror h1,
+:root[data-visual-style="nature"] .visual-editor .ProseMirror h2,
+:root[data-visual-style="nature"] .visual-editor .ProseMirror h3,
+:root[data-visual-style="nature"] .visual-editor .ProseMirror h4,
+:root[data-visual-style="nature"] .visual-editor .ProseMirror h5,
+:root[data-visual-style="nature"] .visual-editor .ProseMirror h6 {
+  font-family: "Source Serif 4", serif;
+  color: var(--text-strong);
+  letter-spacing: 0;
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror h1 {
+  max-width: 23ch;
+  border-bottom: 2px solid var(--text-strong);
+  padding-bottom: 18px;
+  font-weight: 850;
+  line-height: 1.1;
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror h2 {
+  border-top: 1px solid var(--text-strong);
+  border-bottom: 1px solid var(--visual-hr-color);
+  padding-top: 13px;
+  padding-bottom: 10px;
+  font-weight: 840;
+  line-height: 1.18;
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror h3 {
+  font-weight: 840;
+  line-height: 1.16;
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror h4,
+:root[data-visual-style="nature"] .visual-editor .ProseMirror h5,
+:root[data-visual-style="nature"] .visual-editor .ProseMirror h6 {
+  margin:
+    calc(var(--document-h3-top) * 0.85)
+    0
+    calc(var(--document-h3-bottom) * 0.85);
+  color: var(--text-strong);
+  font-size: calc(var(--document-h4-size) * var(--font-scale));
+  font-weight: 820;
+  line-height: 1.2;
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror p {
+  text-wrap: pretty;
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror strong {
+  color: var(--text-strong);
+  font-weight: 850;
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror a {
+  color: var(--visual-link-color);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.12em;
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror blockquote {
+  margin: 30px 0;
+  border-left: 4px solid var(--visual-link-color);
+  padding: 18px 0 18px 24px;
+  background: transparent;
+  color: var(--text);
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror hr {
+  margin: 34px 0;
+  background: var(--visual-hr-color);
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror ul,
+:root[data-visual-style="nature"] .visual-editor .ProseMirror ol {
+  padding-left: 1.45em;
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror li {
+  margin: 0.35em 0;
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror img {
+  display: block;
+  width: 100%;
+  margin: 30px 0 14px;
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror table {
+  border-collapse: collapse;
+  border-top: 2px solid var(--text-strong);
+  border-bottom: 2px solid var(--text-strong);
+  font-size: calc(var(--document-table-size) * var(--font-scale));
+  line-height: 1.45;
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror th,
+:root[data-visual-style="nature"] .visual-editor .ProseMirror td {
+  border-width: 0 0 1px;
+  border-color: var(--visual-hr-color);
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror th {
+  background: var(--table-head-bg);
+  color: var(--table-head-text);
+  font-weight: 850;
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror tr:nth-child(even) td {
+  background: var(--table-alt-bg);
+}
+
+:root[data-visual-style="nature"] .visual-editor .ProseMirror pre {
+  border-color: var(--visual-hr-color);
+  border-radius: 0;
+}
+
+:root[data-theme="dark"][data-visual-style="nature"] .visual-editor .ProseMirror blockquote {
+  background: #242424;
+}
+
+/* ============================================================
+ * Claude visual style — true Claude.ai / Claude desktop styling
+ * Bundled OFL fonts only (Scie Sans + JetBrains Mono).
+ *
+ * Design principles (FROM ACTUAL CLAUDE DESKTOP, NOT INVENTED):
+ *  1. Background: neutral warm-dark #262624 (NOT brown-tinted)
+ *  2. Body content (text, links, code, lists) stays NEUTRAL warm-white
+ *  3. Coral #D97757 used SPARINGLY — only for primary buttons, focus rings,
+ *     selection highlight, and a single muted citation/figure-number accent
+ *  4. Inline code = subtle dark pill with WHITE text (not coral)
+ *  5. Links = muted slate-blue (not coral)
+ *  6. Blockquotes = neutral subtle border (not coral)
+ *  7. Lists = muted markers (no coral)
+ *  8. Typography rhythm matches Claude's reading panels: 16px / 1.65
+ * ============================================================ */
+
+:root[data-visual-style="claude"] .visual-editor [data-milkdown-root],
+:root[data-visual-style="claude"] .visual-editor .milkdown {
+  background: var(--editor-bg);
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror {
+  color: var(--text);
+  font-feature-settings: "liga" 1, "kern" 1, "ss01" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror p {
+  text-wrap: pretty;
+  margin: 0 0 14px;
+}
+
+/* Headings — neutral warm-white (Claude does NOT color headings) */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror h1,
+:root[data-visual-style="claude"] .visual-editor .ProseMirror h2,
+:root[data-visual-style="claude"] .visual-editor .ProseMirror h3,
+:root[data-visual-style="claude"] .visual-editor .ProseMirror h4,
+:root[data-visual-style="claude"] .visual-editor .ProseMirror h5,
+:root[data-visual-style="claude"] .visual-editor .ProseMirror h6 {
+  font-family: "Scie Sans", sans-serif;
+  color: var(--text-strong);
+  letter-spacing: -0.015em;
+  font-feature-settings: "ss01" 1;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror h1 {
+  max-width: 28ch;
+  font-weight: 700;
+  line-height: 1.18;
+  letter-spacing: -0.022em;
+  margin-bottom: 18px;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror h2 {
+  font-weight: 660;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  margin-top: calc(var(--document-h2-top) * var(--font-scale));
+  margin-bottom: calc(var(--document-h2-bottom) * var(--font-scale));
+  padding-bottom: 0;
+  border: 0;
+  color: var(--text-strong);
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror h3 {
+  font-weight: 640;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror h4,
+:root[data-visual-style="claude"] .visual-editor .ProseMirror h5,
+:root[data-visual-style="claude"] .visual-editor .ProseMirror h6 {
+  margin:
+    calc(var(--document-h3-top) * 0.9)
+    0
+    calc(var(--document-h3-bottom) * 0.85);
+  color: var(--text-strong);
+  font-size: calc(15px * var(--font-scale));
+  font-weight: 620;
+  letter-spacing: 0;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+/* Strong = warm white bold, NOT coral */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror strong {
+  color: var(--text-strong);
+  font-weight: 640;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror em {
+  font-style: italic;
+  color: var(--text);
+}
+
+/* Links — muted slate-blue, NOT coral */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror a {
+  color: var(--visual-link-color);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--visual-link-color), transparent 70%);
+  text-underline-offset: 0.18em;
+  transition: text-decoration-color 0.12s ease;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror a:hover {
+  text-decoration-color: var(--visual-link-color);
+}
+
+/* Inline code — Claude-style pill with stronger visibility (matches actual Claude desktop pop) */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror :is(p, li, td, th) code {
+  background: var(--visual-inline-code-bg);
+  color: var(--visual-inline-code-color);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.88em;
+  font-weight: 500;
+  border: 1px solid var(--border-strong);
+}
+
+/* Inline code INSIDE headings — scales with heading to match Claude */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror :is(h1, h2, h3, h4, h5, h6) code {
+  background: var(--visual-inline-code-bg);
+  color: var(--visual-inline-code-color);
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-family: "JetBrains Mono", monospace;
+  /* Inherit ~88% of heading font-size for Claude-style scaled badge */
+  font-size: 0.85em;
+  font-weight: 500;
+  border: 1px solid var(--border-strong);
+  vertical-align: baseline;
+}
+
+/* Dark theme: slightly stronger inline code background for contrast pop */
+:root[data-theme="dark"][data-visual-style="claude"] .visual-editor .ProseMirror :is(p, li, td, th, h1, h2, h3, h4, h5, h6) code {
+  background: #30302e;
+  color: #ede9e2;
+}
+
+/* Light theme: cream inline code with darker text */
+:root[data-theme="light"][data-visual-style="claude"] .visual-editor .ProseMirror :is(p, li, td, th, h1, h2, h3, h4, h5, h6) code {
+  background: #ece9df;
+  color: #1f1e1d;
+}
+
+/* Code blocks — Claude's deeper dark with subtle border, rounded */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror pre {
+  background: var(--visual-code-bg);
+  color: var(--visual-code-color);
+  padding: calc(var(--code-block-pad) * var(--visual-block-scale));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 18px 0;
+  font-family: "JetBrains Mono", monospace;
+  font-size: calc(13.5px * var(--font-scale));
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  border: 0;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+/* Blockquotes — Claude uses NEUTRAL subtle border, not coral */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror blockquote {
+  margin: 16px 0;
+  border-left: 2px solid var(--border-strong);
+  padding: 2px 0 2px 16px;
+  background: transparent;
+  color: var(--text-muted);
+  font-style: normal;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror blockquote p {
+  margin: 0 0 8px;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* Lists — Claude's tight spacing with small refined bullets close to text */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror ul,
+:root[data-visual-style="claude"] .visual-editor .ProseMirror ol {
+  padding-left: 1.25em;
+  margin: 6px 0 10px;
+  list-style-position: outside;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror li {
+  margin: 0.2em 0;
+  padding-left: 0.25em;
+  line-height: var(--editor-line-height);
+}
+
+/* Custom small bullet using ::marker — Claude uses tiny round bullets */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror ul li::marker {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror ol li::marker {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror ul li {
+  list-style-type: disc;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror ul ul li {
+  list-style-type: '–';  /* en-dash for nested - matches Claude's nested style */
+  padding-left: 0.5em;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror ul ul ul li {
+  list-style-type: '·';
+}
+
+/* Tight nested list spacing */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror li > ul,
+:root[data-visual-style="claude"] .visual-editor .ProseMirror li > ol {
+  margin: 4px 0 4px;
+}
+
+/* Horizontal rule — subtle */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror hr {
+  margin: 28px 0;
+  height: 1px;
+  background: var(--visual-hr-color);
+  border: 0;
+}
+
+/* Images — clean inline */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 20px auto;
+  border-radius: 8px;
+}
+
+/* Tables — Claude desktop style: clean borders, subtle differentiation */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 18px 0;
+  font-family: "Scie Sans", sans-serif;
+  font-size: calc(var(--document-table-size) * var(--font-scale));
+  line-height: 1.5;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror th,
+:root[data-visual-style="claude"] .visual-editor .ProseMirror td {
+  padding:
+    calc(var(--table-cell-pad-y) * var(--visual-table-scale))
+    calc(var(--table-cell-pad-x) * var(--visual-table-scale));
+  text-align: left;
+  vertical-align: top;
+  border: 0;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror th {
+  background: var(--table-head-bg);
+  color: var(--table-head-text);
+  font-weight: 620;
+  font-size: calc((var(--document-table-size) - 0.5px) * var(--font-scale));
+  letter-spacing: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror tbody tr + tr td {
+  border-top: 1px solid var(--border);
+}
+
+/* Selection — coral highlight (THIS is where coral belongs) */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror ::selection {
+  background: color-mix(in srgb, var(--accent), transparent 75%);
+  color: var(--text-strong);
+}
+
+/* Directive blocks — neutral subtle treatment matching Claude's calm aesthetic */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror .directive-note {
+  background: var(--surface);
+  border-left: 2px solid var(--border-strong);
+  border-radius: 0 6px 6px 0;
+  padding: 12px 16px;
+  margin: 16px 0;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror .directive-callout {
+  background: var(--surface);
+  border-left: 2px solid var(--accent);  /* Single coral accent (callout = "attention") */
+  border-radius: 0 6px 6px 0;
+  padding: 12px 16px;
+  margin: 16px 0;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror .directive-tip {
+  background: var(--surface);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  padding: 12px 16px;
+  margin: 16px 0;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror .directive-warning {
+  background: color-mix(in srgb, var(--warning), transparent 90%);
+  border-left: 2px solid var(--warning);
+  border-radius: 0 6px 6px 0;
+  padding: 12px 16px;
+  margin: 16px 0;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror .directive-important {
+  background: color-mix(in srgb, var(--error), transparent 92%);
+  border-left: 2px solid var(--error);
+  border-radius: 0 6px 6px 0;
+  padding: 12px 16px;
+  margin: 16px 0;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror .directive-result {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin: 18px 0;
+}
+
+/* Figure block — Claude-style clean card with neutral chrome */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror .directive-figure {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 20px 0;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror .directive-figure figcaption {
+  color: var(--text-muted);
+  font-size: calc(13.5px * var(--font-scale));
+  line-height: 1.5;
+  margin-top: 10px;
+  text-align: left;
+}
+
+/* Figure number prefix — single allowed coral usage in body content */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror .directive-figure figcaption strong,
+:root[data-visual-style="claude"] .visual-editor .ProseMirror .directive-figure figcaption .directive-caption-prefix {
+  color: var(--text-strong);
+  font-weight: 640;
+}
+
+/* Math block — neutral surface, subtle */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror .math-block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 18px;
+  margin: 14px 0;
+  font-size: calc(15px * var(--font-scale));
+}
+
+/* SVG / Mermaid figures — clean neutral card */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror .svg-figure,
+:root[data-visual-style="claude"] .visual-editor .ProseMirror .mermaid-figure {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px;
+  margin: 20px 0;
+}
+
+/* Variable pill — neutral subtle dark pill (NOT coral) */
+:root[data-visual-style="claude"] .visual-editor .variable-pill {
+  background: var(--visual-inline-code-bg);
+  color: var(--visual-inline-code-color);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 6px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.88em;
+  font-weight: 500;
+}
+
+/* Task list checkboxes — accent goes to coral (one allowed use) */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror .task-list-item input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+/* Footnote refs — muted text color, NOT coral */
+:root[data-visual-style="claude"] .visual-editor .ProseMirror sup a {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+:root[data-visual-style="claude"] .visual-editor .ProseMirror sup a:hover {
+  color: var(--accent);
+}
+
+/* Dark theme fine-tuning */
+:root[data-theme="dark"][data-visual-style="claude"] .visual-editor .ProseMirror blockquote {
+  color: var(--text-muted);
+  border-left-color: var(--border-strong);
+}
+
+:root[data-theme="dark"][data-visual-style="claude"] .visual-editor .ProseMirror pre {
+  background: var(--visual-code-bg);
+  border-color: var(--border);
+}
+
+:root[data-theme="dark"] .visual-editor .ProseMirror table,
+:root[data-theme="dark"] .visual-editor .ProseMirror table * {
+  box-shadow: none !important;
+}
+
+:root[data-theme="dark"] .visual-editor .ProseMirror table {
+  border-color: var(--table-border) !important;
+  background: var(--table-bg) !important;
+  color: var(--table-text) !important;
+}
+
+:root[data-theme="dark"] .visual-editor .ProseMirror th,
+:root[data-theme="dark"] .visual-editor .ProseMirror td {
+  border-color: var(--table-border) !important;
+}
+
+:root[data-theme="dark"] .visual-editor .ProseMirror th {
+  background: var(--table-head-bg) !important;
+  color: var(--table-head-text) !important;
+}
+
+:root[data-theme="dark"] .visual-editor .ProseMirror td {
+  background: var(--table-bg) !important;
+  color: var(--table-text) !important;
+}
+
+:root[data-theme="dark"] .visual-editor .ProseMirror tbody tr:nth-child(even) td {
+  background: var(--table-alt-bg) !important;
+}
+
+:root[data-theme="dark"] .visual-editor .ProseMirror tbody tr:nth-child(odd) td {
+  background: var(--table-bg) !important;
+}
+
+@media (max-width: 780px) {
+  .visual-editor .milkdown {
+    padding:
+      calc(var(--document-pad-y) * var(--visual-padding-scale))
+      min(calc(var(--document-pad-x) * var(--visual-padding-scale)), 18px)
+      calc(var(--document-pad-bottom) * var(--visual-padding-scale));
+  }
+
+  .visual-editor .ProseMirror h1 {
+    font-size: min(calc(var(--document-h1-size) * var(--font-scale)), 28px);
+  }
+}

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="240" viewBox="0 0 720 240" role="img" aria-labelledby="title desc">
+  <title id="title">ScieMD sample asset</title>
+  <desc id="desc">A simple document preview graphic for the welcome Markdown file.</desc>
+  <rect width="720" height="240" fill="#f9fbfa"/>
+  <rect x="36" y="32" width="648" height="176" rx="8" fill="#ffffff" stroke="#c8d5d0"/>
+  <rect x="72" y="64" width="230" height="18" rx="4" fill="#173f35"/>
+  <rect x="72" y="102" width="520" height="10" rx="5" fill="#95b9a9"/>
+  <rect x="72" y="126" width="430" height="10" rx="5" fill="#d2ddd8"/>
+  <rect x="72" y="150" width="500" height="10" rx="5" fill="#d2ddd8"/>
+  <rect x="72" y="174" width="300" height="10" rx="5" fill="#95b9a9"/>
+</svg>
