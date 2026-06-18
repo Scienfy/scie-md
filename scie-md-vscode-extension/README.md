@@ -13,16 +13,16 @@ visual reading styles, and LLM-assisted revision.
 
 Human visual editing in a light manuscript-style view:
 
-![ScieMD human visual editing in light mode](assets/screenshots/human-visual-light.png)
+![ScieMD human visual editing in light mode](https://raw.githubusercontent.com/Scienfy/scie-md/main/scie-md-vscode-extension/assets/screenshots/human-visual-light.png)
 
 Human visual editing in a dark writing style:
 
-![ScieMD human visual editing in dark mode](assets/screenshots/human-visual-dark.png)
+![ScieMD human visual editing in dark mode](https://raw.githubusercontent.com/Scienfy/scie-md/main/scie-md-vscode-extension/assets/screenshots/human-visual-dark.png)
 
 Source mode shows the same document as plain Markdown, including the comments,
 variables, and text-version markers an external LLM can read and edit:
 
-![ScieMD source mode for LLM-readable Markdown](assets/screenshots/llm-source-mode.png)
+![ScieMD source mode for LLM-readable Markdown](https://raw.githubusercontent.com/Scienfy/scie-md/main/scie-md-vscode-extension/assets/screenshots/llm-source-mode.png)
 
 This VS Code extension brings the ScieMD visual editor into VS Code. The full
 ScieMD product is primarily a Rust/Tauri desktop application from Scienfy Inc.,
@@ -204,7 +204,7 @@ If you downloaded a `.vsix` file manually:
 Command-line installation:
 
 ```bash
-code --install-extension sciemd-vscode-1.0.5.vsix --force
+code --install-extension sciemd-vscode-1.0.6.vsix --force
 ```
 
 ## Who This Is For
@@ -279,4 +279,4 @@ npm run build
 npm run package
 ```
 
-The package command creates `sciemd-vscode-1.0.5.vsix` in this folder.
+The package command creates `sciemd-vscode-1.0.6.vsix` in this folder.

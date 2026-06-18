@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.6
+
+- Fixed broken Marketplace screenshots by switching to absolute `raw.githubusercontent.com` URLs that match the committed file paths and repository casing.
+
 ## 1.0.5
 
 - Packaged Marketplace screenshots inside the VSIX so they render in VS Code's extension details view.
