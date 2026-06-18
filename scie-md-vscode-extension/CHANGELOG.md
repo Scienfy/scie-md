@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.4
+
+- Replaced the Marketplace screenshots with focused human visual-mode and LLM source-mode illustrations.
+- Cropped screenshots to a consistent 16:9 layout for the listing.
+
 ## 1.0.3
 
 - Added Marketplace badges and screenshots to the extension listing.

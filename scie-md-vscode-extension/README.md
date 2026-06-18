@@ -11,23 +11,18 @@ visual reading styles, and LLM-assisted revision.
 
 ## Screenshots
 
-Scientific Markdown in the ScieMD visual editor:
+Human visual editing in a light manuscript-style view:
 
-![ScieMD visual editor for scientific Markdown](https://raw.githubusercontent.com/scienfy/scie-md/main/docs/screenshots/vscode-main-editor.png)
+![ScieMD human visual editing in light mode](https://raw.githubusercontent.com/scienfy/scie-md/main/docs/screenshots/vscode-human-visual-light.png)
 
-Direct **Note to LLM** guidance attached to the relevant manuscript text:
+Human visual editing in a dark writing style:
 
-![ScieMD Note to LLM workflow](https://raw.githubusercontent.com/scienfy/scie-md/main/docs/screenshots/vscode-note-to-llm.png)
+![ScieMD human visual editing in dark mode](https://raw.githubusercontent.com/scienfy/scie-md/main/docs/screenshots/vscode-human-visual-dark.png)
 
-One-click visual styles for scientific drafts, journal-like views, lab notebooks,
-and reading modes:
+Source mode shows the same document as plain Markdown, including the comments,
+variables, and text-version markers an external LLM can read and edit:
 
-![ScieMD visual style selector](https://raw.githubusercontent.com/scienfy/scie-md/main/docs/screenshots/vscode-visual-styles.png)
-
-Text versions for comparing alternate titles, abstracts, claims, and paragraph
-revisions:
-
-![ScieMD text versions in Markdown](https://raw.githubusercontent.com/scienfy/scie-md/main/docs/screenshots/vscode-text-versions.png)
+![ScieMD source mode for LLM-readable Markdown](https://raw.githubusercontent.com/scienfy/scie-md/main/docs/screenshots/vscode-llm-source-mode.png)
 
 This VS Code extension brings the ScieMD visual editor into VS Code. The full
 ScieMD product is primarily a Rust/Tauri desktop application from Scienfy Inc.,
@@ -209,7 +204,7 @@ If you downloaded a `.vsix` file manually:
 Command-line installation:
 
 ```bash
-code --install-extension sciemd-vscode-1.0.3.vsix --force
+code --install-extension sciemd-vscode-1.0.4.vsix --force
 ```
 
 ## Who This Is For
@@ -284,4 +279,4 @@ npm run build
 npm run package
 ```
 
-The package command creates `sciemd-vscode-1.0.3.vsix` in this folder.
+The package command creates `sciemd-vscode-1.0.4.vsix` in this folder.
