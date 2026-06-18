@@ -1,13 +1,12 @@
 # ScieMD Markdown Editor for VS Code
 
-[![Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/scienfy.sciemd-vscode)](https://marketplace.visualstudio.com/items?itemName=scienfy.sciemd-vscode)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/scienfy.sciemd-vscode)](https://marketplace.visualstudio.com/items?itemName=scienfy.sciemd-vscode)
-[![Rating](https://img.shields.io/visual-studio-marketplace/r/scienfy.sciemd-vscode)](https://marketplace.visualstudio.com/items?itemName=scienfy.sciemd-vscode)
-[![License](https://img.shields.io/badge/license-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+ScieMD is a WYSIWYG Markdown editor and reader for scientific writing, hybrid LLM
+drafting, direct document comments, Markdown commenting, visual writing styles,
+LaTeX math, and Mermaid diagrams.
 
-ScieMD is a WYSIWYG Markdown editor for scientific writing: research papers,
-theses, lab notes, technical reports, LaTeX math, citations, Mermaid diagrams,
-visual reading styles, and LLM-assisted revision.
+Markdown is the source of truth. Humans can write and read in visual mode, while
+external LLMs can work with the same plain `.md` file in source mode, including
+Note to LLM comments, variables, and text-version markers.
 
 ## Screenshots
 
@@ -204,7 +203,7 @@ If you downloaded a `.vsix` file manually:
 Command-line installation:
 
 ```bash
-code --install-extension sciemd-vscode-1.0.7.vsix --force
+code --install-extension sciemd-vscode-1.0.8.vsix --force
 ```
 
 ## Who This Is For
@@ -279,4 +278,4 @@ npm run build
 npm run package
 ```
 
-The package command creates `sciemd-vscode-1.0.7.vsix` in this folder.
+The package command creates `sciemd-vscode-1.0.8.vsix` in this folder.

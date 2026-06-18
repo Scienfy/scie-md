@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.8
+
+- Updated the Marketplace README opening to emphasize Markdown editing, reading, hybrid LLM writing, and direct document comments.
+- Removed external badge images from the listing because they rendered poorly inside VS Code's extension details view.
+
 ## 1.0.7
 
 - Refocused Marketplace search metadata around Markdown editor, reader, writing, commenting, hybrid writing, and LLM writing workflows.
