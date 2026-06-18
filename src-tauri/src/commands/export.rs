@@ -1599,12 +1599,21 @@ mod tests {
 
     #[test]
     fn uses_document_directory_for_relative_assets() {
+        #[cfg(windows)]
+        let document_path = r"C:\Users\amin_\paper\document.md";
+        #[cfg(windows)]
+        let export_path = r"C:\Users\amin_\exports\document.docx";
+        #[cfg(not(windows))]
+        let document_path = "/Users/amin/paper/document.md";
+        #[cfg(not(windows))]
+        let export_path = "/Users/amin/exports/document.docx";
+
         let cwd = working_directory(
-            Some(r"C:\Users\amin_\paper\document.md"),
-            Path::new(r"C:\Users\amin_\exports\document.docx"),
+            Some(document_path),
+            Path::new(export_path),
         )
         .unwrap();
-        assert!(cwd.to_string_lossy().ends_with(r"paper"));
+        assert_eq!(cwd.file_name().and_then(|name| name.to_str()), Some("paper"));
     }
 
     #[test]
@@ -1626,6 +1635,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn file_urls_strip_windows_verbatim_prefix() {
         let url = path_to_file_url(Path::new(
             r"\\?\C:\Users\amin_\OneDrive\Documents\.scie-md-export.html",
