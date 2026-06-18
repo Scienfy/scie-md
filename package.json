@@ -55,7 +55,7 @@
     "@fontsource/source-serif-4": "^5.2.9",
     "@milkdown/kit": "^7.21.1",
     "@milkdown/react": "^7.21.1",
-    "@milkdown/theme-nord": "^7.21.1",
+    "@milkdown/theme-nord": "^7.21.2",
     "@milkdown/utils": "^7.21.1",
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-dialog": "^2.7.1",
