@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.5
+
+- Packaged Marketplace screenshots inside the VSIX so they render in VS Code's extension details view.
+- Removed reliance on external raw GitHub screenshot URLs.
+
 ## 1.0.4
 
 - Replaced the Marketplace screenshots with focused human visual-mode and LLM source-mode illustrations.
