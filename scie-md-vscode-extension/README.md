@@ -17,6 +17,26 @@ including desktop packaging and export workflows. Use this VS Code extension whe
 your writing project already lives in VS Code and you want to open `.md` files in a
 scientific visual editor without leaving your workspace.
 
+## Screenshots
+
+Scientific Markdown in the ScieMD visual editor:
+
+![ScieMD visual editor for scientific Markdown](https://raw.githubusercontent.com/Scienfy/scie-md/main/docs/screenshots/vscode-main-editor.png)
+
+Direct **Note to LLM** guidance attached to the relevant manuscript text:
+
+![ScieMD Note to LLM workflow](https://raw.githubusercontent.com/Scienfy/scie-md/main/docs/screenshots/vscode-note-to-llm.png)
+
+One-click visual styles for scientific drafts, journal-like views, lab notebooks,
+and reading modes:
+
+![ScieMD visual style selector](https://raw.githubusercontent.com/Scienfy/scie-md/main/docs/screenshots/vscode-visual-styles.png)
+
+Text versions for comparing alternate titles, abstracts, claims, and paragraph
+revisions:
+
+![ScieMD text versions in Markdown](https://raw.githubusercontent.com/Scienfy/scie-md/main/docs/screenshots/vscode-text-versions.png)
+
 ## Scientific Markdown
 
 ScieMD keeps Markdown as the source of truth. Your file remains readable plain text,
