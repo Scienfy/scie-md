@@ -1499,19 +1499,21 @@ fn write_temp_text(path: &Path, text: &str, label: &str) -> Result<(), String> {
 }
 
 fn path_to_file_url(path: &Path) -> String {
-    let mut absolute = path
+    let absolute = path
         .canonicalize()
         .unwrap_or_else(|_| path.to_path_buf())
         .to_string_lossy()
         .to_string();
     #[cfg(windows)]
-    {
+    let absolute = {
+        let mut absolute = absolute;
         if let Some(stripped) = absolute.strip_prefix(r"\\?\UNC\") {
             absolute = format!(r"\\{stripped}");
         } else if let Some(stripped) = absolute.strip_prefix(r"\\?\") {
             absolute = stripped.to_string();
         }
-    }
+        absolute
+    };
     let absolute = absolute.replace('\\', "/");
     let encoded = percent_encode_file_path(&absolute);
     if encoded.starts_with('/') {

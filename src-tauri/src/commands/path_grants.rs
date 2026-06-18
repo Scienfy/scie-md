@@ -238,7 +238,7 @@ fn sync_parent_dir(_parent: &Path) -> Result<(), String> {
 #[cfg(not(windows))]
 #[allow(dead_code)]
 fn sync_parent_dir(parent: &Path) -> Result<(), String> {
-    let directory = fs::File::open(parent)
+    let directory = std::fs::File::open(parent)
         .map_err(|error| format!("open directory failed: {error}"))?;
     directory
         .sync_all()

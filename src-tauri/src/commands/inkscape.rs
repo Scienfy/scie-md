@@ -330,13 +330,15 @@ fn common_inkscape_paths() -> Vec<PathBuf> {
 
 fn resolve_inkscape_from_path() -> Option<PathBuf> {
     #[cfg(windows)]
-    let mut command = Command::new("where.exe");
-    command
-        .arg("inkscape")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-    let output = output_quiet(&mut command).ok()?;
+    let output = {
+        let mut command = Command::new("where.exe");
+        command
+            .arg("inkscape")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        output_quiet(&mut command).ok()?
+    };
 
     #[cfg(not(windows))]
     let output = {
