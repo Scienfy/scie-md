@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.7
+
+- Refocused Marketplace search metadata around Markdown editor, reader, writing, commenting, hybrid writing, and LLM writing workflows.
+- Updated the short Marketplace description to emphasize document comments, visual reading, and hybrid LLM drafting.
+
 ## 1.0.6
 
 - Fixed broken Marketplace screenshots by switching to absolute `raw.githubusercontent.com` URLs that match the committed file paths and repository casing.
