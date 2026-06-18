@@ -115,16 +115,41 @@ https://github.com/Scienfy/scie-md/releases/latest
 
 ## How To Use The Extension
 
-After installing:
+After installing the extension, open a Markdown file with ScieMD in any of these
+ways.
 
-1. Open a Markdown file in VS Code.
-2. Run **Open With ScieMD Markdown Editor** from the Command Palette.
-3. Use visual mode when you want to write and read like a document.
-4. Switch to source mode when you want direct Markdown control.
-5. Use the style selector to move between scientific, journal, lab notebook, and
+Recommended right-click workflow:
+
+1. In the VS Code Explorer, find your `.md`, `.scie.md`, or `.sciemd.md` file.
+2. Right-click the file.
+3. Select **Open With ScieMD Markdown Editor**.
+4. The document opens in the ScieMD visual editor.
+
+If the Markdown file is already open:
+
+1. Right-click in the editor title area or use the editor context menu.
+2. Select **Open With ScieMD Markdown Editor**.
+
+Command Palette workflow:
+
+1. Open a Markdown file.
+2. Press `Ctrl+Shift+P` on Windows/Linux or `Cmd+Shift+P` on macOS.
+3. Search for **Open With ScieMD Markdown Editor**.
+4. Run the command.
+
+VS Code's built-in **Reopen Editor With...** command may also show **ScieMD
+Markdown Editor** as an available editor for Markdown files.
+
+Once the file is open in ScieMD:
+
+1. Use visual mode when you want to write and read like a document.
+2. Switch to source mode when you want direct Markdown control.
+3. Use the style selector to move between scientific, journal, lab notebook, and
    other visual modes.
-6. Add Note to LLM comments when a specific passage needs external LLM help.
-7. Save normally with VS Code.
+4. Add Note to LLM comments when a specific passage needs external LLM help.
+5. Create text versions when you want to compare alternate titles, abstracts, or
+   paragraph revisions.
+6. Save normally with VS Code.
 
 The Markdown file remains the source of truth. Edits made in the ScieMD webview are
 written back to the VS Code text document, so normal save, dirty state, undo/redo,
@@ -155,7 +180,8 @@ If you downloaded a `.vsix` file manually:
 2. Go to **Extensions**.
 3. Choose **Install from VSIX...** from the Extensions menu.
 4. Select `sciemd-vscode-*.vsix`.
-5. Open a Markdown file and run **Open With ScieMD Markdown Editor**.
+5. Right-click a Markdown file in the Explorer and select **Open With ScieMD
+   Markdown Editor**.
 
 Command-line installation:
 
