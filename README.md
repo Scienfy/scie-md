@@ -17,8 +17,8 @@ your document as Markdown while adding scientific writing tools around it.
 Most users should download ScieMD from the GitHub Releases page, not from the source
 code file list:
 
-- [Download the latest ScieMD release](https://github.com/Scienfy/scie-md/releases/latest)
-- [See all releases](https://github.com/Scienfy/scie-md/releases)
+- [Download the latest ScieMD release](https://github.com/scienfy/scie-md/releases/latest)
+- [See all releases](https://github.com/scienfy/scie-md/releases)
 
 Open the release page, expand **Assets**, and choose the file for your system:
 
@@ -75,7 +75,7 @@ To install it:
 Command-line installation also works:
 
 ```bash
-code --install-extension sciemd-vscode-1.0.0.vsix
+code --install-extension sciemd-vscode-1.0.7.vsix
 ```
 
 ## Public Preview Status

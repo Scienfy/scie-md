@@ -29,7 +29,7 @@ Confirm these files exist:
 artifacts/ScieMD.exe
 artifacts/installers/ScieMD_1.0.0_x64-setup.exe
 artifacts/installers/ScieMD_1.0.0_x64_en-US.msi
-artifacts/installers/sciemd-vscode-1.0.0.vsix
+artifacts/installers/sciemd-vscode-*.vsix
 artifacts/SHA256SUMS.txt
 ```
 
