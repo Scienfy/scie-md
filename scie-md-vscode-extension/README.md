@@ -98,21 +98,6 @@ Use text versions for:
 - Reviewer-response wording.
 - Human draft versus LLM-assisted revision.
 
-## Citations, Cross-References, And Pandoc Export
-
-The VS Code extension focuses on visual Markdown editing inside VS Code. The full
-ScieMD desktop app is the recommended route for broader release workflows and
-desktop export use.
-
-In the ScieMD project, Pandoc-backed workflows can produce formats such as DOCX,
-EPUB, LaTeX, PDF, ODT, JATS, and other scholarly formats when Pandoc is installed.
-The desktop app also supports citation style files such as `.csl` files for
-Pandoc-based export.
-
-Download the desktop app here:
-
-https://github.com/Scienfy/scie-md/releases/latest
-
 ## How To Use The Extension
 
 After installing the extension, open a Markdown file with ScieMD in any of these
