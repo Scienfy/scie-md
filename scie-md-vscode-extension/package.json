@@ -148,7 +148,7 @@
     "@types/react-dom": "^19.0.0",
     "@types/vscode": "^1.90.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "@vscode/vsce": "^3.6.0",
+    "@vscode/vsce": "^3.9.2",
     "dompurify": "^3.2.6",
     "esbuild": "^0.28.1",
     "jsdom": "^26.1.0",
