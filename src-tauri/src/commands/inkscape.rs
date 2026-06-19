@@ -618,7 +618,11 @@ fn stable_hash(source: &str, format: &str) -> String {
     hasher.update(source.as_bytes());
     hasher.update([0]);
     hasher.update(format.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 #[cfg(test)]
