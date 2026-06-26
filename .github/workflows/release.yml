@@ -98,7 +98,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Setup Chrome for export validation
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v2
+
       - name: Validate release
+        env:
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
         run: npm run validate:release
 
       - name: Build macOS desktop bundles

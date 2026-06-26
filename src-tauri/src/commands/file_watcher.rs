@@ -266,7 +266,7 @@ fn timestamp_ms() -> u128 {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_relevant_event, matching_target_paths, normalize_watch_paths};
+    use super::{is_relevant_event, matching_target_paths, normalize_watch_paths, same_path};
     use crate::commands::path_grants::{grant_file_and_parent, isolate_test_path_grants};
     use notify::event::{DataChange, EventKind, ModifyKind};
     use std::{env, fs};
@@ -297,8 +297,8 @@ mod tests {
         let targets = normalize_watch_paths(vec![file.to_string_lossy().to_string()]).unwrap();
 
         assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].path, file);
-        assert_eq!(targets[0].watch_path, root);
+        assert!(same_path(&targets[0].path, &file));
+        assert!(same_path(&targets[0].watch_path, &root));
         assert!(!targets[0].is_directory);
         let _ = fs::remove_dir_all(targets[0].watch_path.clone());
     }
