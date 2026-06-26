@@ -195,7 +195,7 @@ fn event_path_matches_target(event_path: &Path, target: &WatchTarget) -> bool {
 
 #[cfg(windows)]
 fn same_path(left: &Path, right: &Path) -> bool {
-    comparable_path(left) == comparable_path(right)
+    normalized_comparable_path(left) == normalized_comparable_path(right)
 }
 
 #[cfg(not(windows))]
@@ -205,8 +205,8 @@ fn same_path(left: &Path, right: &Path) -> bool {
 
 #[cfg(windows)]
 fn path_is_under(path: &Path, parent: &Path) -> bool {
-    let path = comparable_path(path);
-    let parent = comparable_path(parent);
+    let path = normalized_comparable_path(path);
+    let parent = normalized_comparable_path(parent);
     path.strip_prefix(&parent)
         .is_some_and(|suffix| suffix.starts_with('/'))
 }
@@ -232,6 +232,15 @@ fn comparable_path(path: &Path) -> String {
         value = format!("/{value}");
     }
     value.trim_end_matches('/').to_ascii_lowercase()
+}
+
+#[cfg(windows)]
+fn normalized_comparable_path(path: &Path) -> String {
+    let path = path
+        .canonicalize()
+        .map(|canonical| external_safe_path(&canonical))
+        .unwrap_or_else(|_| path.to_path_buf());
+    comparable_path(&path)
 }
 
 #[cfg(not(windows))]
