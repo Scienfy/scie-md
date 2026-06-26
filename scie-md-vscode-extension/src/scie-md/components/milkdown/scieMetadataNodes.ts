@@ -32,14 +32,24 @@ import { setSanitizedHtml } from '../../services/htmlSanitizer';
 import {
   getScieMetadataDocumentPath,
   getScieMetadataCitationEntries,
+  registerScieMetadataEditorContext,
   setScieMetadataCitationEntries,
   setScieMetadataDocumentPath,
   setScieMetadataUiCallbacks,
+  unregisterScieMetadataEditorContext,
+  updateScieMetadataEditorContext,
   visualAtomConfirm,
   visualAtomToast,
 } from './scieMetadataRuntime';
 
-export { setScieMetadataCitationEntries, setScieMetadataDocumentPath, setScieMetadataUiCallbacks } from './scieMetadataRuntime';
+export {
+  registerScieMetadataEditorContext,
+  setScieMetadataCitationEntries,
+  setScieMetadataDocumentPath,
+  setScieMetadataUiCallbacks,
+  unregisterScieMetadataEditorContext,
+  updateScieMetadataEditorContext,
+} from './scieMetadataRuntime';
 
 type MetadataNodeKind =
   | 'scie_lock_start'
@@ -140,6 +150,8 @@ interface VariantItemViewModel {
 const lockOperationMeta = 'scie-md-lock-operation';
 const lockViolationEvent = 'scie-md-lock-violation';
 const activeVariantNodeViews = new Set<VariantNodeView>();
+const MAX_VISUAL_ATOM_RENDER_BYTES = 256 * 1024;
+const MAX_VISUAL_ATOM_RAW_PREVIEW_CHARS = 12_000;
 
 export function flushScieMetadataNodeViews(): boolean {
   let changed = false;
@@ -291,7 +303,7 @@ function parseMetadataAttributes(source: string): Record<string, string> {
   const pattern = /([A-Za-z_][A-Za-z0-9_.:-]*)=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(source))) {
-    attrs[match[1]] = match[2] ?? match[3] ?? match[4] ?? '';
+    attrs[match[1]] = decodeHtmlAttribute(match[2] ?? match[3] ?? match[4] ?? '');
   }
   return attrs;
 }
@@ -559,6 +571,12 @@ function metadataSchema(
 }
 
 export function metadataAttrsFromRaw(name: MetadataNodeKind, raw: string): Record<string, unknown> {
+  if (isOversizedVisualAtomSource(raw)) {
+    if (name === 'scie_variant_group') return { ...oversizedVariantAttrs(raw) };
+    if (name === 'scie_directive_block') return { ...oversizedDirectiveAttrs(raw) };
+    if (name === 'scie_mermaid_block') return { ...oversizedMermaidAttrs(raw) };
+    if (name === 'scie_svg_block') return { ...oversizedSvgAttrs(raw) };
+  }
   const metadata = metadataNodeFromHtml(raw);
   if (metadata?.type === name) return mdastAttrsFor(name, metadata);
   if (name === 'scie_variant_group') {
@@ -615,6 +633,9 @@ function mdastAttrsFor(name: MetadataNodeKind, node: MdastNode): Record<string, 
     target: String(node.target ?? 'next-block'),
     prompt: String(node.prompt ?? ''),
   };
+  if (name === 'scie_variant_group' && isOversizedVisualAtomSource(String(node.raw ?? ''))) {
+    return { ...oversizedVariantAttrs(String(node.raw ?? '')) };
+  }
   if (name === 'scie_variant_group') return {
     raw: String(node.raw ?? ''),
     groupId: String(node.groupId ?? ''),
@@ -625,6 +646,11 @@ function mdastAttrsFor(name: MetadataNodeKind, node: MdastNode): Record<string, 
     suffix: String(node.suffix ?? ''),
     itemsJson: String(node.itemsJson ?? '[]'),
   };
+  if (isOversizedVisualAtomSource(String(node.raw ?? ''))) {
+    if (name === 'scie_directive_block') return { ...oversizedDirectiveAttrs(String(node.raw ?? '')) };
+    if (name === 'scie_mermaid_block') return { ...oversizedMermaidAttrs(String(node.raw ?? '')) };
+    if (name === 'scie_svg_block') return { ...oversizedSvgAttrs(String(node.raw ?? '')) };
+  }
   if (name === 'scie_directive_block') return {
     raw: String(node.raw ?? ''),
     name: String(node.name ?? 'note'),
@@ -764,6 +790,15 @@ function buildVariantNode(children: MdastNode[], startIndex: number, sourceMarkd
   if (endIndex === -1) return null;
   const raw = markdownSliceForNodes(children[startIndex], children[endIndex], sourceMarkdown)
     ?? fallbackRawForNodes(children.slice(startIndex, endIndex + 1));
+  if (isOversizedVisualAtomSource(raw)) {
+    return {
+      removeCount: endIndex - startIndex + 1,
+      node: withPosition({
+        type: 'scie_variant_group',
+        ...oversizedVariantAttrs(raw),
+      }, children[startIndex], children[endIndex]),
+    };
+  }
   const group = parseVariantGroups(raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n'))[0];
   if (!group) return null;
   return {
@@ -852,6 +887,7 @@ function directiveNodeFromBlock(directive: DirectiveBlock): MdastNode {
 }
 
 function attrsForDirectiveBlock(directive: DirectiveBlock): DirectiveAttrs {
+  if (isOversizedVisualAtomSource(directive.raw)) return oversizedDirectiveAttrs(directive.raw);
   return {
     raw: directive.raw,
     name: directive.name,
@@ -890,6 +926,7 @@ function attrsForDirectiveRaw(raw: string): DirectiveAttrs {
 
 function attrsForMermaidRaw(raw: string): MermaidAttrs {
   const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  if (isOversizedVisualAtomSource(normalized)) return oversizedMermaidAttrs(normalized);
   const body = mermaidFenceBody(raw);
   return {
     raw: normalized || '```mermaid\nflowchart LR\n  A --> B\n```',
@@ -1322,7 +1359,7 @@ class NoteNodeView implements NodeView {
     const position = this.getPos();
     if (typeof position !== 'number') return;
     if (nodeTouchesProtectedBlock(this.view.state.doc, position, this.node.nodeSize)) {
-      visualAtomToast(`Cannot edit ${this.commentTitle()} inside a locked section. Unlock the section first.`, 'warning');
+      visualAtomToast(`Cannot edit ${this.commentTitle()} inside a locked section. Unlock the section first.`, 'warning', this.dom);
       return;
     }
     const attrs = this.noteType === 'instruction'
@@ -1380,7 +1417,7 @@ class NoteNodeView implements NodeView {
     const position = this.getPos();
     if (typeof position !== 'number') return;
     if (nodeTouchesProtectedBlock(this.view.state.doc, position, this.node.nodeSize)) {
-      visualAtomToast(`Cannot remove ${this.commentTitle()} inside a locked section. Unlock the section first.`, 'warning');
+      visualAtomToast(`Cannot remove ${this.commentTitle()} inside a locked section. Unlock the section first.`, 'warning', this.dom);
       return;
     }
     const transaction = this.view.state.tr;
@@ -1462,6 +1499,13 @@ class VariantNodeView implements NodeView {
   }
 
   private render(): void {
+    const raw = String(this.node.attrs.raw ?? '');
+    if (isOversizedVisualAtomSource(raw)) {
+      this.dom.replaceChildren(createOversizedAtomFallback('Text version block', raw));
+      this.dom.dataset.variantCount = '0';
+      this.dom.dataset.activeVariant = '';
+      return;
+    }
     const items = this.items();
     const active = items.find((item) => item.id === this.active()) ?? items[0];
     this.dom.replaceChildren();
@@ -1603,7 +1647,7 @@ class VariantNodeView implements NodeView {
       remove.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        void this.removeItem(item.id);
+        void this.removeItem(item.id).catch((error) => this.reportVariantActionError(error));
       });
 
       row.append(switchButton, remove);
@@ -1658,7 +1702,7 @@ class VariantNodeView implements NodeView {
     const position = this.getPos();
     if (typeof position !== 'number') return;
     if (nodeTouchesProtectedBlock(this.view.state.doc, position, this.node.nodeSize)) {
-      visualAtomToast('Cannot switch text versions inside a locked section. Unlock the section first.', 'warning');
+      visualAtomToast('Cannot switch text versions inside a locked section. Unlock the section first.', 'warning', this.dom);
       return;
     }
     const items = this.itemsWithPendingEdit();
@@ -1673,7 +1717,7 @@ class VariantNodeView implements NodeView {
     const position = this.getPos();
     if (typeof position !== 'number') return false;
     if (nodeTouchesProtectedBlock(this.view.state.doc, position, this.node.nodeSize)) {
-      visualAtomToast('Cannot edit text versions inside a locked section. Unlock the section first.', 'warning');
+      visualAtomToast('Cannot edit text versions inside a locked section. Unlock the section first.', 'warning', this.dom);
       return false;
     }
     const nextMarkdown = normalizeVariantMarkdown(this.pendingMarkdown);
@@ -1729,12 +1773,12 @@ class VariantNodeView implements NodeView {
         : 'This removes that draft from the version group. You can undo with Ctrl+Z.',
       okLabel: 'Delete',
       cancelLabel: 'Cancel',
-    });
+    }, this.dom);
     if (!confirmed) return;
     const position = this.getPos();
     if (typeof position !== 'number') return;
     if (nodeTouchesProtectedBlock(this.view.state.doc, position, this.node.nodeSize)) {
-      visualAtomToast('Cannot remove text versions inside a locked section. Unlock the section first.', 'warning');
+      visualAtomToast('Cannot remove text versions inside a locked section. Unlock the section first.', 'warning', this.dom);
       return;
     }
     this.pendingMarkdown = null;
@@ -1748,11 +1792,16 @@ class VariantNodeView implements NodeView {
     this.dispatchVariantState(result.active, result.items);
   }
 
+  private reportVariantActionError(error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    visualAtomToast(message || 'Text version action failed.', 'error', this.dom);
+  }
+
   private duplicateActive(): void {
     const position = this.getPos();
     if (typeof position !== 'number') return;
     if (nodeTouchesProtectedBlock(this.view.state.doc, position, this.node.nodeSize)) {
-      visualAtomToast('Cannot duplicate text versions inside a locked section. Unlock the section first.', 'warning');
+      visualAtomToast('Cannot duplicate text versions inside a locked section. Unlock the section first.', 'warning', this.dom);
       return;
     }
     const items = this.itemsWithPendingEdit();
@@ -1779,7 +1828,7 @@ class VariantNodeView implements NodeView {
     const position = this.getPos();
     if (typeof position !== 'number') return;
     if (nodeTouchesProtectedBlock(this.view.state.doc, position, this.node.nodeSize)) {
-      visualAtomToast('Cannot change text versions inside a locked section. Unlock the section first.', 'warning');
+      visualAtomToast('Cannot change text versions inside a locked section. Unlock the section first.', 'warning', this.dom);
       return;
     }
     const nextActive = items.some((item) => item.id === active) ? active : items[0]?.id ?? '';
@@ -1898,7 +1947,11 @@ class RenderedMarkdownAtomNodeView implements NodeView {
         : 'svg-block';
     this.syncDomDataset();
     this.render();
-    if (this.blockType === 'svg') void this.refreshInkscapeAvailability();
+    if (this.blockType === 'svg') {
+      void this.refreshInkscapeAvailability().catch((error) => {
+        console.warn('Inkscape availability check failed.', error);
+      });
+    }
   }
 
   update(node: ProseNode): boolean {
@@ -1947,6 +2000,8 @@ class RenderedMarkdownAtomNodeView implements NodeView {
   }
 
   private createRendered(): HTMLElement {
+    const raw = String(this.node.attrs.raw ?? '');
+    const oversized = isOversizedVisualAtomSource(raw);
     const shell = document.createElement('div');
     shell.className = 'scie-md-visual-atom-rendered';
     shell.addEventListener('dblclick', (event) => {
@@ -1958,7 +2013,11 @@ class RenderedMarkdownAtomNodeView implements NodeView {
 
     const content = document.createElement('div');
     content.className = 'scie-md-visual-atom-content';
-    content.textContent = this.renderedPlaceholderLabel();
+    if (oversized) {
+      content.append(createOversizedAtomFallback(this.blockLabel(), raw));
+    } else {
+      content.textContent = this.renderedPlaceholderLabel();
+    }
     shell.append(content);
 
     const controls = document.createElement('div');
@@ -1983,10 +2042,10 @@ class RenderedMarkdownAtomNodeView implements NodeView {
     remove.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      void this.deleteAtom();
+      void this.deleteAtom().catch((error) => this.reportSvgActionError(error));
     });
     controls.append(edit);
-    if (this.blockType === 'svg') {
+    if (this.blockType === 'svg' && !oversized) {
       controls.append(
         this.createSvgActionButton('Open in Inkscape', () => this.openSvgInInkscape()),
         this.createSvgActionButton('Apply saved SVG', () => this.applySavedInkscapeSvg(), { requiresSession: true }),
@@ -1997,7 +2056,7 @@ class RenderedMarkdownAtomNodeView implements NodeView {
     controls.append(remove);
     shell.append(controls);
 
-    void this.renderMarkdown(content, String(this.node.attrs.raw ?? ''));
+    if (!oversized) void this.renderMarkdown(content, raw);
     return shell;
   }
 
@@ -2043,7 +2102,7 @@ class RenderedMarkdownAtomNodeView implements NodeView {
     remove.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      void this.deleteAtom();
+      void this.deleteAtom().catch((error) => this.reportSvgActionError(error));
     });
     actions.append(apply, cancel, remove);
     shell.append(header, textarea, actions);
@@ -2057,11 +2116,11 @@ class RenderedMarkdownAtomNodeView implements NodeView {
   private async renderMarkdown(container: HTMLElement, markdown: string): Promise<void> {
     const id = ++this.renderId;
     try {
-      const documentPath = getScieMetadataDocumentPath();
+      const documentPath = getScieMetadataDocumentPath(this.dom);
       const displayMarkdown = toVisualImagePaths(markdown, documentPath).markdown;
       const html = await renderMarkdownHtmlFragmentLazy(displayMarkdown, documentPath, {
         embedImages: false,
-        citationEntries: getScieMetadataCitationEntries(),
+        citationEntries: getScieMetadataCitationEntries(this.dom),
       });
       if (id === this.renderId) {
         setSanitizedHtml(container, html);
@@ -2076,7 +2135,7 @@ class RenderedMarkdownAtomNodeView implements NodeView {
     const position = this.getPos();
     if (typeof position !== 'number') return;
     if (this.nodeTouchesProtectedBlock(position)) {
-      visualAtomToast(`Cannot edit ${this.blockLabel()} inside a locked section. Unlock the section first.`, 'warning');
+      visualAtomToast(`Cannot edit ${this.blockLabel()} inside a locked section. Unlock the section first.`, 'warning', this.dom);
       return;
     }
     const attrs = this.blockType === 'directive'
@@ -2096,7 +2155,7 @@ class RenderedMarkdownAtomNodeView implements NodeView {
     if (typeof position !== 'number') return;
     const label = this.blockLabel();
     if (this.nodeTouchesProtectedBlock(position)) {
-      visualAtomToast(`Cannot delete ${label} inside a locked section. Unlock the section first.`, 'warning');
+      visualAtomToast(`Cannot delete ${label} inside a locked section. Unlock the section first.`, 'warning', this.dom);
       return;
     }
     const confirmed = await visualAtomConfirm({
@@ -2104,7 +2163,7 @@ class RenderedMarkdownAtomNodeView implements NodeView {
       message: 'This removes the block from the Markdown document. You can undo with Ctrl+Z.',
       okLabel: 'Delete',
       cancelLabel: 'Cancel',
-    });
+    }, this.dom);
     if (!confirmed) return;
     this.view.dispatch(
       this.view.state.tr
@@ -2175,20 +2234,20 @@ class RenderedMarkdownAtomNodeView implements NodeView {
 
   private async openSvgInInkscape(): Promise<void> {
     if (this.inkscapeState !== 'available') {
-      visualAtomToast(this.inkscapeMessage || 'Inkscape is not available.', 'warning');
+      visualAtomToast(this.inkscapeMessage || 'Inkscape is not available.', 'warning', this.dom);
       return;
     }
-    const session = await openSvgInInkscape(String(this.node.attrs.body ?? ''), getScieMetadataDocumentPath());
+    const session = await openSvgInInkscape(String(this.node.attrs.body ?? ''), getScieMetadataDocumentPath(this.dom));
     this.inkscapeSession = session;
     this.inkscapeSaveNoticeShown = false;
     this.startInkscapePolling();
     this.render();
-    visualAtomToast('SVG opened in Inkscape. Save there, then return here and apply the saved SVG.', 'info');
+    visualAtomToast('SVG opened in Inkscape. Save there, then return here and apply the saved SVG.', 'info', this.dom);
   }
 
   private async applySavedInkscapeSvg(): Promise<void> {
     if (!this.inkscapeSession) {
-      visualAtomToast('Open this SVG in Inkscape first, then save it and apply the saved SVG here.', 'warning');
+      visualAtomToast('Open this SVG in Inkscape first, then save it and apply the saved SVG here.', 'warning', this.dom);
       return;
     }
     const svg = await readInkscapeSvgSession(this.inkscapeSession.sessionId);
@@ -2196,21 +2255,21 @@ class RenderedMarkdownAtomNodeView implements NodeView {
     await cleanupInkscapeSvgSession(this.inkscapeSession.sessionId).catch(() => undefined);
     this.inkscapeSession = null;
     this.stopInkscapePolling();
-    visualAtomToast('Applied saved SVG from Inkscape.', 'success');
+    visualAtomToast('Applied saved SVG from Inkscape.', 'success', this.dom);
   }
 
   private async exportSvg(format: SvgExportFormat): Promise<void> {
     if (this.inkscapeState !== 'available') {
-      visualAtomToast(this.inkscapeMessage || 'Inkscape is not available.', 'warning');
+      visualAtomToast(this.inkscapeMessage || 'Inkscape is not available.', 'warning', this.dom);
       return;
     }
-    const response = await exportSvgWithInkscape(String(this.node.attrs.body ?? ''), getScieMetadataDocumentPath(), format);
-    visualAtomToast(`SVG exported to ${response.outputPath}`, 'success');
+    const response = await exportSvgWithInkscape(String(this.node.attrs.body ?? ''), getScieMetadataDocumentPath(this.dom), format);
+    visualAtomToast(`SVG exported to ${response.outputPath}`, 'success', this.dom);
   }
 
   private reportSvgActionError(error: unknown): void {
     const message = error instanceof Error ? error.message : String(error);
-    visualAtomToast(message || 'SVG action failed.', 'error');
+    visualAtomToast(message || 'SVG action failed.', 'error', this.dom);
   }
 
   private startInkscapePolling(): void {
@@ -2276,7 +2335,7 @@ class RenderedMarkdownAtomNodeView implements NodeView {
       if (!status.changed || this.inkscapeSaveNoticeShown) return;
       this.inkscapeSaveNoticeShown = true;
       this.clearInkscapePollTimer();
-      visualAtomToast('Saved SVG changes detected. Choose "Apply saved SVG" to update the Markdown.', 'info');
+      visualAtomToast('Saved SVG changes detected. Choose "Apply saved SVG" to update the Markdown.', 'info', this.dom);
     } catch {
       // The temporary session may be cleaned up while Inkscape or the app is closing.
     }
@@ -2364,10 +2423,90 @@ function transactionTouchedLockedRange(transaction: Transaction, lockedRanges: L
 
 function attrsForSvgRaw(raw: string): SvgAttrs {
   const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  if (isOversizedVisualAtomSource(normalized)) return oversizedSvgAttrs(normalized);
   return {
     raw: normalized || '```svg\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120"></svg>\n```',
     body: svgFenceBody(normalized),
   };
+}
+
+function oversizedVariantAttrs(raw: string): VariantAttrs {
+  const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  const attrs = variantOpeningAttrs(normalized);
+  return {
+    raw: normalized,
+    groupId: attrs.id ?? 'large-variant',
+    active: attrs.active ?? '',
+    target: attrs.target ?? '',
+    quote: attrs.quote ?? '',
+    prefix: attrs.prefix ?? '',
+    suffix: attrs.suffix ?? '',
+    itemsJson: '[]',
+  };
+}
+
+function oversizedDirectiveAttrs(raw: string): DirectiveAttrs {
+  const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  const opening = normalized.match(/^\s*:::\s*([A-Za-z][\w-]*)(?:\s+\{([^}]*)})?/);
+  const detail = opening?.[2]?.trim() || 'Large directive shown as raw Markdown';
+  return {
+    raw: normalized || ':::note\nWrite the note here.\n:::',
+    name: opening?.[1] ?? 'note',
+    label: detail.match(/#([A-Za-z0-9_.:-]+)/)?.[1] ?? '',
+    detail,
+    body: '',
+  };
+}
+
+function oversizedMermaidAttrs(raw: string): MermaidAttrs {
+  const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  return {
+    raw: normalized || '```mermaid\nflowchart LR\n  A --> B\n```',
+    body: '',
+  };
+}
+
+function oversizedSvgAttrs(raw: string): SvgAttrs {
+  const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  return {
+    raw: normalized || '```svg\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120"></svg>\n```',
+    body: '',
+  };
+}
+
+function variantOpeningAttrs(raw: string): Record<string, string> {
+  const match = raw.match(/<!--\s*scie_md:variant:group\s+([^>]*)-->/i);
+  return match ? parseMetadataAttributes(match[1] ?? '') : {};
+}
+
+function isOversizedVisualAtomSource(raw: string): boolean {
+  return byteLength(raw) > MAX_VISUAL_ATOM_RENDER_BYTES;
+}
+
+function byteLength(value: string): number {
+  if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(value).byteLength;
+  return unescape(encodeURIComponent(value)).length;
+}
+
+function createOversizedAtomFallback(label: string, raw: string): HTMLElement {
+  const fallback = document.createElement('div');
+  fallback.className = 'scie-md-visual-atom-raw-fallback';
+  const title = document.createElement('strong');
+  title.textContent = `${label} shown as raw Markdown`;
+  const meta = document.createElement('span');
+  meta.textContent = `${formatBytes(byteLength(raw))}. Rendering is skipped to keep visual mode responsive.`;
+  const preview = document.createElement('pre');
+  preview.textContent = raw.length > MAX_VISUAL_ATOM_RAW_PREVIEW_CHARS
+    ? `${raw.slice(0, MAX_VISUAL_ATOM_RAW_PREVIEW_CHARS).trimEnd()}\n\n... raw block truncated in visual preview ...`
+    : raw;
+  fallback.append(title, meta, preview);
+  return fallback;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export function changeTouchesLockedRange(changeFrom: number, changeTo: number, range: LockedRange): boolean {

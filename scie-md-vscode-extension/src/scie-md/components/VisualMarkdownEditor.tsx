@@ -65,9 +65,10 @@ interface VisualMarkdownEditorProps {
   highlightedVariableName?: string | null;
   onEditCitation?: (key: string) => void;
   onEditVariable?: (name: string) => void;
+  registerStateReader?: boolean;
 }
 
-function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsertReady, onJumpReady, onFindReady, onHistoryReady, onSelectionTextReady, onCursorLineChange, onViewportLineChange, outlineHeadings = [], onLockViolation, onToast, confirmText, citationKeys = [], citationEntries = [], variableDefinitions = [], highlightedVariableName = null, onEditCitation, onEditVariable }: VisualMarkdownEditorProps) {
+function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsertReady, onJumpReady, onFindReady, onHistoryReady, onSelectionTextReady, onCursorLineChange, onViewportLineChange, outlineHeadings = [], onLockViolation, onToast, confirmText, citationKeys = [], citationEntries = [], variableDefinitions = [], highlightedVariableName = null, onEditCitation, onEditVariable, registerStateReader = true }: VisualMarkdownEditorProps) {
   setScieMetadataDocumentPath(filePath);
   setScieMetadataCitationEntries(citationEntries);
   const initialSplit = useRef(splitVisualMarkdown(markdown));
@@ -424,7 +425,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
         console.warn('Could not validate visual editor state synchronization.', error);
       }
     };
-    setVisualEditorStateReader(() => {
+    const disposeStateReader = registerStateReader ? setVisualEditorStateReader(() => {
       if (!visualContentMutated.current) return sourceMarkdownRef.current;
       const fullMarkdown = readFullMarkdownFromEditor();
       if (fullMarkdown === null) return null;
@@ -433,7 +434,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
         onChangeRef.current(fullMarkdown);
       }
       return fullMarkdown;
-    });
+    }) : () => undefined;
     const scheduleStateSynchronization = () => {
       if (idleSyncHandle !== null || timeoutSyncHandle !== null || document.visibilityState === 'hidden' || !document.hasFocus()) return;
       if ('requestIdleCallback' in window) {
@@ -455,7 +456,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
       }
       if (timeoutSyncHandle !== null) clearTimeout(timeoutSyncHandle);
       synchronizeEditorState(true);
-      setVisualEditorStateReader(null);
+      disposeStateReader();
       if (editorRef.current === editor) {
         editorRef.current = undefined;
         onEditorReady(undefined);
@@ -469,7 +470,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
         disposeMutationListeners?.();
       }
     };
-  }, [loading, onEditorReady, onInsertReady, onJumpReady, onFindReady, onHistoryReady, onSelectionTextReady]);
+  }, [loading, onEditorReady, onInsertReady, onJumpReady, onFindReady, onHistoryReady, onSelectionTextReady, registerStateReader]);
 
   useEffect(() => {
     const editor = editorRef.current;

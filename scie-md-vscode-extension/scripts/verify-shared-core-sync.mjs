@@ -8,10 +8,27 @@ const repoRoot = path.resolve(extensionRoot, '..');
 
 const mappings = [
   {
+    label: 'webview markdown copy',
+    sourceRoot: path.join(repoRoot, 'src', 'markdown'),
+    copyRoot: path.join(extensionRoot, 'src', 'scie-md', 'markdown'),
+  },
+  {
+    label: 'webview domain copy',
+    sourceRoot: path.join(repoRoot, 'src', 'domain'),
+    copyRoot: path.join(extensionRoot, 'src', 'scie-md', 'domain'),
+  },
+  {
+    label: 'webview Milkdown metadata copy',
+    sourceRoot: path.join(repoRoot, 'src', 'components', 'milkdown'),
+    copyRoot: path.join(extensionRoot, 'src', 'scie-md', 'components', 'milkdown'),
+  },
+  {
+    label: 'shared markdown copy',
     sourceRoot: path.join(repoRoot, 'src', 'markdown'),
     copyRoot: path.join(extensionRoot, 'src', 'shared', 'markdown'),
   },
   {
+    label: 'shared domain copy',
     sourceRoot: path.join(repoRoot, 'src', 'domain'),
     copyRoot: path.join(extensionRoot, 'src', 'shared', 'domain'),
   },
@@ -29,9 +46,9 @@ for (const mapping of mappings) {
     ]);
 
     if (sourceText === null) {
-      drift.push(`${relative}: source file missing`);
+      drift.push(`${mapping.label}/${relative}: source file missing`);
     } else if (normalizeNewlines(sourceText) !== normalizeNewlines(copiedText)) {
-      drift.push(`${relative}: copied core differs from desktop source`);
+      drift.push(`${mapping.label}/${relative}: copied core differs from desktop source`);
     }
   }
 }
@@ -50,7 +67,7 @@ async function listTypescriptFiles(root) {
     const fullPath = path.join(root, entry.name);
     if (entry.isDirectory()) {
       output.push(...await listTypescriptFiles(fullPath));
-    } else if (entry.isFile() && entry.name.endsWith('.ts')) {
+    } else if (entry.isFile() && /\.(ts|tsx)$/.test(entry.name)) {
       output.push(fullPath);
     }
   }

@@ -18,7 +18,6 @@ import { createReviewPlan, applyReviewPlanDecisions } from '../scie-md/markdown/
 import type { ReviewPlan } from '../scie-md/markdown/reviewPlan';
 import { applyThreeWayDiffDecisions } from '../scie-md/markdown/diffReview';
 import { extractHeadings } from '../scie-md/markdown/outline';
-import { validateMarkdown } from '../scie-md/markdown/markdownValidation';
 import { VISUAL_STYLE_OPTIONS, getVisualStyleOption, isVisualStyleId } from '../scie-md/services/visualStyleService';
 import type { VisualStyleId } from '../scie-md/services/visualStyleService';
 import type { ExtensionToWebviewMessage, ScieMDDocumentSnapshot } from '../shared/webviewProtocol';
@@ -72,6 +71,7 @@ export function App() {
   const [sourceInsert, setSourceInsert] = useState<SourceMarkdownInsert | undefined>();
   const selectionGetterRef = useRef<VisualMarkdownSelection | SourceMarkdownSelection | undefined>(undefined);
   const textRef = useRef('');
+  const snapshotRef = useRef<ScieMDDocumentSnapshot | null>(null);
   const reviewRef = useRef<ReviewState | null>(null);
   const lastSyncedDocumentTextRef = useRef<string | null>(null);
   const pendingEditTextByIdRef = useRef(new Map<string, string>());
@@ -90,14 +90,16 @@ export function App() {
   const nextVariantGroupId = useMemo(() => `revision-${variantCount + 1}`, [variantCount]);
   const nextVariable = useMemo(() => nextVariableName(variableIndex.definitions), [variableIndex.definitions]);
   const currentVisualStyle = useMemo(() => getVisualStyleOption(visualStyle), [visualStyle]);
-  const validation = useMemo(() => validateMarkdown(text), [text]);
-  const visualModeBlocked = validation.sourceOnly || validation.formattingWillNormalize;
-  const activeMode: EditorMode = mode === 'visual' && visualModeBlocked ? 'source' : mode;
+  const activeMode: EditorMode = mode;
   const resolvedTheme = useResolvedVscodeTheme(themeMode);
 
   useEffect(() => {
     textRef.current = text;
   }, [text]);
+
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme;
@@ -222,6 +224,33 @@ export function App() {
     return () => window.removeEventListener('keydown', handleUndoRedo, { capture: true });
   }, [documentReadOnly, snapshot]);
 
+  const flushPendingDocumentEdit = useCallback((options: { updateStatus?: boolean } = {}) => {
+    const activeSnapshot = snapshotRef.current;
+    if (!activeSnapshot || activeSnapshot.isReadonly || reviewRef.current?.kind === 'external') return false;
+    const syncedText = lastSyncedDocumentTextRef.current;
+    if (syncedText === null) return false;
+    const pendingText = flushVisualEditorState() ?? textRef.current;
+    textRef.current = pendingText;
+    const hasPendingRejectedHunks = pendingRejectedHunkIdsRef.current.length > 0;
+    if (pendingText === syncedText && !hasPendingRejectedHunks) return false;
+    if (pendingText === lastSentTextRef.current && !hasPendingRejectedHunks) return false;
+
+    const editId = createEditId();
+    pendingEditTextByIdRef.current.set(editId, pendingText);
+    lastSentTextRef.current = pendingText;
+    vscodeApi.postMessage({
+      type: 'replaceDocument',
+      text: pendingText,
+      editId,
+      baseText: syncedText,
+      baseVersion: activeSnapshot.version,
+      rejectedHunkIds: pendingRejectedHunkIdsRef.current,
+    });
+    pendingRejectedHunkIdsRef.current = [];
+    if (options.updateStatus !== false) setStatus('Editing');
+    return true;
+  }, []);
+
   useEffect(() => {
     if (!snapshot) return undefined;
     if (snapshot.isReadonly) return undefined;
@@ -230,48 +259,38 @@ export function App() {
     if (text === lastSyncedDocumentTextRef.current && !hasPendingRejectedHunks) return undefined;
     if (text === lastSentTextRef.current) return undefined;
     const handle = window.setTimeout(() => {
-      const editId = createEditId();
-      pendingEditTextByIdRef.current.set(editId, text);
-      lastSentTextRef.current = text;
-      vscodeApi.postMessage({
-        type: 'replaceDocument',
-        text,
-        editId,
-        baseText: lastSyncedDocumentTextRef.current ?? undefined,
-        baseVersion: snapshot.version,
-        rejectedHunkIds: pendingRejectedHunkIdsRef.current,
-      });
-      pendingRejectedHunkIdsRef.current = [];
-      setStatus('Editing');
+      textRef.current = text;
+      flushPendingDocumentEdit();
     }, EDIT_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
-  }, [review?.kind, snapshot, text]);
+  }, [flushPendingDocumentEdit, review?.kind, snapshot, text]);
+
+  useEffect(() => {
+    const flushWithoutStatus = () => {
+      flushPendingDocumentEdit({ updateStatus: false });
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushWithoutStatus();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', flushWithoutStatus);
+    window.addEventListener('beforeunload', flushWithoutStatus);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', flushWithoutStatus);
+      window.removeEventListener('beforeunload', flushWithoutStatus);
+    };
+  }, [flushPendingDocumentEdit]);
+
 
   const pushToast = useCallback((message: string, tone: ToastState['tone'] = 'info') => {
     setToast({ text: message, tone });
     window.setTimeout(() => setToast(null), 3600);
   }, []);
 
-  const visualBlockMessage = validation.sourceOnly
-    ? 'Source mode required: this Markdown has syntax ScieMD cannot safely render visually.'
-    : 'Source mode required: visual mode would normalize this Markdown before an explicit save.';
-
-  useEffect(() => {
-    if (mode !== 'visual' || !visualModeBlocked) return;
-    setMode('source');
-    setStatus('Source mode required');
-    pushToast(visualBlockMessage, 'warning');
-  }, [mode, pushToast, visualBlockMessage, visualModeBlocked]);
-
   const switchToVisualMode = useCallback(() => {
-    if (visualModeBlocked) {
-      setMode('source');
-      setStatus('Source mode required');
-      pushToast(visualBlockMessage, 'warning');
-      return;
-    }
     setMode('visual');
-  }, [pushToast, visualBlockMessage, visualModeBlocked]);
+  }, []);
 
   const commitMarkdown = useCallback((nextText: string) => {
     if (documentReadOnly) return;
@@ -447,7 +466,7 @@ export function App() {
             type="button"
             className={activeMode === 'visual' ? 'selected' : ''}
             onClick={switchToVisualMode}
-            title={visualModeBlocked ? visualBlockMessage : 'Visual'}
+            title="Visual"
           >
             Visual
           </button>
@@ -753,7 +772,7 @@ function readSavedWebviewState(): SavedWebviewState {
   const raw = mergeSavedWebviewState(readLocalWebviewState(), vscodeApi.getState());
   const mode = normalizeEditorMode(raw?.mode);
   const themeMode = normalizeThemeMode(raw?.themeMode);
-  const visualStyle = isVisualStyleId(raw?.visualStyle) ? raw.visualStyle : 'scienfy';
+  const visualStyle = isVisualStyleId(raw?.visualStyle) ? raw.visualStyle : 'science';
   return { mode, themeMode, visualStyle };
 }
 
@@ -792,7 +811,7 @@ function normalizeEditorMode(value: unknown): EditorMode {
 function normalizeThemeMode(value: unknown): VscodeThemeMode {
   return value === 'light' || value === 'dark' || value === 'sepia' || value === 'vscode'
     ? value
-    : 'vscode';
+    : 'dark';
 }
 
 function useResolvedVscodeTheme(themeMode: VscodeThemeMode): 'light' | 'dark' | 'sepia' {

@@ -1,7 +1,11 @@
 use std::{
     io,
-    process::{Child, Command, Output},
+    process::{Child, Command, Output, Stdio},
+    thread,
+    time::{Duration, Instant},
 };
+
+const QUIET_OUTPUT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub fn spawn_quiet(command: &mut Command) -> io::Result<Child> {
     configure_quiet(command);
@@ -10,7 +14,22 @@ pub fn spawn_quiet(command: &mut Command) -> io::Result<Child> {
 
 pub fn output_quiet(command: &mut Command) -> io::Result<Output> {
     configure_quiet(command);
-    command.output()
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command.spawn()?;
+    let deadline = Instant::now() + QUIET_OUTPUT_TIMEOUT;
+    loop {
+        if child.try_wait()?.is_some() {
+            return child.wait_with_output();
+        }
+        if Instant::now() >= deadline {
+            terminate_child_tree(&mut child);
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "helper command timed out",
+            ));
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
 }
 
 pub fn terminate_child_tree(child: &mut Child) {

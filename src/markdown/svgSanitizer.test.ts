@@ -47,12 +47,27 @@ describe('svgSanitizer', () => {
     expect(result.warnings.some((warning) => warning.includes('href'))).toBe(true);
   });
 
-  it('strips inline style attributes instead of trying to parse CSS safely', () => {
+  it('keeps safe inline style declarations while removing unsafe CSS', () => {
     const result = sanitizeSvg('<svg viewBox="0 0 20 20"><rect width="20" height="20" style="fill: red; background: url(https://example.com/x)"/></svg>');
 
     expect(result.svg).toContain('<rect');
-    expect(result.svg).not.toContain('style=');
+    expect(result.svg).toContain('style="fill: red"');
+    expect(result.svg).not.toContain('background');
     expect(result.svg).not.toContain('https://example.com');
+  });
+
+  it('allows scientific SVG style attributes with internal paint references', () => {
+    const result = sanitizeSvg([
+      '<svg viewBox="0 0 20 20">',
+      '<defs><linearGradient id="g"><stop offset="0" style="stop-color:#fff;stop-opacity:1"/></linearGradient></defs>',
+      '<path d="M0 0L20 20" style="fill:none;stroke:url(#g);stroke-width:2;stroke-linecap:round"/>',
+      '</svg>',
+    ].join(''));
+
+    expect(result.svg).toContain('stop-color: #fff');
+    expect(result.svg).toContain('stroke: url(#g)');
+    expect(result.svg).toContain('stroke-width: 2');
+    expect(result.warnings).toHaveLength(0);
   });
 
   it('rejects very large SVG sources before parsing', () => {

@@ -11,7 +11,7 @@ export interface MarkdownImageMatch {
   line: number;
 }
 
-const imagePattern = /!\[((?:\\.|[^\]\\])*)]\(([^)\n]+)\)/g;
+const imageStartPattern = /!\[((?:\\.|[^\]\\])*)]\(/g;
 
 export function findMarkdownImages(markdown: string): MarkdownImageMatch[] {
   const starts = lineStartOffsets(markdown);
@@ -21,24 +21,64 @@ export function findMarkdownImages(markdown: string): MarkdownImageMatch[] {
   ]);
   const matches: MarkdownImageMatch[] = [];
   let match: RegExpExecArray | null;
-  imagePattern.lastIndex = 0;
+  imageStartPattern.lastIndex = 0;
 
-  while ((match = imagePattern.exec(markdown)) !== null) {
+  while ((match = imageStartPattern.exec(markdown)) !== null) {
     if (isOffsetInsideRanges(match.index, ignoredRanges)) continue;
-    const parsed = parseImageDestination(match[2]);
+    const destination = readImageDestination(markdown, imageStartPattern.lastIndex);
+    if (!destination) continue;
+    const parsed = parseImageDestination(destination.raw);
     if (!parsed) continue;
     matches.push({
-      raw: match[0],
+      raw: markdown.slice(match.index, destination.end),
       alt: match[1],
       url: parsed.url,
       title: parsed.title,
       from: match.index,
-      to: match.index + match[0].length,
+      to: destination.end,
       line: offsetToLine(starts, match.index),
     });
+    imageStartPattern.lastIndex = destination.end;
   }
 
   return matches;
+}
+
+function readImageDestination(markdown: string, start: number): { raw: string; end: number } | null {
+  let depth = 0;
+  let quote: '"' | "'" | null = null;
+  let escaping = false;
+  for (let index = start; index < markdown.length; index += 1) {
+    const char = markdown[index];
+    if (char === '\n') return null;
+    if (escaping) {
+      escaping = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaping = true;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === '(') {
+      depth += 1;
+      continue;
+    }
+    if (char !== ')') continue;
+    if (depth > 0) {
+      depth -= 1;
+      continue;
+    }
+    return { raw: markdown.slice(start, index), end: index + 1 };
+  }
+  return null;
 }
 
 export function replaceMarkdownImages(
@@ -75,6 +115,15 @@ export async function replaceMarkdownImagesAsync(
   return output + markdown.slice(offset);
 }
 
+export function formatMarkdownImageDestination(url: string): string {
+  if (!needsBracketedImageDestination(url)) return url;
+  return `<${url
+    .replace(/</g, '%3C')
+    .replace(/>/g, '%3E')
+    .replace(/\r/g, '%0D')
+    .replace(/\n/g, '%0A')}>`;
+}
+
 function parseImageDestination(raw: string): { url: string; title: string } | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -102,4 +151,8 @@ function parseImageDestination(raw: string): { url: string; title: string } | nu
 
 function looksLikeImagePath(value: string): boolean {
   return /\.(?:png|jpe?g|gif|webp|bmp|tiff?|svg)(?:[?#].*)?$/i.test(value.trim());
+}
+
+function needsBracketedImageDestination(url: string): boolean {
+  return /[\s()<>]/.test(url);
 }

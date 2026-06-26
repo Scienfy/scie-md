@@ -14,6 +14,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use super::path_utils::external_safe_path_string;
+
 const MAX_GRANTED_FILES: usize = 512;
 const MAX_GRANTED_DIRECTORIES: usize = 256;
 
@@ -36,9 +38,7 @@ pub(crate) struct TestPathGrantIsolation {
 
 #[cfg(test)]
 pub(crate) fn isolate_test_path_grants() -> TestPathGrantIsolation {
-    let guard = TEST_PATH_GRANTS_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock();
+    let guard = TEST_PATH_GRANTS_LOCK.get_or_init(|| Mutex::new(())).lock();
     if let Ok(mut registry) = registry() {
         *registry = PathGrantRegistry::default();
     }
@@ -101,7 +101,7 @@ pub fn grant_external_path(path: String, kind: String) -> Result<String, String>
             )?;
             let canonical = normalize_existing_file(&raw)?;
             grant_file(&canonical)?;
-            Ok(canonical.to_string_lossy().to_string())
+            Ok(external_safe_path_string(&canonical))
         }
         "directory" => Err("Directory access must be granted through the folder picker.".to_string()),
         _ => Err("Unsupported external path grant type.".to_string()),
@@ -114,6 +114,25 @@ pub fn assert_file_read_allowed(path: &Path) -> Result<(), String> {
 
 pub fn assert_file_write_allowed(path: &Path) -> Result<(), String> {
     assert_path_allowed(path, true)
+}
+
+pub fn assert_generated_asset_write_allowed(
+    document_path: &Path,
+    asset_path: &Path,
+) -> Result<(), String> {
+    assert_file_read_allowed(document_path)?;
+    let document = normalize_file_target(document_path)?;
+    let document_parent = document
+        .parent()
+        .ok_or_else(|| "Markdown document has no parent directory.".to_string())?;
+    let generated_dir =
+        normalize_existing_directory(&document_parent.join("assets").join("generated"))?;
+    let target = normalize_file_target(asset_path)?;
+    if target.starts_with(&generated_dir) {
+        Ok(())
+    } else {
+        Err(access_denied())
+    }
 }
 
 pub fn assert_directory_read_allowed(path: &Path) -> Result<(), String> {
@@ -137,10 +156,13 @@ fn assert_path_allowed(path: &Path, allow_new_file: bool) -> Result<(), String> 
         normalize_existing_file(path)?
     };
     let registry = registry()?;
-    let exact_file_allowed =
-        registry.files.contains(&target) || (allow_new_file && registry.pending_files.contains(&target));
+    let exact_file_allowed = registry.files.contains(&target)
+        || (allow_new_file && registry.pending_files.contains(&target));
     let directory_read_allowed = !allow_new_file
-        && registry.directories.iter().any(|directory| target.starts_with(directory));
+        && registry
+            .directories
+            .iter()
+            .any(|directory| target.starts_with(directory));
     if exact_file_allowed || directory_read_allowed {
         Ok(())
     } else {
@@ -170,13 +192,12 @@ fn load_registry() -> PathGrantRegistry {
     match serde_json::from_str::<PathGrantRegistry>(&raw) {
         Ok(mut registry) => {
             compact_registry(&mut registry);
+            registry.directories.clear();
             registry
         }
         Err(error) => {
-            let backup = path.with_file_name(format!(
-                "path-grants.corrupt-{}.json",
-                unix_timestamp_ms()
-            ));
+            let backup =
+                path.with_file_name(format!("path-grants.corrupt-{}.json", unix_timestamp_ms()));
             let _ = fs::rename(&path, &backup);
             eprintln!(
                 "ScieMD ignored a corrupt access grant store at {}: {error}",
@@ -203,7 +224,12 @@ fn persist_registry(registry: &PathGrantRegistry) -> Result<(), String> {
     fs::create_dir_all(parent)
         .map_err(|error| format!("Could not create access grant store: {error}"))?;
     let temp = path.with_extension("json.tmp");
-    let raw = serde_json::to_string_pretty(registry)
+    let persisted_registry = PathGrantRegistry {
+        files: registry.files.clone(),
+        pending_files: registry.pending_files.clone(),
+        directories: HashSet::new(),
+    };
+    let raw = serde_json::to_string_pretty(&persisted_registry)
         .map_err(|error| format!("Could not serialize access grants: {error}"))?;
     let mut file = OpenOptions::new()
         .write(true)
@@ -216,7 +242,7 @@ fn persist_registry(registry: &PathGrantRegistry) -> Result<(), String> {
         return Err(format!("Could not flush access grants: {error}"));
     }
     drop(file);
-    fs::rename(&temp, &path).map_err(|error| {
+    replace_file(&temp, &path).map_err(|error| {
         let _ = fs::remove_file(&temp);
         format!("Could not update access grants: {error}")
     })?;
@@ -230,6 +256,34 @@ fn persist_registry(registry: &PathGrantRegistry) -> Result<(), String> {
 }
 
 #[cfg(windows)]
+fn replace_file(source: &Path, destination: &Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+
+    let source_wide: Vec<u16> = source.as_os_str().encode_wide().chain([0]).collect();
+    let destination_wide: Vec<u16> = destination.as_os_str().encode_wide().chain([0]).collect();
+    let moved = unsafe {
+        MoveFileExW(
+            source_wide.as_ptr(),
+            destination_wide.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if moved == 0 {
+        Err(std::io::Error::last_os_error().to_string())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(not(windows))]
+fn replace_file(source: &Path, destination: &Path) -> Result<(), String> {
+    std::fs::rename(source, destination).map_err(|error| error.to_string())
+}
+
+#[cfg(windows)]
 #[allow(dead_code)]
 fn sync_parent_dir(_parent: &Path) -> Result<(), String> {
     Ok(())
@@ -238,8 +292,8 @@ fn sync_parent_dir(_parent: &Path) -> Result<(), String> {
 #[cfg(not(windows))]
 #[allow(dead_code)]
 fn sync_parent_dir(parent: &Path) -> Result<(), String> {
-    let directory = std::fs::File::open(parent)
-        .map_err(|error| format!("open directory failed: {error}"))?;
+    let directory =
+        std::fs::File::open(parent).map_err(|error| format!("open directory failed: {error}"))?;
     directory
         .sync_all()
         .map_err(|error| format!("sync directory failed: {error}"))
@@ -319,7 +373,11 @@ fn access_denied() -> String {
     "File access denied. Open, save, or choose the file/folder through ScieMD first.".to_string()
 }
 
-fn validate_supported_extension(path: &Path, allowed: &[&str], message: &str) -> Result<(), String> {
+fn validate_supported_extension(
+    path: &Path,
+    allowed: &[&str],
+    message: &str,
+) -> Result<(), String> {
     let extension = path
         .extension()
         .and_then(|value| value.to_str())
@@ -340,9 +398,7 @@ fn compact_registry(registry: &mut PathGrantRegistry) {
             promoted.push(path.clone());
             return false;
         }
-        path
-            .parent()
-            .is_some_and(|parent| parent.is_dir())
+        path.parent().is_some_and(|parent| parent.is_dir())
     });
     registry.files.extend(promoted);
     registry.directories.retain(|path| path.is_dir());
@@ -365,7 +421,11 @@ fn limit_path_set(paths: &mut HashSet<PathBuf>, limit: usize) {
             .cmp(&left.1)
             .then_with(|| left.0.to_string_lossy().cmp(&right.0.to_string_lossy()))
     });
-    *paths = ranked.into_iter().take(limit).map(|entry| entry.0).collect();
+    *paths = ranked
+        .into_iter()
+        .take(limit)
+        .map(|entry| entry.0)
+        .collect();
 }
 
 fn path_modified_ms(path: &Path) -> u128 {
@@ -450,13 +510,33 @@ mod tests {
     }
 
     #[test]
+    fn generated_asset_write_is_allowed_under_granted_document_assets_only() {
+        let _grants = isolate_test_path_grants();
+        let root = env::temp_dir().join(format!("scie-md-generated-assets-{}", suffix()));
+        let generated = root.join("assets").join("generated");
+        fs::create_dir_all(&generated).unwrap();
+        let document = root.join("paper.md");
+        fs::write(&document, "# Paper").unwrap();
+        grant_file_and_parent(&document).unwrap();
+
+        let output = generated.join("svg-export.png");
+        let sibling = root.join("assets").join("sibling.png");
+
+        assert!(assert_generated_asset_write_allowed(&document, &output).is_ok());
+        assert!(assert_generated_asset_write_allowed(&document, &sibling).is_err());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn external_path_command_does_not_grant_directories_by_string() {
         let _grants = isolate_test_path_grants();
         let root = env::temp_dir().join(format!("scie-md-grants-{}", suffix()));
         fs::create_dir_all(&root).unwrap();
 
-        let error = grant_external_path(root.to_string_lossy().to_string(), "directory".to_string())
-            .unwrap_err();
+        let error =
+            grant_external_path(root.to_string_lossy().to_string(), "directory".to_string())
+                .unwrap_err();
 
         assert!(error.contains("folder picker"));
         let _ = fs::remove_dir_all(root);
@@ -470,11 +550,33 @@ mod tests {
         let document = root.join("paper.md");
         fs::write(&document, "# Paper").unwrap();
 
-        let error = grant_external_path(document.to_string_lossy().to_string(), "document".to_string())
-            .unwrap_err();
+        let error = grant_external_path(
+            document.to_string_lossy().to_string(),
+            "document".to_string(),
+        )
+        .unwrap_err();
 
         assert!(error.contains("file picker"));
         assert!(assert_file_write_allowed(&document).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn external_image_grant_returns_tool_safe_path_for_verbatim_windows_input() {
+        let _grants = isolate_test_path_grants();
+        let root = env::temp_dir().join(format!("scie-md-grants-verbatim-{}", suffix()));
+        fs::create_dir_all(&root).unwrap();
+        let image = root.join("figure.png");
+        fs::write(&image, [1_u8, 2, 3]).unwrap();
+        let verbatim = format!(r"\\?\{}", image.to_string_lossy());
+
+        let granted = grant_external_path(verbatim, "image".to_string()).unwrap();
+
+        assert!(!granted.starts_with(r"\\?\"));
+        assert!(granted.ends_with(r"\figure.png"));
+        assert!(assert_file_read_allowed(&image).is_ok());
+
         let _ = fs::remove_dir_all(root);
     }
 
@@ -506,6 +608,22 @@ mod tests {
         assert!(registry.pending_files.len() <= MAX_GRANTED_FILES);
         assert!(registry.directories.len() <= MAX_GRANTED_DIRECTORIES);
 
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn replace_file_overwrites_existing_destination() {
+        let root = env::temp_dir().join(format!("scie-md-grant-replace-{}", suffix()));
+        fs::create_dir_all(&root).unwrap();
+        let destination = root.join("path-grants.json");
+        let source = root.join("path-grants.json.tmp");
+        fs::write(&destination, "old").unwrap();
+        fs::write(&source, "new").unwrap();
+
+        replace_file(&source, &destination).unwrap();
+
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "new");
+        assert!(!source.exists());
         let _ = fs::remove_dir_all(root);
     }
 

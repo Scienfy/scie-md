@@ -1,4 +1,4 @@
-import { act } from 'react';
+import { act, type ComponentProps } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppTopbarMenuId as MenuId } from './AppTopbar';
@@ -110,12 +110,47 @@ describe('AppTopbar menu architecture', () => {
     expect(menuText()).not.toContain('Copy Current Section');
   });
 
+  it('enables paste review only when pasted changes are available', () => {
+    const onOpenPasteReview = vi.fn();
+    renderTopbar('review', [], { hasPasteReview: false, onOpenPasteReview });
+
+    const disabledReview = findMenuButton('Review Pasted Changes');
+    expect(disabledReview?.disabled).toBe(true);
+
+    act(() => {
+      disabledReview?.click();
+    });
+    expect(onOpenPasteReview).not.toHaveBeenCalled();
+
+    renderTopbar('review', [], { hasPasteReview: true, onOpenPasteReview });
+    const enabledReview = findMenuButton('Review Pasted Changes');
+    expect(enabledReview?.disabled).toBe(false);
+
+    act(() => {
+      enabledReview?.click();
+    });
+    expect(onOpenPasteReview).toHaveBeenCalledTimes(1);
+  });
+
   it('labels the old review menu slot as LLM in the top bar', () => {
     renderTopbar(null);
 
     const labels = Array.from(container.querySelectorAll('.app-menu-trigger')).map((node) => node.textContent);
     expect(labels).toContain('LLM');
     expect(labels).not.toContain('Review');
+  });
+
+  it('marks only File, Edit, and View as core menus for narrow windows', () => {
+    renderTopbar(null);
+
+    const coreLabels = Array.from(container.querySelectorAll('.app-menu-button.is-core-menu .app-menu-trigger'))
+      .map((node) => node.textContent);
+    const secondaryLabels = Array.from(container.querySelectorAll('.app-menu-button.is-secondary-menu .app-menu-trigger'))
+      .map((node) => node.textContent);
+
+    expect(coreLabels).toEqual(['File', 'Edit', 'View']);
+    expect(secondaryLabels).toEqual(['Insert', 'Format', 'References', 'LLM', 'Tools', 'Help']);
+    expect(container.querySelector('.window-controls [aria-label="Close window"]')).not.toBeNull();
   });
 
   it('uses stable row classes for long shortcuts and recent file previews', () => {
@@ -141,7 +176,11 @@ describe('AppTopbar menu architecture', () => {
   });
 });
 
-function renderTopbar(activeMenu: MenuId | null, recentFiles: RecentFilePreview[] = []) {
+function renderTopbar(
+  activeMenu: MenuId | null,
+  recentFiles: RecentFilePreview[] = [],
+  overrides: Partial<Pick<ComponentProps<typeof AppTopbar>, 'hasPasteReview' | 'onOpenPasteReview'>> = {},
+) {
   const handler = vi.fn();
   act(() => {
     root.render(
@@ -157,7 +196,7 @@ function renderTopbar(activeMenu: MenuId | null, recentFiles: RecentFilePreview[
         currentVisualStyle={{ label: 'Scienfy', shortLabel: 'Scienfy' }}
         selectedVisualStyle="scienfy"
         recentFiles={recentFiles}
-        hasPasteReview={false}
+        hasPasteReview={overrides.hasPasteReview ?? false}
         onToggleMenu={handler}
         onCloseMenus={noop}
         onNew={noop}
@@ -190,7 +229,7 @@ function renderTopbar(activeMenu: MenuId | null, recentFiles: RecentFilePreview[
         onCopyScieMDLlmSkill={noop}
         onGenerateScieMDLlmSkill={noop}
         onGenerateSubmissionReadiness={noop}
-        onOpenPasteReview={noop}
+        onOpenPasteReview={overrides.onOpenPasteReview ?? noop}
         onOpenExportDialog={noop}
         onPrintPreview={noop}
         onShowExportLog={noop}
@@ -230,4 +269,9 @@ function renderTopbar(activeMenu: MenuId | null, recentFiles: RecentFilePreview[
 
 function menuText(): string {
   return container.querySelector('.app-menu-panel')?.textContent ?? '';
+}
+
+function findMenuButton(label: string): HTMLButtonElement | undefined {
+  return Array.from(container.querySelectorAll<HTMLButtonElement>('.app-menu-item'))
+    .find((button) => button.textContent === label);
 }

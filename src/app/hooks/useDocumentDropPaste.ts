@@ -34,12 +34,13 @@ export interface PasteReviewState {
 
 interface DocumentDropPasteParams {
   markdownRef: MutableRefObject<string>;
+  documentEpochRef: MutableRefObject<number>;
   insertImageBlob: (blob: Blob, preferredName?: string) => Promise<void>;
   insertImageFromPath: (imagePath: string, promptForAlt?: boolean) => Promise<void>;
   openDocumentPath: (path: string) => Promise<void>;
   settleDirtyDocumentBeforeReplace: () => Promise<boolean>;
   commitOpenedDocument: (path: string | null, content: string, metadata: FileMetadata, preferredMode?: EditorMode) => void;
-  validateNow: (markdown: string, sizeBytes?: number) => { sourceOnly: boolean };
+  validateNow: (markdown: string, sizeBytes?: number) => unknown;
   setAuthorshipMarks: Dispatch<SetStateAction<AuthorshipMark[]>>;
   setPasteReview: Dispatch<SetStateAction<PasteReviewState | null>>;
   pushToast: (text: string, tone?: 'info' | 'success' | 'warning' | 'error') => void;
@@ -47,6 +48,7 @@ interface DocumentDropPasteParams {
 
 export function useDocumentDropPaste({
   markdownRef,
+  documentEpochRef,
   insertImageBlob,
   insertImageFromPath,
   openDocumentPath,
@@ -71,19 +73,30 @@ export function useDocumentDropPaste({
 
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
+    let disposed = false;
     let unlisten: (() => void) | undefined;
     void getCurrentWindow().onDragDropEvent((event) => {
       if (event.payload.type === 'drop') {
-        void handleDroppedPaths(event.payload.paths);
+        void handleDroppedPaths(event.payload.paths).catch((error) => {
+          console.warn('Dropped document paths could not be handled.', error);
+          pushToast(error instanceof Error ? error.message : 'Could not handle dropped files.', 'error');
+        });
       }
     }).then((dispose) => {
+      if (disposed) {
+        dispose();
+        return;
+      }
       unlisten = dispose;
+    }).catch((error) => {
+      console.warn('Drag and drop listener could not be registered.', error);
     });
 
     return () => {
+      disposed = true;
       unlisten?.();
     };
-  }, [handleDroppedPaths]);
+  }, [handleDroppedPaths, pushToast]);
 
   const handlePasteCapture = useCallback((event: ReactClipboardEvent<HTMLElement>) => {
     const imageItem = Array.from(event.clipboardData.items).find((item) => item.type.startsWith('image/'));
@@ -91,7 +104,10 @@ export function useDocumentDropPaste({
       const file = imageItem.getAsFile();
       if (file) {
         event.preventDefault();
-        void insertImageBlob(file, file.name);
+        void insertImageBlob(file, file.name).catch((error) => {
+          console.warn('Pasted image could not be inserted.', error);
+          pushToast(error instanceof Error ? error.message : 'Could not insert pasted image.', 'error');
+        });
         return;
       }
     }
@@ -99,7 +115,9 @@ export function useDocumentDropPaste({
     const text = event.clipboardData.getData('text/plain');
     if (text.length > PASTE_REVIEW_THRESHOLD_CHARS) {
       const before = markdownRef.current;
+      const pasteDocumentEpoch = documentEpochRef.current;
       window.setTimeout(() => {
+        if (documentEpochRef.current !== pasteDocumentEpoch) return;
         const after = markdownRef.current;
         validateNow(after);
         if (after === before) return;
@@ -121,7 +139,7 @@ export function useDocumentDropPaste({
         );
       }, 80);
     }
-  }, [insertImageBlob, markdownRef, pushToast, setAuthorshipMarks, setPasteReview, validateNow]);
+  }, [documentEpochRef, insertImageBlob, markdownRef, pushToast, setAuthorshipMarks, setPasteReview, validateNow]);
 
   const handleDropCapture = useCallback((event: ReactDragEvent<HTMLElement>) => {
     const files = Array.from(event.dataTransfer.files);
@@ -133,18 +151,24 @@ export function useDocumentDropPaste({
       void (async () => {
         if (!(await settleDirtyDocumentBeforeReplace())) return;
         const content = await markdownFile.text();
-        const nextValidation = validateNow(content);
-        commitOpenedDocument(null, content, DEFAULT_METADATA, nextValidation.sourceOnly ? 'source' : 'visual');
-      })();
+        validateNow(content);
+        commitOpenedDocument(null, content, DEFAULT_METADATA, 'visual');
+      })().catch((error) => {
+        console.warn('Dropped Markdown file could not be opened.', error);
+        pushToast(error instanceof Error ? error.message : 'Could not open dropped Markdown.', 'error');
+      });
       return;
     }
 
     const imageFiles = files.filter((file) => file.type.startsWith('image/') || isImagePath(file.name));
     if (imageFiles.length > 0) {
       event.preventDefault();
-      void Promise.all(imageFiles.map((file) => insertImageBlob(file, file.name)));
+      void Promise.all(imageFiles.map((file) => insertImageBlob(file, file.name))).catch((error) => {
+        console.warn('Dropped images could not be inserted.', error);
+        pushToast(error instanceof Error ? error.message : 'Could not insert dropped images.', 'error');
+      });
     }
-  }, [commitOpenedDocument, insertImageBlob, settleDirtyDocumentBeforeReplace, validateNow]);
+  }, [commitOpenedDocument, insertImageBlob, pushToast, settleDirtyDocumentBeforeReplace, validateNow]);
 
   return {
     handlePasteCapture,

@@ -8,6 +8,7 @@ import { applyReviewPlanDecisions, reviewUnitIdsForRawHunkIds } from '../../mark
 import type { PasteReviewState } from './useDocumentDropPaste';
 
 interface PasteReviewWorkflowParams {
+  getCurrentMarkdown: () => string;
   setMarkdown: Dispatch<SetStateAction<string>>;
   setAuthorshipMarks: Dispatch<SetStateAction<AuthorshipMark[]>>;
   setPasteReview: Dispatch<SetStateAction<PasteReviewState | null>>;
@@ -15,6 +16,7 @@ interface PasteReviewWorkflowParams {
 }
 
 export function usePasteReviewWorkflow({
+  getCurrentMarkdown,
   setMarkdown,
   setAuthorshipMarks,
   setPasteReview,
@@ -31,6 +33,10 @@ export function usePasteReviewWorkflow({
   const acceptPasteReview = useCallback(() => {
     setPasteReview((current) => {
       if (!current) return null;
+      if (getCurrentMarkdown() !== current.after) {
+        pushToast('Paste review was closed because the document changed after the review was prepared.', 'warning');
+        return null;
+      }
       const protectedHunkIds = new Set(detectProtectedChanges(current.before, current.hunks).map((change) => change.hunkId));
       if (protectedHunkIds.size === 0) {
         const noteIssues = detectEditorNoteLifecycleIssues(current.before, current.after);
@@ -57,11 +63,19 @@ export function usePasteReviewWorkflow({
       );
       return null;
     });
-  }, [pushToast, setAuthorshipMarks, setMarkdown, setPasteReview]);
+  }, [getCurrentMarkdown, pushToast, setAuthorshipMarks, setMarkdown, setPasteReview]);
 
   const rejectPasteReview = useCallback(() => {
+    let staleReview = false;
+    let rejectedReview = false;
     setPasteReview((current) => {
       if (current) {
+        if (getCurrentMarkdown() !== current.after) {
+          staleReview = true;
+          pushToast('Paste review was closed because the document changed after the review was prepared.', 'warning');
+          return null;
+        }
+        rejectedReview = true;
         if (current.bulkReview) {
           setMarkdown(current.before);
           return null;
@@ -71,14 +85,23 @@ export function usePasteReviewWorkflow({
       }
       return null;
     });
+    if (staleReview || !rejectedReview) return;
     setAuthorshipMarks([]);
     pushToast('Pasted text edits rejected', 'warning');
-  }, [pushToast, setAuthorshipMarks, setMarkdown, setPasteReview]);
+  }, [getCurrentMarkdown, pushToast, setAuthorshipMarks, setMarkdown, setPasteReview]);
 
   const applyPasteReview = useCallback((rejectedUnitIds: Set<string>, rejectedRawHunkIds = new Set<string>()) => {
     let missingHumanSummaryCount = 0;
+    let staleReview = false;
+    let appliedReview = false;
     setPasteReview((current) => {
       if (!current) return null;
+      if (getCurrentMarkdown() !== current.after) {
+        staleReview = true;
+        pushToast('Paste review was closed because the document changed after the review was prepared.', 'warning');
+        return null;
+      }
+      appliedReview = true;
       const nextMarkdown = applyReviewPlanDecisions(current.before, current.after, current.reviewPlan, rejectedUnitIds, rejectedRawHunkIds);
       setMarkdown(nextMarkdown);
       const authorshipMark = createInsertionAuthorshipMark(current.before, nextMarkdown, Date.now(), 'Accepted LLM edit');
@@ -87,13 +110,14 @@ export function usePasteReviewWorkflow({
       missingHumanSummaryCount = noteIssues.length;
       return null;
     });
+    if (staleReview || !appliedReview) return;
     pushToast(
       missingHumanSummaryCount > 0
         ? `${missingHumanSummaryCount} completed LLM note${missingHumanSummaryCount === 1 ? '' : 's'} missing a Note to Human summary.`
         : 'Pasted changes reviewed',
       missingHumanSummaryCount > 0 ? 'warning' : 'success',
     );
-  }, [pushToast, setAuthorshipMarks, setMarkdown, setPasteReview]);
+  }, [getCurrentMarkdown, pushToast, setAuthorshipMarks, setMarkdown, setPasteReview]);
 
   return {
     openPasteReview,

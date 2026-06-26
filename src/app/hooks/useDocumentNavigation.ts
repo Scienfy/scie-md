@@ -68,7 +68,7 @@ export function useDocumentNavigation({
     const occurrence = headings
       .filter((candidate) => candidate.line <= heading.line && candidate.level === heading.level && candidate.text === heading.text)
       .length - 1;
-    return { level: heading.level, text: heading.text, occurrence: Math.max(0, occurrence) };
+    return { id: heading.id, level: heading.level, text: heading.text, line: heading.line, occurrence: Math.max(0, occurrence) };
   }, [headings]);
 
   const jumpToHeading = useCallback((heading: MarkdownHeading) => {

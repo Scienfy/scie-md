@@ -8,7 +8,7 @@ import { directiveBody, parseDirectiveBlocks } from '../domain/blocks/directiveP
 import type { DirectiveBlock } from '../domain/blocks/directiveParser';
 import { parseFrontmatter } from '../domain/document/frontmatter';
 import { readBinaryFileBase64 } from '../services/fileService';
-import { findMarkdownImages, replaceMarkdownImagesAsync } from './markdownImages';
+import { findMarkdownImages, formatMarkdownImageDestination, replaceMarkdownImagesAsync } from './markdownImages';
 import { fencedCodeRanges } from './markdownRanges';
 import { prepareMarkdownForHtmlExport } from './outputPipeline';
 import { findSvgFenceBlocks } from './svgBlocks';
@@ -574,8 +574,8 @@ async function renderMarkdownHtml(markdown: string, options: Required<RenderMark
   for (const replacement of replacements) {
     const paragraphPlaceholder = `<p>${replacement.placeholder}</p>`;
     html = html.includes(paragraphPlaceholder)
-      ? html.replace(paragraphPlaceholder, replacement.html)
-      : html.replace(replacement.placeholder, replacement.html);
+      ? html.replace(paragraphPlaceholder, () => replacement.html)
+      : html.replace(replacement.placeholder, () => replacement.html);
   }
   return html;
 }
@@ -876,17 +876,21 @@ async function embedLocalMarkdownImages(markdown: string, documentPath: string |
       if (diskPath) {
         try {
           const base64 = await readBinaryFileBase64(diskPath);
-          replacement = image.raw.replace(markdownPath, `data:${imageMimeType(markdownPath)};base64,${base64}`);
+          replacement = replaceImageDestination(image, `data:${imageMimeType(markdownPath)};base64,${base64}`);
         } catch {
-          replacement = image.raw.replace(markdownPath, missingImageDataUri(alt, markdownPath));
+          replacement = replaceImageDestination(image, missingImageDataUri(alt, markdownPath));
         }
       } else {
-        replacement = image.raw.replace(markdownPath, missingImageDataUri(alt, markdownPath));
+        replacement = replaceImageDestination(image, missingImageDataUri(alt, markdownPath));
       }
     }
 
     return replacement;
   });
+}
+
+function replaceImageDestination(image: { alt: string; title: string }, destination: string): string {
+  return `![${image.alt}](${formatMarkdownImageDestination(destination)}${image.title})`;
 }
 
 async function maybeEmbedLocalMarkdownImages(

@@ -47,6 +47,8 @@ export function StatusBar({
   const radius = 7;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (score / 100) * circumference;
+  const currentHeading = headingPath.at(-1);
+  const currentHeadingPath = headingPath.map((heading) => heading.text).join(' / ');
 
   return (
     <footer className="statusbar">
@@ -58,20 +60,24 @@ export function StatusBar({
             Save now
           </button>
         )}
-        <nav className="status-breadcrumb" aria-label="Current section">
-          {headingPath.length > 0 ? headingPath.map((heading, index) => (
-            <span key={heading.id} className="status-breadcrumb-segment">
-              {index > 0 && <span className="status-breadcrumb-separator">/</span>}
-              <button type="button" onClick={() => onJumpToHeading(heading)} title={`Jump to ${heading.text}`}>
-                {heading.text}
+        {currentHeading && (
+          <nav className="status-breadcrumb" aria-label="Current section">
+            <span className="status-breadcrumb-segment">
+              <button
+                type="button"
+                onClick={() => onJumpToHeading(currentHeading)}
+                title={`Current section: ${currentHeadingPath}`}
+              >
+                {currentHeading.text}
               </button>
             </span>
-          )) : <span className="status-empty-section">No section</span>}
-        </nav>
+          </nav>
+        )}
         <span className="status-word-count">{wordCount.toLocaleString()} words</span>
         <button
           type="button"
           className={`status-readiness ${manuscriptStatus}`}
+          aria-label={`Submission readiness ${score} out of 100. Open review panel.`}
           title={`Submission readiness ${score}/100. Open review panel.`}
           onClick={onOpenReadiness}
         >
@@ -83,21 +89,21 @@ export function StatusBar({
           <span>{score}</span>
         </button>
         {errors.length > 0 && (
-          <button type="button" className="status-badge error" title={`${errors[0]} Open validation panel.`} onClick={onOpenValidation}>
+          <button type="button" className="status-badge error" aria-label={`${errors.length} validation errors. Open validation panel.`} title={`${errors[0]} Open validation panel.`} onClick={onOpenValidation}>
             {errors.length}
           </button>
         )}
         {warnings.length > 0 && (
-          <button type="button" className="status-badge warning" title={`${warnings[0]} Open validation panel.`} onClick={onOpenValidation}>
+          <button type="button" className="status-badge warning" aria-label={`${warnings.length} validation warnings. Open validation panel.`} title={`${warnings[0]} Open validation panel.`} onClick={onOpenValidation}>
             {warnings.length}
           </button>
         )}
       </div>
       <div className="status-actions">
-        {externalConflict && filePath && <button onClick={onReviewConflict}>Review Disk Changes</button>}
-        {externalConflict && filePath && <button onClick={onSaveAnyway}>Save Anyway</button>}
-        {filePath && <button onClick={onReveal}>Reveal in Explorer</button>}
-        <button title="Reload from disk" disabled={!filePath} onClick={onReload}>
+        {externalConflict && filePath && <button type="button" onClick={onReviewConflict}>Review Disk Changes</button>}
+        {externalConflict && filePath && <button type="button" onClick={onSaveAnyway}>Save Anyway</button>}
+        {filePath && <button type="button" onClick={onReveal}>Reveal in Explorer</button>}
+        <button type="button" aria-label="Reload from disk" title="Reload from disk" disabled={!filePath} onClick={onReload}>
           <RotateCcw size={15} />Reload
         </button>
       </div>

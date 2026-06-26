@@ -79,6 +79,7 @@ export const ExportRenderHost = forwardRef<ExportRenderHostHandle>(function Expo
             onEditorReady={(editor: MilkdownEditor | undefined) => {
               if (editor) scheduleCapture();
             }}
+            registerStateReader={false}
             citationKeys={job.citationEntries.map((entry) => entry.key)}
             citationEntries={job.citationEntries}
             variableDefinitions={job.variableDefinitions}

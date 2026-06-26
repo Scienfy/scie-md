@@ -76,7 +76,7 @@ describe('DiffReviewDialog', () => {
     expect(container.textContent).not.toContain('scie_md:note');
   });
 
-  it('applies review by text edit id rather than raw hunk ids', () => {
+  it('rejects selected review cards by text edit id rather than raw hunk ids', () => {
     const before = 'Original sentence.\n';
     const after = 'Revised sentence.\n';
     const reviewPlan = createReviewPlan(before, after);
@@ -97,11 +97,8 @@ describe('DiffReviewDialog', () => {
     });
 
     act(() => {
-      container.querySelectorAll<HTMLButtonElement>('.diff-hunk-header button')[0].click();
-    });
-    act(() => {
       Array.from(container.querySelectorAll<HTMLButtonElement>('footer button'))
-        .find((button) => button.textContent === 'Apply review')
+        .find((button) => button.textContent === 'Reject selected')
         ?.click();
     });
 
@@ -130,13 +127,13 @@ describe('DiffReviewDialog', () => {
       );
     });
 
-    expect(container.textContent).toContain('Per-edit review is disabled');
+    expect(container.textContent).toContain('Large pasted edit');
     expect(container.querySelectorAll('.review-preview-pane')).toHaveLength(0);
     expect(Array.from(container.querySelectorAll<HTMLButtonElement>('footer button')).some((button) => button.textContent === 'Apply review')).toBe(false);
 
     act(() => {
       Array.from(container.querySelectorAll<HTMLButtonElement>('footer button'))
-        .find((button) => button.textContent === 'Accept all')
+        .find((button) => button.textContent === 'Accept selected')
         ?.click();
     });
 
@@ -173,12 +170,47 @@ describe('DiffReviewDialog', () => {
 
     act(() => {
       Array.from(container.querySelectorAll<HTMLButtonElement>('footer button'))
-        .find((button) => button.textContent === 'Accept safe changes')
+        .find((button) => button.textContent === 'Accept selected')
         ?.click();
     });
 
     expect(Array.from(onApply.mock.calls[0][0])).toEqual([]);
     expect(Array.from(onApply.mock.calls[0][1])).toEqual([reviewPlan.rawHunks[0].id]);
+  });
+
+  it('keeps deselected protected units rejected when rejecting selected changes', () => {
+    const before = [
+      '<!-- scie_md:lock:start reason="approved" -->',
+      'Original sentence.',
+      '<!-- scie_md:lock:end -->',
+      '',
+    ].join('\n');
+    const after = before.replace('Original sentence.', 'Revised sentence.');
+    const reviewPlan = createReviewPlan(before, after);
+    const onApply = vi.fn();
+
+    act(() => {
+      root.render(
+        <DiffReviewDialog
+          open
+          hunks={reviewPlan.rawHunks}
+          reviewPlan={reviewPlan}
+          protectedChanges={[{ hunkId: reviewPlan.rawHunks[0].id, block: {} } as never]}
+          onApply={onApply}
+          onAcceptAll={() => undefined}
+          onRejectAll={() => undefined}
+          onClose={() => undefined}
+        />,
+      );
+    });
+
+    act(() => {
+      Array.from(container.querySelectorAll<HTMLButtonElement>('footer button'))
+        .find((button) => button.textContent === 'Reject selected')
+        ?.click();
+    });
+
+    expect(Array.from(onApply.mock.calls[0][0])).toEqual([reviewPlan.units[0].id]);
   });
 });
 

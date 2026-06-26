@@ -626,7 +626,6 @@ export function createSourceCitationDecorationRanges(
     for (const citationMatch of raw.matchAll(/@([A-Za-z0-9_][A-Za-z0-9_:.#$%&+\-?<>~/]*)/g)) {
       const localIndex = citationMatch.index ?? 0;
       const from = bracketMatch.index + localIndex;
-      if (isCrossReferenceLike(citationMatch[1])) continue;
       ranges.push(createCitationDecorationRange(from, from + citationMatch[0].length, citationMatch[1], entryByKey, known, hasBibliography));
     }
   }
@@ -711,10 +710,6 @@ function citationEntryTooltip(entry: BibtexEntry): string {
 
 function cleanBibtexField(value: string): string {
   return value.replace(/[{}]/g, '').replace(/\\&/g, '&').replace(/\s+/g, ' ').trim();
-}
-
-function isCrossReferenceLike(key: string): boolean {
-  return /^(fig|tbl|eq|sec|lst|nte|tip|wrn|imp|cau)-/.test(key);
 }
 
 function createSourceFocusExtension(): Extension {

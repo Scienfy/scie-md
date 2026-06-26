@@ -36,6 +36,27 @@ describe('mermaidBlocks', () => {
     expect(findMermaidFenceBlocks(markdown)).toHaveLength(0);
   });
 
+  it('ignores mermaid examples nested inside another fenced code block', () => {
+    const markdown = [
+      '```markdown',
+      '```mermaid',
+      'flowchart LR',
+      '  A --> B',
+      '```',
+      '```',
+      '',
+      '```mermaid',
+      'flowchart TD',
+      '  C --> D',
+      '```',
+    ].join('\n');
+
+    const blocks = findMermaidFenceBlocks(markdown);
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].code).toBe('flowchart TD\n  C --> D');
+  });
+
   it('extracts canonical fence bodies', () => {
     expect(mermaidFenceBody('```mermaid\nflowchart LR\n  A --> B\n```')).toBe('flowchart LR\n  A --> B');
   });

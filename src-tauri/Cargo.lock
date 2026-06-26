@@ -1032,6 +1032,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "filetime"
+version = "0.2.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759"
+dependencies = [
+ "cfg-if",
+ "libc",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3004,10 +3014,11 @@ dependencies = [
 
 [[package]]
 name = "sciemd"
-version = "1.0.0"
+version = "1.0.11"
 dependencies = [
  "base64 0.22.1",
  "blake3",
+ "filetime",
  "libc",
  "notify",
  "parking_lot",

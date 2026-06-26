@@ -9,7 +9,12 @@ const steps = [
   { label: 'Scie Sans font verification', command: npmCommand, args: ['run', 'fonts:verify'] },
   { label: 'Distribution configuration guard', command: npmCommand, args: ['run', 'validate:distribution'] },
   { label: 'Frontend build', command: npmCommand, args: ['run', 'build'] },
+  { label: 'Visual export smoke validation', command: npmCommand, args: ['run', 'validate:export'] },
+  { label: 'Visual style smoke validation', command: npmCommand, args: ['run', 'validate:styles'] },
+  { label: 'UX workflow smoke validation', command: npmCommand, args: ['run', 'validate:ux'] },
   { label: 'Vitest + strict round-trip validation', command: npmCommand, args: ['run', 'test:all'] },
+  { label: 'VS Code extension tests', command: npmCommand, args: ['--prefix', 'scie-md-vscode-extension', 'test'] },
+  { label: 'VS Code extension build', command: npmCommand, args: ['--prefix', 'scie-md-vscode-extension', 'run', 'build'] },
   { label: 'Rust tests', command: cargoCommand, args: ['test'], cwd: 'src-tauri' },
   { label: 'Rust clippy', command: cargoCommand, args: ['clippy', '--all-targets', '--', '-D', 'warnings'], cwd: 'src-tauri' },
 ];

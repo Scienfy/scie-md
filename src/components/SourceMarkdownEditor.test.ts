@@ -124,6 +124,7 @@ describe('createSourceCitationDecorationRanges', () => {
       '```',
       '',
       'Cross-reference @fig-one is not a citation.',
+      'Prefix-like citation [@fig-study2026].',
     ].join('\n');
 
     const ranges = createSourceCitationDecorationRanges(markdown, [
@@ -139,7 +140,7 @@ describe('createSourceCitationDecorationRanges', () => {
       },
     ], ['smith2026']);
 
-    expect(ranges.map((range) => range.key)).toEqual(['smith2026', 'missing2025']);
+    expect(ranges.map((range) => range.key)).toEqual(['smith2026', 'missing2025', 'fig-study2026']);
     expect(ranges[0].className).toContain('source-citation-verified');
     expect(ranges[0].title).toContain('Useful Paper');
     expect(ranges[1].className).toContain('source-citation-missing');

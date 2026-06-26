@@ -37,4 +37,18 @@ describe('citationIndex', () => {
   it('does not drop bracket citation keys that share cross-reference prefixes', () => {
     expect(extractCitationUsages('A citation [@fig-study2026].').map((usage) => usage.key)).toEqual(['fig-study2026']);
   });
+
+  it('reports missing citations when a configured bibliography is empty', () => {
+    const index = buildCitationIndex('Claim [@missing2026].', ['refs.bib'], '');
+
+    expect(index.usages).toEqual([expect.objectContaining({ key: 'missing2026', line: 1 })]);
+    expect(index.missingKeys).toEqual(['missing2026']);
+  });
+
+  it('ignores loose hyphen and colon cross-reference labels when bibliography is configured', () => {
+    const index = buildCitationIndex('See @fig-surface and @fig:surface, but cite @smith2026.', ['refs.bib'], '@article{smith2026,title={Known}}');
+
+    expect(index.usages.map((usage) => usage.key)).toEqual(['smith2026']);
+    expect(index.missingKeys).toEqual([]);
+  });
 });

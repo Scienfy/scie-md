@@ -3,6 +3,7 @@ import { safeParseScienfyDocument } from '../domain/document/documentModel';
 import type { ParsedScienfyDocument } from '../domain/document/documentModel';
 import { extractVisualPlaceholderMarkers } from './visualMarkers';
 import { detectVisualRoundTripRisks } from './visualRoundTripSafety';
+import { frontmatterRanges } from './markdownRanges';
 
 export type ValidationSeverity = 'warning' | 'error';
 
@@ -25,8 +26,11 @@ export function validateMarkdown(
   parsedDocument?: ParsedScienfyDocument,
 ): MarkdownValidation {
   const issues: ValidationIssue[] = [];
-  const markdownWithoutFences = removeFencedCodeBlocks(markdown);
-  const layerTwoDocument = parsedDocument ?? safeParseScienfyDocument(markdown);
+  const markdownBodyOnly = removeRanges(markdown, frontmatterRanges(markdown));
+  const markdownWithoutFences = removeFencedCodeBlocks(markdownBodyOnly);
+  const sourceOnly = sizeBytes > SOURCE_ONLY_FILE_BYTES;
+  const shouldDeferLargeParse = sourceOnly && !parsedDocument;
+  const layerTwoDocument = parsedDocument ?? (shouldDeferLargeParse ? null : safeParseScienfyDocument(markdown));
 
   if (sizeBytes > LARGE_FILE_WARNING_BYTES) {
     issues.push({
@@ -40,7 +44,7 @@ export function validateMarkdown(
     issues.push({
       severity: 'error',
       code: 'source-only-size',
-      message: 'Documents over 5 MB open in source mode only.',
+      message: 'Documents over 5 MB open in Source by default to keep the app responsive.',
     });
   }
 
@@ -52,18 +56,26 @@ export function validateMarkdown(
     });
   }
 
-  issues.push(...layerTwoDocument.diagnostics.map((diagnostic) => ({
-    severity: diagnostic.severity === 'info' ? 'warning' as const : diagnostic.severity,
-    code: diagnostic.code,
-    message: diagnostic.line ? `${diagnostic.message} (line ${diagnostic.line})` : diagnostic.message,
-  })));
+  if (layerTwoDocument) {
+    issues.push(...layerTwoDocument.diagnostics.map((diagnostic) => ({
+      severity: diagnostic.severity === 'info' ? 'warning' as const : diagnostic.severity,
+      code: diagnostic.code,
+      message: diagnostic.line ? `${diagnostic.message} (line ${diagnostic.line})` : diagnostic.message,
+    })));
 
-  const unknownDirectives = layerTwoDocument.directives.filter((directive) => !directive.known);
-  if (unknownDirectives.length > 0) {
+    const unknownDirectives = layerTwoDocument.directives.filter((directive) => !directive.known);
+    if (unknownDirectives.length > 0) {
+      issues.push({
+        severity: 'error',
+        code: 'directive-unknown-visual',
+        message: 'Unknown directive blocks are shown as raw Markdown in visual mode.',
+      });
+    }
+  } else {
     issues.push({
-      severity: 'error',
-      code: 'directive-unknown-visual',
-      message: 'Unknown directive blocks are source-mode only until Scienfy knows how to preview them safely.',
+      severity: 'warning',
+      code: 'large-file-parser-deferred',
+      message: 'Deep document diagnostics are deferred until the background parser catches up.',
     });
   }
 
@@ -71,7 +83,7 @@ export function validateMarkdown(
     issues.push({
       severity: 'error',
       code: 'raw-html',
-      message: 'Raw HTML is source-mode only for safety.',
+      message: 'Raw HTML is shown as raw Markdown in visual mode.',
     });
   }
 
@@ -97,7 +109,7 @@ export function validateMarkdown(
 
   return {
     issues,
-    sourceOnly: issues.some((issue) => issue.severity === 'error'),
+    sourceOnly,
     formattingWillNormalize,
     wordCount: countRenderedWords(markdown),
   };
@@ -129,6 +141,18 @@ export function removeFencedCodeBlocks(markdown: string): string {
       return fenceChar ? '' : line;
     })
     .join('\n');
+}
+
+function removeRanges(markdown: string, ranges: Array<{ start: number; end: number }>): string {
+  if (ranges.length === 0) return markdown;
+  let output = '';
+  let offset = 0;
+  for (const range of ranges) {
+    output += markdown.slice(offset, range.start);
+    output += '\n'.repeat((markdown.slice(range.start, range.end).match(/\n/g) ?? []).length);
+    offset = range.end;
+  }
+  return output + markdown.slice(offset);
 }
 
 export function countRenderedWords(markdown: string): number {

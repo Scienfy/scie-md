@@ -82,4 +82,26 @@ describe('diffReview', () => {
     expect(hunks[0].beforeLines).toHaveLength(1100);
     expect(hunks[0].afterLines).toHaveLength(1100);
   });
+
+  it('falls back for huge single-line edits before allocating word diff tables', () => {
+    const before = `${'a'.repeat(180_000)}\n`;
+    const after = `${'b'.repeat(180_000)}\n`;
+
+    const hunks = createDiffHunks(before, after);
+
+    expect(hunks).toHaveLength(1);
+    expect(hunks[0].diffLines[0].segments).toBeUndefined();
+    expect(hunks[0].diffLines[1].segments).toBeUndefined();
+  });
+
+  it('skips word-level segments for token-heavy line edits', () => {
+    const before = `${Array.from({ length: 2500 }, (_, index) => `before${index}`).join(' ')}\n`;
+    const after = `${Array.from({ length: 2500 }, (_, index) => `after${index}`).join(' ')}\n`;
+
+    const hunks = createDiffHunks(before, after);
+
+    expect(hunks).toHaveLength(1);
+    expect(hunks[0].diffLines[0].segments).toBeUndefined();
+    expect(hunks[0].diffLines[1].segments).toBeUndefined();
+  });
 });

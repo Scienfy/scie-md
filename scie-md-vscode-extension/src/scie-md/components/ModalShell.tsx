@@ -10,6 +10,9 @@ interface ModalShellProps {
   children: ReactNode;
 }
 
+let activeModalLocks = 0;
+let modalLockPreviousOverflow = '';
+
 export function ModalShell({ open, titleId, className = '', backdropClassName = '', onCancel, children }: ModalShellProps) {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -20,9 +23,12 @@ export function ModalShell({ open, titleId, className = '', backdropClassName = 
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const dialog = dialogRef.current;
     const body = document.body;
-    const previousOverflow = body.style.overflow;
-    body.style.overflow = 'hidden';
-    body.classList.add('modal-open');
+    if (activeModalLocks === 0) {
+      modalLockPreviousOverflow = body.style.overflow;
+      body.style.overflow = 'hidden';
+      body.classList.add('modal-open');
+    }
+    activeModalLocks += 1;
 
     if (dialog && !dialog.open) {
       if (typeof dialog.showModal === 'function') dialog.showModal();
@@ -32,8 +38,12 @@ export function ModalShell({ open, titleId, className = '', backdropClassName = 
     window.setTimeout(() => focusFirstElement(contentRef.current ?? dialog), 0);
 
     return () => {
-      body.style.overflow = previousOverflow;
-      body.classList.remove('modal-open');
+      activeModalLocks = Math.max(0, activeModalLocks - 1);
+      if (activeModalLocks === 0) {
+        body.style.overflow = modalLockPreviousOverflow;
+        modalLockPreviousOverflow = '';
+        body.classList.remove('modal-open');
+      }
       if (dialog?.open) {
         if (typeof dialog.close === 'function') dialog.close();
         else dialog.removeAttribute('open');

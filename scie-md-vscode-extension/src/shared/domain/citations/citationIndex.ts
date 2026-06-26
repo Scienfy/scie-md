@@ -1,6 +1,6 @@
 import { parseBibtexEntries } from './bibtex';
 import type { BibtexEntry } from './bibtex';
-import { fencedCodeRanges, inlineCodeRanges, isOffsetInsideRanges, mergeRanges, scieMdCommentRanges } from '../../markdown/markdownRanges';
+import { fencedCodeRanges, frontmatterRanges, inlineCodeRanges, isOffsetInsideRanges, mergeRanges, scieMdCommentRanges } from '../../markdown/markdownRanges';
 import { lineStartOffsets, offsetToLine } from '../../markdown/textOffsets';
 
 export interface CitationUsage {
@@ -17,14 +17,15 @@ export interface CitationIndex {
   missingKeys: string[];
 }
 
-export function buildCitationIndex(markdown: string, bibliographyFiles: string[] = [], bibtex = ''): CitationIndex {
-  const usages = extractCitationUsages(markdown, { allowLoose: bibliographyFiles.length > 0 });
+export function buildCitationIndex(markdown: string, bibliographyFiles: string[] = [], bibtex = '', lineOffset = 0): CitationIndex {
+  const usages = extractCitationUsages(markdown, { allowLoose: bibliographyFiles.length > 0, lineOffset });
   const bibtexEntries = parseBibtexEntries(bibtex);
   const bibtexKeys = bibtexEntries.length > 0 ? bibtexEntries.map((entry) => entry.key) : extractBibtexKeys(bibtex);
   const known = new Set(bibtexKeys);
-  const missingKeys = bibtexKeys.length === 0
-    ? []
-    : Array.from(new Set(usages.map((usage) => usage.key).filter((key) => !known.has(key))));
+  const shouldVerifyCitations = bibliographyFiles.length > 0 || bibtex.trim().length > 0;
+  const missingKeys = shouldVerifyCitations
+    ? Array.from(new Set(usages.map((usage) => usage.key).filter((key) => !known.has(key))))
+    : [];
 
   return {
     usages,
@@ -35,7 +36,7 @@ export function buildCitationIndex(markdown: string, bibliographyFiles: string[]
   };
 }
 
-export function extractCitationUsages(markdown: string, options: { allowLoose?: boolean } = {}): CitationUsage[] {
+export function extractCitationUsages(markdown: string, options: { allowLoose?: boolean; lineOffset?: number } = {}): CitationUsage[] {
   const usages: CitationUsage[] = [];
   const bracketRanges: Array<{ start: number; end: number }> = [];
   const ignoredRanges = citationIgnoredRanges(markdown);
@@ -53,7 +54,7 @@ export function extractCitationUsages(markdown: string, options: { allowLoose?: 
       usages.push({
         key,
         raw,
-        line: offsetToLine(lineStarts, rawOffset + (citationMatch.index ?? 0)),
+        line: offsetToLine(lineStarts, rawOffset + (citationMatch.index ?? 0)) + (options.lineOffset ?? 0),
       });
     }
   }
@@ -64,7 +65,8 @@ export function extractCitationUsages(markdown: string, options: { allowLoose?: 
   let match: RegExpExecArray | null;
   while ((match = citationPattern.exec(markdown))) {
     const full = match[0].trim();
-    const key = match[2];
+    const key = cleanLooseCitationKey(match[2]);
+    if (!key) continue;
     const atOffset = match.index + match[1].length;
     if (isOffsetInsideRanges(atOffset, ignoredRanges)) continue;
     if (isOffsetInsideRanges(atOffset, bracketRanges)) continue;
@@ -73,7 +75,7 @@ export function extractCitationUsages(markdown: string, options: { allowLoose?: 
     usages.push({
       key,
       raw: full,
-      line: offsetToLine(lineStarts, match.index + match[1].length),
+      line: offsetToLine(lineStarts, match.index + match[1].length) + (options.lineOffset ?? 0),
     });
   }
 
@@ -86,6 +88,7 @@ export function extractBibtexKeys(bibtex: string): string[] {
 
 function citationIgnoredRanges(markdown: string): Array<{ start: number; end: number }> {
   return mergeRanges([
+    ...frontmatterRanges(markdown),
     ...fencedCodeRanges(markdown),
     ...inlineCodeRanges(markdown),
     ...scieMdCommentRanges(markdown),
@@ -98,7 +101,11 @@ function isLikelyEmailOrHandle(markdown: string, offset: number): boolean {
 }
 
 function isCrossReferenceKey(key: string): boolean {
-  return /^(fig|tbl|eq|sec|lst|nte|tip|wrn|imp|cau)-/.test(key);
+  return /^(fig|tbl|eq|sec|lst|nte|tip|wrn|imp|cau)(?:-|:)/.test(key);
+}
+
+function cleanLooseCitationKey(key: string): string {
+  return key.replace(/[.,;!?]+$/g, '');
 }
 
 function dedupeUsages(usages: CitationUsage[]): CitationUsage[] {

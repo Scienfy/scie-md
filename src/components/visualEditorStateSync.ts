@@ -1,11 +1,21 @@
 type VisualEditorStateReader = () => string | null;
 
-let activeReader: VisualEditorStateReader | null = null;
+interface RegisteredVisualEditorStateReader {
+  id: symbol;
+  reader: VisualEditorStateReader;
+}
 
-export function setVisualEditorStateReader(reader: VisualEditorStateReader | null): void {
-  activeReader = reader;
+const registeredReaders: RegisteredVisualEditorStateReader[] = [];
+
+export function setVisualEditorStateReader(reader: VisualEditorStateReader): () => void {
+  const id = Symbol('visual-editor-state-reader');
+  registeredReaders.push({ id, reader });
+  return () => {
+    const index = registeredReaders.findIndex((entry) => entry.id === id);
+    if (index >= 0) registeredReaders.splice(index, 1);
+  };
 }
 
 export function flushVisualEditorState(): string | null {
-  return activeReader?.() ?? null;
+  return registeredReaders.at(-1)?.reader() ?? null;
 }

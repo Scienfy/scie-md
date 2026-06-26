@@ -5,6 +5,22 @@ export interface OffsetRange {
   end: number;
 }
 
+export function frontmatterRanges(text: string): OffsetRange[] {
+  const firstLine = readLine(text, 0);
+  if (!firstLine || firstLine.line !== '---' || firstLine.next >= text.length) return [];
+
+  for (let offset = firstLine.next; offset < text.length;) {
+    const current = readLine(text, offset);
+    if (!current) break;
+    const line = current.line;
+    if (/^(?:---|\.\.\.)[ \t]*$/.test(line)) {
+      return [{ start: 0, end: current.next }];
+    }
+    offset = current.next;
+  }
+  return [{ start: 0, end: text.length }];
+}
+
 export function fencedCodeRanges(text: string): OffsetRange[] {
   const ranges: OffsetRange[] = [];
   const starts = lineStartOffsets(text);
@@ -152,4 +168,16 @@ function findClosingBacktickRun(text: string, start: number, runLength: number):
     index += length;
   }
   return -1;
+}
+
+function readLine(text: string, start: number): { line: string; end: number; next: number } | null {
+  if (start > text.length) return null;
+  let end = start;
+  while (end < text.length && text[end] !== '\n' && text[end] !== '\r') {
+    end += 1;
+  }
+  let next = end;
+  if (text[next] === '\r' && text[next + 1] === '\n') next += 2;
+  else if (text[next] === '\r' || text[next] === '\n') next += 1;
+  return { line: text.slice(start, end), end, next };
 }

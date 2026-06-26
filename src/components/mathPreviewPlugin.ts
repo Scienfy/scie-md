@@ -229,16 +229,21 @@ function renderMathHtml(content: string, displayMode: boolean): MathRenderResult
       trust: false,
     });
     const result = { html };
-    mathRenderCache.set(key, result);
-    if (mathRenderCache.size > MAX_MATH_RENDER_CACHE_SIZE) {
-      const oldest = mathRenderCache.keys().next().value;
-      if (oldest) mathRenderCache.delete(oldest);
-    }
+    cacheMathRenderResult(key, result);
     return result;
   } catch (error) {
     const result = { html: null, error: error instanceof Error ? error.message : 'KaTeX could not render this equation.' };
-    mathRenderCache.set(key, result);
+    cacheMathRenderResult(key, result);
     return result;
+  }
+}
+
+function cacheMathRenderResult(key: string, result: MathRenderResult): void {
+  mathRenderCache.set(key, result);
+  while (mathRenderCache.size > MAX_MATH_RENDER_CACHE_SIZE) {
+    const oldest = mathRenderCache.keys().next().value;
+    if (!oldest) break;
+    mathRenderCache.delete(oldest);
   }
 }
 

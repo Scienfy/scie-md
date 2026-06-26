@@ -42,4 +42,16 @@ describe('svgBlocks', () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0].code).toContain('still inside');
   });
+
+  it('ignores svg fence examples nested inside larger Markdown code fences', () => {
+    const markdown = [
+      '````markdown',
+      '```svg',
+      '<svg viewBox="0 0 10 10"></svg>',
+      '```',
+      '````',
+    ].join('\n');
+
+    expect(findSvgFenceBlocks(markdown)).toEqual([]);
+  });
 });

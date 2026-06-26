@@ -15,6 +15,7 @@ interface SaveOperationsParams {
   filePath: string | null;
   fileMetadata: FileMetadata;
   markdown: string;
+  getDocumentIdentityVersion: () => number;
   setFilePath: (path: string) => void;
   setFileMetadata: (metadata: FileMetadata) => void;
   setLastSavedMarkdown: (markdown: string) => void;
@@ -30,6 +31,7 @@ export function useSaveOperations({
   filePath,
   fileMetadata,
   markdown,
+  getDocumentIdentityVersion,
   setFilePath,
   setFileMetadata,
   setLastSavedMarkdown,
@@ -75,30 +77,39 @@ export function useSaveOperations({
       forceSaveAs: options.forceSaveAs ?? false,
       forceOverwrite: options.forceOverwrite ?? false,
     };
+    const flushedMarkdown = flushVisualEditorState();
+    if (flushedMarkdown !== null) {
+      markdownRef.current = flushedMarkdown;
+    }
+    const snapshot = {
+      ...requestedOptions,
+      sourceDocumentIdentityVersion: getDocumentIdentityVersion(),
+      sourcePath: filePathRef.current,
+      sourceMetadata: fileMetadataRef.current,
+      sourceMarkdown: markdownRef.current,
+    };
+    const isSnapshotCurrent = () => (
+      getDocumentIdentityVersion() === snapshot.sourceDocumentIdentityVersion
+      && filePathRef.current === snapshot.sourcePath
+    );
 
     const runSave = async (): Promise<string | false> => {
-      const flushedMarkdown = flushVisualEditorState();
-      if (flushedMarkdown !== null) {
-        markdownRef.current = flushedMarkdown;
-      }
-      const snapshot = {
-        ...requestedOptions,
-        sourcePath: filePathRef.current,
-        sourceMetadata: fileMetadataRef.current,
-        sourceMarkdown: markdownRef.current,
-      };
+      if (!isSnapshotCurrent()) return false;
       let targetPath: string | null = null;
       try {
         targetPath = snapshot.forceSaveAs || !snapshot.sourcePath
           ? await pickSavePath(suggestedMarkdownSavePath(snapshot.sourceMarkdown, snapshot.sourcePath))
           : snapshot.sourcePath;
       } catch (error) {
-        console.error(error);
-        setAutosaveStatus('error');
-        pushToast(error instanceof Error ? error.message : 'Could not open the Save As dialog.', 'error');
+        if (isSnapshotCurrent()) {
+          console.error(error);
+          setAutosaveStatus('error');
+          pushToast(error instanceof Error ? error.message : 'Could not open the Save As dialog.', 'error');
+        }
         return false;
       }
       if (!targetPath) return false;
+      if (!isSnapshotCurrent()) return false;
 
       setAutosaveStatus('saving');
 
@@ -106,6 +117,17 @@ export function useSaveOperations({
       let existingMetadata: FileMetadata | null = null;
       let externalBackupCreated = false;
       let forceOverwriteConfirmed = false;
+      let backupWarning = false;
+      const tryCreateBackupSnapshot = async (label: string): Promise<boolean> => {
+        try {
+          await createBackupSnapshot(targetPath, label);
+          return true;
+        } catch (backupError) {
+          backupWarning = true;
+          console.warn(`Backup snapshot (${label}) could not be created.`, backupError);
+          return false;
+        }
+      };
       const confirmForceOverwrite = async () => {
         if (!snapshot.forceOverwrite || forceOverwriteConfirmed) return true;
         const overwrite = await confirmText({
@@ -121,14 +143,16 @@ export function useSaveOperations({
       try {
         const preliminaryMetadata = await statFile(targetPath, { contentHash: false });
         if (isCloudPlaceholderMetadata(preliminaryMetadata)) {
-          setAutosaveStatus('error');
           saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
-          pushToast(
-            snapshot.autosave
-              ? 'Autosave paused: this file is cloud-only. Download or pin it locally, then save again.'
-              : 'This file is cloud-only. Download or pin it locally before saving so ScieMD does not block on cloud rehydration.',
-            'warning',
-          );
+          if (isSnapshotCurrent()) {
+            setAutosaveStatus('error');
+            pushToast(
+              snapshot.autosave
+                ? 'Autosave paused: this file is cloud-only. Download or pin it locally, then save again.'
+                : 'This file is cloud-only. Download or pin it locally before saving so ScieMD does not block on cloud rehydration.',
+              'warning',
+            );
+          }
           return false;
         }
         existingMetadata = await statFile(targetPath, { contentHash: true });
@@ -137,17 +161,20 @@ export function useSaveOperations({
         if (targetPath !== snapshot.sourcePath && isMissingFileStatError(error)) {
           existingMetadata = null;
         } else {
-          setAutosaveStatus('error');
           saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
-          pushToast(
-            snapshot.autosave
-              ? 'Autosave paused: ScieMD could not verify the disk file before saving. Your in-memory draft was preserved.'
-              : `Could not verify the disk file before saving: ${error instanceof Error ? error.message : String(error)}`,
-            'error',
-          );
+          if (isSnapshotCurrent()) {
+            setAutosaveStatus('error');
+            pushToast(
+              snapshot.autosave
+                ? 'Autosave paused: ScieMD could not verify the disk file before saving. Your in-memory draft was preserved.'
+                : `Could not verify the disk file before saving: ${error instanceof Error ? error.message : String(error)}`,
+              'error',
+            );
+          }
           return false;
         }
       }
+      if (!isSnapshotCurrent()) return false;
 
       if (targetPath !== snapshot.sourcePath && existingMetadata && !snapshot.autosave) {
         const replace = await confirmText({
@@ -157,15 +184,17 @@ export function useSaveOperations({
           cancelLabel: 'Cancel',
         });
         if (!replace) {
-          setAutosaveStatus(filePathRef.current ? 'pending' : 'idle');
+          if (isSnapshotCurrent()) setAutosaveStatus(filePathRef.current ? 'pending' : 'idle');
           return false;
         }
       }
 
       if (targetPath === snapshot.sourcePath && existingMetadata && metadataChanged(snapshot.sourceMetadata, existingMetadata)) {
-        setAutosaveStatus('conflict');
-        setExternalConflict(true);
         saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+        if (isSnapshotCurrent()) {
+          setAutosaveStatus('conflict');
+          setExternalConflict(true);
+        }
         if (snapshot.autosave) return false;
         if (snapshot.forceOverwrite) {
           if (!(await confirmForceOverwrite())) return false;
@@ -178,8 +207,7 @@ export function useSaveOperations({
           });
           if (!overwrite) return false;
         }
-        await createBackupSnapshot(targetPath, 'external');
-        externalBackupCreated = true;
+        externalBackupCreated = await tryCreateBackupSnapshot('external');
         metadataForWrite = existingMetadata;
       }
 
@@ -191,27 +219,31 @@ export function useSaveOperations({
             metadataForWrite = preWriteMetadata;
             externalBackupCreated = false;
             if (!snapshot.forceOverwrite) {
-              setAutosaveStatus('conflict');
-              setExternalConflict(true);
               saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
-              pushToast(
-                snapshot.autosave
-                  ? 'Autosave paused: the file changed on disk just before saving. Your in-memory draft was preserved.'
-                  : 'External change detected just before saving. Review disk changes or use Save Anyway.',
-                'warning',
-              );
+              if (isSnapshotCurrent()) {
+                setAutosaveStatus('conflict');
+                setExternalConflict(true);
+                pushToast(
+                  snapshot.autosave
+                    ? 'Autosave paused: the file changed on disk just before saving. Your in-memory draft was preserved.'
+                    : 'External change detected just before saving. Review disk changes or use Save Anyway.',
+                  'warning',
+                );
+              }
               return false;
             }
             if (!(await confirmForceOverwrite())) return false;
           }
         }
+        if (!isSnapshotCurrent()) return false;
 
         if (existingMetadata) {
           if (!snapshot.autosave && !externalBackupCreated) {
-            await createBackupSnapshot(targetPath, 'manual');
+            await tryCreateBackupSnapshot('manual');
           } else if (snapshot.autosave && shouldCreateAutosaveBackup(backupScheduleRef.current, Date.now(), BACKUP_INTERVAL_MS)) {
-            await createBackupSnapshot(targetPath, 'autosave');
-            backupScheduleRef.current = markAutosaveBackupCreated(backupScheduleRef.current, Date.now());
+            if (await tryCreateBackupSnapshot('autosave')) {
+              backupScheduleRef.current = markAutosaveBackupCreated(backupScheduleRef.current, Date.now());
+            }
           }
         }
 
@@ -219,9 +251,9 @@ export function useSaveOperations({
           ? existingMetadata ?? snapshot.sourceMetadata
           : existingMetadata;
         const nextMetadata = await writeTextFileAtomic(targetPath, snapshot.sourceMarkdown, metadataForWrite, expectedMetadata);
+        if (!isSnapshotCurrent()) return false;
         filePathRef.current = targetPath;
         fileMetadataRef.current = nextMetadata;
-        markdownRef.current = snapshot.sourceMarkdown;
         setFilePath(targetPath);
         setFileMetadata(nextMetadata);
         setLastSavedMarkdown(snapshot.sourceMarkdown);
@@ -230,46 +262,59 @@ export function useSaveOperations({
         setExternalConflict(false);
         setSettings(rememberRecentFile(targetPath));
         clearFileDraft(targetPath);
-        if (!snapshot.autosave) pushToast('Saved', 'success');
+        if (snapshot.sourcePath && snapshot.sourcePath !== targetPath) {
+          clearFileDraft(snapshot.sourcePath);
+        }
+        if (!snapshot.autosave) {
+          pushToast(
+            backupWarning ? 'Document saved, but backup snapshot could not be created.' : 'Saved',
+            backupWarning ? 'warning' : 'success',
+          );
+        }
         return targetPath;
       } catch (error) {
         console.error(error);
         if (isExternalChangeSaveError(error)) {
-          setAutosaveStatus('conflict');
-          setExternalConflict(true);
           if (snapshot.sourcePath) saveFileDraft(snapshot.sourcePath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
-          pushToast(
-            snapshot.autosave
-              ? 'Autosave paused: the file changed on disk. Your in-memory draft was preserved for recovery.'
-              : 'External change detected. Reload, Save As, or use Save Anyway after reviewing the disk version.',
-            'warning',
-          );
+          if (isSnapshotCurrent()) {
+            setAutosaveStatus('conflict');
+            setExternalConflict(true);
+            pushToast(
+              snapshot.autosave
+                ? 'Autosave paused: the file changed on disk. Your in-memory draft was preserved for recovery.'
+                : 'External change detected. Reload, Save As, or use Save Anyway after reviewing the disk version.',
+              'warning',
+            );
+          }
           return false;
         }
-        setAutosaveStatus('error');
         if (snapshot.sourcePath) saveFileDraft(snapshot.sourcePath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
-        pushToast(
-          snapshot.autosave
-            ? `Autosave failed: ${error instanceof Error ? error.message : 'Save failed.'}`
-            : error instanceof Error ? error.message : 'Save failed.',
-          'error',
-        );
+        if (isSnapshotCurrent()) {
+          setAutosaveStatus('error');
+          pushToast(
+            snapshot.autosave
+              ? `Autosave failed: ${error instanceof Error ? error.message : 'Save failed.'}`
+              : error instanceof Error ? error.message : 'Save failed.',
+            'error',
+          );
+        }
         return false;
       }
     };
 
     updateSaveQueueDepth(1);
-    const queuedSave = saveQueueRef.current.then(runSave, runSave);
-    saveQueueRef.current = queuedSave
-      .catch((error) => {
-        console.error('Save queue chain error:', error);
+    const queuedSave: Promise<string | false> = saveQueueRef.current.then(runSave, runSave);
+    const handledSave: Promise<string | false> = queuedSave.catch((error): false => {
+      console.error('Save queue chain error:', error);
+      if (isSnapshotCurrent()) {
         setAutosaveStatus('error');
         pushToast(error instanceof Error ? error.message : 'Save queue failed before the document could be written.', 'error');
-        return undefined;
-      })
-      .finally(() => updateSaveQueueDepth(-1));
-    return queuedSave;
-  }, [confirmText, pushToast, setAutosaveStatus, setExternalConflict, setFileMetadata, setFilePath, setLastAutosavedAt, setLastSavedMarkdown, setSettings, updateSaveQueueDepth]);
+      }
+      return false;
+    });
+    saveQueueRef.current = handledSave.finally(() => updateSaveQueueDepth(-1));
+    return handledSave;
+  }, [confirmText, getDocumentIdentityVersion, pushToast, setAutosaveStatus, setExternalConflict, setFileMetadata, setFilePath, setLastAutosavedAt, setLastSavedMarkdown, setSettings, updateSaveQueueDepth]);
 
   const ensureDocumentPathForAssets = useCallback(async () => {
     if (filePath) return filePath;

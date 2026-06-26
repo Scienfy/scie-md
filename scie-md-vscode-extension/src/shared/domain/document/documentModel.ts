@@ -53,8 +53,8 @@ export function parseScienfyDocument(markdown: string, options: ParseScienfyDocu
     ...getStringArrayField(scienfy, 'variablesFile'),
   ]));
   const directives = parseDirectiveBlocks(body);
-  const citations = buildCitationIndex(body, bibliographyFiles, options.bibtex ?? '');
-  const references = buildCrossReferenceIndex(body);
+  const citations = buildCitationIndex(body, bibliographyFiles, options.bibtex ?? '', frontmatter.hasFrontmatter ? frontmatter.endLine : 0);
+  const references = buildCrossReferenceIndex(body, frontmatter.hasFrontmatter ? frontmatter.endLine : 0);
   const variables = buildVariableIndex(markdown, frontmatter, options.variableDefinitions ?? []);
   const variantGroups = parseVariantGroups(markdown);
   const variantStructureIssues = validateVariantStructure(markdown);
@@ -86,7 +86,7 @@ export function safeParseScienfyDocument(
   try {
     return parseScienfyDocument(markdown, options);
   } catch (error) {
-    console.error('ScieMD document parser failed; using source-only fallback.', error);
+    console.error('ScieMD document parser failed; using raw Markdown fallback.', error);
     return createFallbackScienfyDocument(markdown, options, error);
   }
 }
@@ -146,7 +146,7 @@ export function createFallbackScienfyDocument(
       {
         severity: 'error',
         code: DOCUMENT_PARSE_CRASH_CODE,
-        message: `ScieMD could not parse this document safely. It was opened in source mode so the raw Markdown stays editable. Parser error: ${parseMessage}`,
+        message: `ScieMD could not parse this document safely. Raw Markdown remains editable in visual mode. Parser error: ${parseMessage}`,
         line: 1,
       },
       ...(options.extraDiagnostics ?? []),
@@ -226,6 +226,7 @@ function buildDiagnostics(
       severity: 'warning',
       code: 'citation-missing',
       message: `Citation @${key} is not present in the loaded bibliography index.`,
+      line: citations.usages.find((usage) => usage.key === key)?.line,
     });
   }
 
@@ -322,6 +323,15 @@ function buildFrontmatterSchemaDiagnostics(frontmatter: FrontmatterParseResult):
     });
   }
 
+  if ('scienfy' in data && !isScienfyMetadataObject(data.scienfy)) {
+    diagnostics.push({
+      severity: 'error',
+      code: 'frontmatter-scienfy-invalid',
+      message: 'Front matter scienfy block must be a YAML object.',
+      line: frontmatter.startLine,
+    });
+  }
+
   if ('documentType' in scienfy && typeof scienfy.documentType !== 'string') {
     diagnostics.push({
       severity: 'warning',
@@ -355,4 +365,8 @@ function buildFrontmatterSchemaDiagnostics(frontmatter: FrontmatterParseResult):
 function isStringOrStringArray(value: unknown): boolean {
   if (typeof value === 'string') return true;
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isScienfyMetadataObject(value: unknown): boolean {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }

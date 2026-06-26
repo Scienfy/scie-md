@@ -57,6 +57,29 @@ describe('NavigationSidebar', () => {
 
     expect(labels).toEqual(['Files', 'Outline', 'Data', 'Refs']);
   });
+
+  it('cleans up resize state when pointer cancellation is received', () => {
+    const onResizeCommit = vi.fn();
+    renderSidebar({ onResizeCommit });
+    const resizeHandle = container.querySelector<HTMLElement>('.sidebar-resize-handle');
+    expect(resizeHandle).not.toBeNull();
+
+    act(() => {
+      resizeHandle?.dispatchEvent(new MouseEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 100,
+      }));
+    });
+    expect(document.documentElement.classList.contains('resizing-navigation-sidebar')).toBe(true);
+
+    act(() => {
+      window.dispatchEvent(new Event('pointercancel'));
+    });
+    expect(document.documentElement.classList.contains('resizing-navigation-sidebar')).toBe(false);
+    expect(onResizeCommit).toHaveBeenCalledWith(360);
+  });
 });
 
 function renderSidebar(overrides: Partial<ComponentProps<typeof NavigationSidebar>> = {}) {

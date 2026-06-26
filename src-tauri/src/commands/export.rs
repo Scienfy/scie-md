@@ -11,6 +11,7 @@ use std::{
 
 use super::{
     path_grants::{assert_file_read_allowed, assert_file_write_allowed},
+    path_utils::{external_safe_path, external_safe_path_string},
     process::{output_quiet, spawn_quiet, terminate_child_tree},
 };
 use regex::Regex;
@@ -29,7 +30,7 @@ pub struct PandocExportResponse {
 
 #[tauri::command]
 pub fn check_pandoc_available() -> Result<String, String> {
-    resolve_pandoc_executable().map(|path| path.to_string_lossy().to_string())
+    resolve_pandoc_executable().map(|path| external_safe_path_string(&path))
 }
 
 #[tauri::command]
@@ -215,7 +216,7 @@ fn run_browser_pdf_export(
 
     let file_url = path_to_file_url(input_path);
     let headless_arg = browser_headless_arg(&browser_path);
-    let mut command = Command::new(&browser_path);
+    let mut command = Command::new(external_safe_path(&browser_path));
     command
         .arg(headless_arg)
         .arg("--disable-gpu")
@@ -225,9 +226,12 @@ fn run_browser_pdf_export(
         .arg("--disable-background-networking")
         .arg(format!(
             "--user-data-dir={}",
-            browser_profile.to_string_lossy()
+            external_safe_path_string(&browser_profile)
         ))
-        .arg(format!("--print-to-pdf={}", temp_output.to_string_lossy()))
+        .arg(format!(
+            "--print-to-pdf={}",
+            external_safe_path_string(&temp_output)
+        ))
         .arg(file_url)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -241,7 +245,7 @@ fn run_browser_pdf_export(
             let _ = fs::remove_dir_all(&browser_profile);
             return Err(format!(
                 "Could not start browser PDF renderer at {}: {error}",
-                browser_path.to_string_lossy()
+                external_safe_path_string(&browser_path)
             ));
         }
     };
@@ -296,12 +300,12 @@ fn run_browser_pdf_export(
     if final_output.as_path() != output_path {
         stderr.push_str(&format!(
             "\nThe selected PDF was open or locked, so ScieMD saved this export as {} instead.",
-            final_output.to_string_lossy()
+            external_safe_path_string(&final_output)
         ));
     }
 
     Ok(PandocExportResponse {
-        output_path: final_output.to_string_lossy().to_string(),
+        output_path: external_safe_path_string(&final_output),
         stderr,
     })
 }
@@ -338,7 +342,7 @@ pub fn export_html_to_docx_native(
     };
 
     Ok(PandocExportResponse {
-        output_path: final_output.to_string_lossy().to_string(),
+        output_path: external_safe_path_string(&final_output),
         stderr: "DOCX exported with ScieMD built-in WordprocessingML fallback because Pandoc was unavailable."
             .to_string(),
     })
@@ -390,10 +394,26 @@ fn validate_extra_pandoc_args(args: Vec<String>) -> Result<Vec<String>, String> 
         "-f",
         "--to",
         "-t",
+        "--sandbox",
         "--csl",
         "--data-dir",
         "--lua-filter",
         "--filter",
+        "--pdf-engine-opt",
+    ];
+    const PATH_BEARING: &[&str] = &[
+        "--metadata-file",
+        "--template",
+        "--reference-doc",
+        "--bibliography",
+        "--include-in-header",
+        "--include-before-body",
+        "--include-after-body",
+        "--resource-path",
+        "--extract-media",
+        "--epub-cover-image",
+        "--epub-metadata",
+        "--defaults",
     ];
     let mut index = 0;
     while index < args.len() {
@@ -404,12 +424,26 @@ fn validate_extra_pandoc_args(args: Vec<String>) -> Result<Vec<String>, String> 
         {
             return Err(format!("Pandoc argument {argument} is managed by ScieMD and cannot be set by an export profile."));
         }
+        if PATH_BEARING
+            .iter()
+            .any(|blocked| argument == *blocked || argument.starts_with(&format!("{blocked}=")))
+        {
+            return Err(format!(
+                "Pandoc argument {argument} reads or writes additional paths and cannot be set by an export profile."
+            ));
+        }
+        if argument.to_ascii_lowercase().contains("shell-escape") {
+            return Err(
+                "Pandoc export profiles cannot pass shell-escape options to PDF engines."
+                    .to_string(),
+            );
+        }
         if let Some(value) = argument.strip_prefix("--pdf-engine=") {
             validate_pdf_engine_arg(value)?;
         } else if argument == "--pdf-engine" {
-            let value = args
-                .get(index + 1)
-                .ok_or_else(|| "Pandoc argument --pdf-engine requires an engine name.".to_string())?;
+            let value = args.get(index + 1).ok_or_else(|| {
+                "Pandoc argument --pdf-engine requires an engine name.".to_string()
+            })?;
             validate_pdf_engine_arg(value)?;
             index += 1;
         }
@@ -422,11 +456,14 @@ fn validate_pdf_engine_arg(value: &str) -> Result<(), String> {
     let engine = non_empty_engine_name(value)
         .ok_or_else(|| "Pandoc argument --pdf-engine requires an engine name.".to_string())?;
     if engine.contains('/') || engine.contains('\\') || Path::new(&engine).is_absolute() {
-        return Err("Pandoc PDF engine must be a trusted engine name, not a local executable path.".to_string());
+        return Err(
+            "Pandoc PDF engine must be a trusted engine name, not a local executable path."
+                .to_string(),
+        );
     }
     if !allowed_pandoc_pdf_engine(&engine) {
         return Err(format!(
-            "Pandoc PDF engine `{engine}` is not allowed. Use xelatex, lualatex, pdflatex, or tectonic."
+            "Pandoc PDF engine `{engine}` is not allowed. Use xelatex, lualatex, pdflatex, tectonic, typst, or weasyprint."
         ));
     }
     Ok(())
@@ -470,21 +507,22 @@ fn run_pandoc_with_source(
     );
     let stderr_file = fs::File::create(&stderr_path)
         .map_err(|error| format!("Could not create Pandoc log file: {error}"))?;
-    let mut command = Command::new(pandoc_path);
+    let mut command = Command::new(external_safe_path(pandoc_path));
     command
-        .current_dir(working_dir)
-        .arg(input_path)
+        .current_dir(external_safe_path(working_dir))
+        .arg("--sandbox")
+        .arg(external_safe_path(input_path))
         .arg("--from")
         .arg(source)
         .arg("--to")
         .arg(target)
         .arg("--output")
-        .arg(&temp_output)
+        .arg(external_safe_path(&temp_output))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::from(stderr_file));
     if let Some(csl_path) = options.citation_style_path.as_deref() {
-        command.arg("--csl").arg(csl_path);
+        command.arg("--csl").arg(external_safe_path(csl_path));
     }
     for argument in &options.extra_args {
         command.arg(argument);
@@ -516,7 +554,7 @@ fn run_pandoc_with_source(
     };
 
     Ok(PandocExportResponse {
-        output_path: final_output.to_string_lossy().to_string(),
+        output_path: external_safe_path_string(&final_output),
         stderr,
     })
 }
@@ -651,6 +689,13 @@ fn resolve_browser_executable() -> Result<PathBuf, String> {
                     .join("chrome.exe")
             }),
             std::env::var_os("ProgramFiles(x86)").map(|root| {
+                PathBuf::from(root)
+                    .join("Google")
+                    .join("Chrome")
+                    .join("Application")
+                    .join("chrome.exe")
+            }),
+            std::env::var_os("LOCALAPPDATA").map(|root| {
                 PathBuf::from(root)
                     .join("Google")
                     .join("Chrome")
@@ -803,6 +848,8 @@ fn preflight_pandoc_target(target: &str, extra_args: &[String]) -> Result<(), St
                     "lualatex".to_string(),
                     "pdflatex".to_string(),
                     "tectonic".to_string(),
+                    "typst".to_string(),
+                    "weasyprint".to_string(),
                 ]
             });
     if candidates
@@ -813,10 +860,10 @@ fn preflight_pandoc_target(target: &str, extra_args: &[String]) -> Result<(), St
     }
     if let Some(engine) = pandoc_pdf_engine(extra_args) {
         Err(format!(
-            "Pandoc PDF export requires the configured LaTeX engine `{engine}`, but it was not found. Install that engine or choose ScieMD's styled PDF export."
+            "Pandoc PDF export requires the configured PDF engine `{engine}`, but it was not found. Install that engine or choose ScieMD's styled PDF export."
         ))
     } else {
-        Err("Pandoc PDF export requires a LaTeX engine (xelatex, lualatex, or pdflatex), but none was found. Install a TeX distribution or choose ScieMD's styled PDF export.".to_string())
+        Err("Pandoc PDF export requires a PDF engine (xelatex, lualatex, pdflatex, tectonic, typst, or weasyprint), but none was found. Install a supported engine or choose ScieMD's styled PDF export.".to_string())
     }
 }
 
@@ -847,7 +894,10 @@ fn non_empty_engine_name(value: &str) -> Option<String> {
 }
 
 fn allowed_pandoc_pdf_engine(engine: &str) -> bool {
-    matches!(engine, "xelatex" | "lualatex" | "pdflatex" | "tectonic")
+    matches!(
+        engine,
+        "xelatex" | "lualatex" | "pdflatex" | "tectonic" | "typst" | "weasyprint"
+    )
 }
 
 fn resolve_tool_executable(name: &str) -> Option<PathBuf> {
@@ -1400,7 +1450,7 @@ fn replace_export_output(temp_output: &Path, output_path: &Path) -> Result<PathB
                 fs::rename(temp_output, &conflict_path).map_err(|move_error| {
                     format!(
                         "Could not replace the selected export because it appears to be open or locked: {preserve_error}. ScieMD also could not save the new export as {}: {move_error}",
-                        conflict_path.to_string_lossy()
+                        external_safe_path_string(&conflict_path)
                     )
                 })?;
                 final_output = conflict_path;
@@ -1435,14 +1485,18 @@ fn rename_or_copy_output(temp_output: &Path, output_path: &Path) -> Result<(), S
     }
 }
 
-#[cfg(unix)]
 fn is_cross_device_error(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::CrossesDevices || is_platform_cross_device_error(error)
+}
+
+#[cfg(unix)]
+fn is_platform_cross_device_error(error: &std::io::Error) -> bool {
     error.raw_os_error() == Some(libc::EXDEV)
 }
 
 #[cfg(not(unix))]
-fn is_cross_device_error(_error: &std::io::Error) -> bool {
-    false
+fn is_platform_cross_device_error(error: &std::io::Error) -> bool {
+    error.raw_os_error() == Some(17)
 }
 
 fn sync_file_best_effort(path: &Path) {
@@ -1499,21 +1553,9 @@ fn write_temp_text(path: &Path, text: &str, label: &str) -> Result<(), String> {
 }
 
 fn path_to_file_url(path: &Path) -> String {
-    let absolute = path
-        .canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf())
+    let absolute = external_safe_path(&path.canonicalize().unwrap_or_else(|_| path.to_path_buf()))
         .to_string_lossy()
         .to_string();
-    #[cfg(windows)]
-    let absolute = {
-        let mut absolute = absolute;
-        if let Some(stripped) = absolute.strip_prefix(r"\\?\UNC\") {
-            absolute = format!(r"\\{stripped}");
-        } else if let Some(stripped) = absolute.strip_prefix(r"\\?\") {
-            absolute = stripped.to_string();
-        }
-        absolute
-    };
     let absolute = absolute.replace('\\', "/");
     let encoded = percent_encode_file_path(&absolute);
     if encoded.starts_with('/') {
@@ -1541,9 +1583,9 @@ mod tests {
     use super::{
         cleanup_stale_export_temp_files, create_conflict_output_path, create_temp_markdown_path,
         create_temp_output_path, html_document_title, pandoc_pdf_engine, pandoc_target_format,
-        parse_chromium_major_version, path_to_file_url, reject_directory_output, replace_export_output,
-        validate_browser_pdf_output, validate_extra_pandoc_args, validate_export_output,
-        working_directory, write_native_docx_from_html,
+        parse_chromium_major_version, path_to_file_url, reject_directory_output,
+        replace_export_output, validate_browser_pdf_output, validate_export_output,
+        validate_extra_pandoc_args, working_directory, write_native_docx_from_html,
     };
     use std::fs;
     use std::io::Read;
@@ -1586,13 +1628,48 @@ mod tests {
             "tectonic".to_string()
         ])
         .is_ok());
+        assert!(validate_extra_pandoc_args(vec!["--pdf-engine=typst".to_string()]).is_ok());
+        assert!(validate_extra_pandoc_args(vec![
+            "--pdf-engine".to_string(),
+            "weasyprint".to_string()
+        ])
+        .is_ok());
         assert!(validate_extra_pandoc_args(vec![
             "--pdf-engine".to_string(),
             "/tmp/custom-engine".to_string()
         ])
         .is_err());
+        assert!(
+            validate_extra_pandoc_args(vec!["--pdf-engine=custom-engine".to_string()]).is_err()
+        );
+    }
+
+    #[test]
+    fn rejects_path_bearing_pandoc_profile_arguments() {
         assert!(validate_extra_pandoc_args(vec![
-            "--pdf-engine=custom-engine".to_string()
+            "--toc".to_string(),
+            "--number-sections".to_string(),
+        ])
+        .is_ok());
+        assert!(
+            validate_extra_pandoc_args(vec!["--metadata-file=C:\\secret.yml".to_string()]).is_err()
+        );
+        assert!(validate_extra_pandoc_args(vec!["--sandbox".to_string()]).is_err());
+        assert!(validate_extra_pandoc_args(vec![
+            "--template".to_string(),
+            "C:\\secret-template.html".to_string()
+        ])
+        .is_err());
+        assert!(
+            validate_extra_pandoc_args(vec!["--extract-media=C:\\tmp\\media".to_string()]).is_err()
+        );
+        assert!(
+            validate_extra_pandoc_args(vec!["--pdf-engine-opt=--shell-escape".to_string()])
+                .is_err()
+        );
+        assert!(validate_extra_pandoc_args(vec![
+            "--pdf-engine-opt".to_string(),
+            "-output-directory=C:\\tmp".to_string()
         ])
         .is_err());
     }
@@ -1608,12 +1685,11 @@ mod tests {
         #[cfg(not(windows))]
         let export_path = "/Users/amin/exports/document.docx";
 
-        let cwd = working_directory(
-            Some(document_path),
-            Path::new(export_path),
-        )
-        .unwrap();
-        assert_eq!(cwd.file_name().and_then(|name| name.to_str()), Some("paper"));
+        let cwd = working_directory(Some(document_path), Path::new(export_path)).unwrap();
+        assert_eq!(
+            cwd.file_name().and_then(|name| name.to_str()),
+            Some("paper")
+        );
     }
 
     #[test]
@@ -1648,9 +1724,18 @@ mod tests {
 
     #[test]
     fn parses_browser_major_versions_for_headless_compatibility() {
-        assert_eq!(parse_chromium_major_version("Google Chrome 120.0.6099.71"), Some(120));
-        assert_eq!(parse_chromium_major_version("Microsoft Edge 108.0.1462.54"), Some(108));
-        assert_eq!(parse_chromium_major_version("Chromium 109.0.0.0 snap"), Some(109));
+        assert_eq!(
+            parse_chromium_major_version("Google Chrome 120.0.6099.71"),
+            Some(120)
+        );
+        assert_eq!(
+            parse_chromium_major_version("Microsoft Edge 108.0.1462.54"),
+            Some(108)
+        );
+        assert_eq!(
+            parse_chromium_major_version("Chromium 109.0.0.0 snap"),
+            Some(109)
+        );
         assert_eq!(parse_chromium_major_version("not a browser"), None);
     }
 

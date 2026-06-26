@@ -43,10 +43,12 @@ describe('Layer II document model', () => {
     expect(parsed.citations.usages.map((usage) => usage.key)).toEqual(['smith2026']);
     expect(parsed.references.labels.map((label) => label.id)).toContain('fig-surface');
     expect(parsed.references.usages.map((usage) => usage.id)).toContain('fig-surface');
+    expect(parsed.references.labels.find((label) => label.id === 'fig-surface')?.line).toBe(12);
+    expect(parsed.references.usages.find((usage) => usage.id === 'fig-surface')?.line).toBe(10);
     expect(parsed.directives[0].known).toBe(true);
   });
 
-  it('preserves unknown directives as warnings instead of source-only blockers', () => {
+  it('preserves unknown directives as non-blocking warnings', () => {
     const parsed = parseScienfyDocument(':::custom\ncontent\n:::\n');
 
     expect(parsed.diagnostics.some((diagnostic) => diagnostic.code === 'directive-unknown')).toBe(true);
@@ -66,6 +68,22 @@ describe('Layer II document model', () => {
     expect(parsed.citations.bibtexKeys).toEqual(['known2026']);
     expect(parsed.citations.missingKeys).toEqual(['missing2026']);
     expect(parsed.diagnostics.some((diagnostic) => diagnostic.code === 'citation-missing')).toBe(true);
+  });
+
+  it('reports missing bibliography keys with line numbers when the configured bibliography is empty', () => {
+    const parsed = parseScienfyDocument([
+      '---',
+      'bibliography: refs.bib',
+      '---',
+      'Intro.',
+      'Missing [@missing2026].',
+    ].join('\n'), { bibtex: '' });
+
+    expect(parsed.citations.missingKeys).toEqual(['missing2026']);
+    expect(parsed.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'citation-missing',
+      line: 5,
+    }));
   });
 
   it('rejects excessive YAML alias expansion in front matter', () => {
@@ -99,13 +117,23 @@ describe('Layer II document model', () => {
     expect(parsed.diagnostics.map((diagnostic) => diagnostic.code)).toContain('scienfy-visual-style');
   });
 
+  it('reports non-object scienfy front matter blocks', () => {
+    const parsed = parseScienfyDocument('---\nscienfy: paper\n---\n# Body\n');
+
+    expect(parsed.diagnostics).toContainEqual(expect.objectContaining({
+      severity: 'error',
+      code: 'frontmatter-scienfy-invalid',
+    }));
+    expect(parsed.documentType).toBeNull();
+  });
+
   it('keeps normal safe parsing equivalent to the strict parser', () => {
     const markdown = '---\ntitle: Rescue Test\n---\n# Body\n';
 
     expect(safeParseScienfyDocument(markdown).title).toBe(parseScienfyDocument(markdown).title);
   });
 
-  it('builds a structurally valid source-only fallback document after parser failure', () => {
+  it('builds a structurally valid raw Markdown fallback document after parser failure', () => {
     const fallback = createFallbackScienfyDocument(
       [
         '---',

@@ -18,9 +18,9 @@ describe('validateMarkdown', () => {
     expect(result.issues.some((issue) => issue.code === 'directive-unknown')).toBe(false);
   });
 
-  it('warns and blocks visual mode for unknown directives', () => {
+  it('reports unknown directives without blocking visual mode', () => {
     const result = validateMarkdown(':::custom\ncontent\n:::\n');
-    expect(result.sourceOnly).toBe(true);
+    expect(result.sourceOnly).toBe(false);
     expect(result.issues.some((issue) => issue.code === 'directive-unknown')).toBe(true);
     expect(result.issues.some((issue) => issue.code === 'directive-unknown-visual')).toBe(true);
   });
@@ -45,10 +45,31 @@ describe('validateMarkdown', () => {
     expect(result.issues.some((issue) => issue.code === 'variant-source-only')).toBe(false);
   });
 
-  it('blocks visual mode for raw HTML', () => {
+  it('reports raw HTML without blocking visual mode', () => {
     const result = validateMarkdown('<div>kept</div>\n');
-    expect(result.sourceOnly).toBe(true);
+    expect(result.sourceOnly).toBe(false);
     expect(result.issues.some((issue) => issue.code === 'raw-html' && issue.severity === 'error')).toBe(true);
+  });
+
+  it('does not treat HTML-like front matter strings as body raw HTML', () => {
+    const metadataOnly = validateMarkdown([
+      '---',
+      'title: "<span>Draft</span>"',
+      'threshold: "p < 0.05"',
+      '---',
+      '',
+      'Body text.',
+    ].join('\n'));
+    expect(metadataOnly.issues.some((issue) => issue.code === 'raw-html')).toBe(false);
+
+    const bodyHtml = validateMarkdown([
+      '---',
+      'title: "<span>Draft</span>"',
+      '---',
+      '',
+      '<div>Body HTML</div>',
+    ].join('\n'));
+    expect(bodyHtml.issues.some((issue) => issue.code === 'raw-html')).toBe(true);
   });
 
   it('does not treat visual-editor list transients as source-only syntax', () => {
@@ -85,27 +106,28 @@ describe('validateMarkdown', () => {
     expect(result.issues.some((issue) => issue.code === 'table-syntax')).toBe(true);
   });
 
-  it('forces source mode over five megabytes', () => {
+  it('reports oversized documents as source-first and defers deep parser diagnostics', () => {
     const result = validateMarkdown('small', SOURCE_ONLY_FILE_BYTES + 1);
     expect(result.sourceOnly).toBe(true);
     expect(result.issues.some((issue) => issue.code === 'source-only-size')).toBe(true);
+    expect(result.issues.some((issue) => issue.code === 'large-file-parser-deferred')).toBe(true);
   });
 
   it('flags internal visual placeholder markers if they ever leak into canonical markdown', () => {
     const result = validateMarkdown('SCIENFY\\_VISUAL\\_BLOCK\\_abc123\n');
-    expect(result.sourceOnly).toBe(true);
+    expect(result.sourceOnly).toBe(false);
     expect(result.issues.some((issue) => issue.code === 'internal-visual-marker')).toBe(true);
   });
 
-  it('forces source mode when the document parser falls back after a crash', () => {
+  it('reports parser fallback without blocking visual mode', () => {
     const fallback = createFallbackScienfyDocument('# Body\n', {}, new Error('boom'));
     const result = validateMarkdown('# Body\n', undefined, fallback);
 
-    expect(result.sourceOnly).toBe(true);
+    expect(result.sourceOnly).toBe(false);
     expect(result.issues.some((issue) => issue.code === DOCUMENT_PARSE_CRASH_CODE && issue.severity === 'error')).toBe(true);
   });
 
-  it('warns without forcing source mode for Markdown forms that visual mode normalizes', () => {
+  it('warns while still allowing visual mode for Markdown forms that visual mode normalizes', () => {
     for (const markdown of [
       'Heading\n=======\n',
       '+ Alpha\n+ Beta\n',

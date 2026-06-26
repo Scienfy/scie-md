@@ -130,4 +130,40 @@ describe('SlashCommandMenu', () => {
       markdown: expect.stringContaining('| Column 1 |'),
     }));
   });
+
+  it('supports keyboard navigation inside the table size grid', async () => {
+    const onSelect = vi.fn();
+    act(() => {
+      root.render(
+        <SlashCommandMenu
+          open
+          top={10}
+          left={10}
+          initialCommandId="table"
+          commands={[{ id: 'table', label: 'Table', detail: 'Choose rows and columns', markdown: '' }]}
+          onSelect={onSelect}
+          onClose={() => undefined}
+        />,
+      );
+    });
+    await act(async () => undefined);
+
+    const picker = container.querySelector<HTMLElement>('.slash-table-picker')!;
+    await act(async () => {
+      picker.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      picker.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    });
+
+    expect(container.textContent).toContain('3 rows x 4 columns');
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('3 rows by 4 columns');
+
+    await act(async () => {
+      picker.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'table',
+      markdown: expect.stringContaining('| Column 4 |'),
+    }));
+  });
 });

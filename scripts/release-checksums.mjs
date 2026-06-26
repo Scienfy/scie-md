@@ -5,20 +5,26 @@ import { pathToFileURL } from 'node:url';
 
 const releaseFileExtensions = new Set(['.msi', '.exe', '.msix', '.dmg', '.app', '.deb', '.rpm', '.vsix']);
 
-export function writeReleaseChecksumManifest(root = process.cwd()) {
+export function writeReleaseChecksumManifest(root = process.cwd(), options = {}) {
   const artifactDir = resolve(root, 'artifacts');
   const installerDir = join(artifactDir, 'installers');
   const checksumManifestPath = join(artifactDir, 'SHA256SUMS.txt');
   const releaseFiles = [];
 
-  const portableExe = join(artifactDir, 'ScieMD.exe');
-  if (existsSync(portableExe)) releaseFiles.push(portableExe);
+  if (Array.isArray(options.releaseFiles)) {
+    for (const filePath of options.releaseFiles) {
+      releaseFiles.push(resolve(root, filePath));
+    }
+  } else {
+    const portableExe = join(artifactDir, 'ScieMD.exe');
+    if (existsSync(portableExe)) releaseFiles.push(portableExe);
 
-  if (existsSync(installerDir)) {
-    for (const entry of readdirSync(installerDir, { withFileTypes: true })) {
-      const filePath = join(installerDir, entry.name);
-      if (entry.isFile() && releaseFileExtensions.has(extname(entry.name).toLowerCase())) {
-        releaseFiles.push(filePath);
+    if (existsSync(installerDir)) {
+      for (const entry of readdirSync(installerDir, { withFileTypes: true })) {
+        const filePath = join(installerDir, entry.name);
+        if (entry.isFile() && releaseFileExtensions.has(extname(entry.name).toLowerCase())) {
+          releaseFiles.push(filePath);
+        }
       }
     }
   }

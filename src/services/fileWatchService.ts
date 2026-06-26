@@ -10,7 +10,8 @@ export interface FileWatchChangeEvent {
 }
 
 const watchedScopes = new Map<string, string[]>();
-let watcherUpdateQueue: Promise<boolean> = Promise.resolve(true);
+let appliedWatchKey = '';
+let watcherUpdateInFlight: Promise<boolean> | null = null;
 
 export function listenFileWatchChanges(
   handler: (event: FileWatchChangeEvent) => void,
@@ -32,24 +33,42 @@ export function clearWatchedFiles(scope: string): Promise<boolean> {
 }
 
 function applyWatchedFiles(): Promise<boolean> {
-  const paths = watchedPathUnion();
-  watcherUpdateQueue = watcherUpdateQueue
-    .catch(() => false)
-    .then(async () => {
-      if (!isTauriRuntime()) return false;
-      try {
-        if (paths.length === 0) {
-          await invoke('unwatch_files_for_changes');
-        } else {
-          await invoke('watch_files_for_changes', { paths });
-        }
-        return true;
-      } catch (error) {
-        console.warn('File watcher unavailable; falling back to metadata polling.', error);
-        return false;
-      }
+  const watchKey = currentWatchKey();
+  if (watchKey === appliedWatchKey && !watcherUpdateInFlight) {
+    return Promise.resolve(true);
+  }
+  if (watcherUpdateInFlight) {
+    return watcherUpdateInFlight.then(() => applyWatchedFiles());
+  }
+  watcherUpdateInFlight = applyLatestWatchedFiles()
+    .finally(() => {
+      watcherUpdateInFlight = null;
     });
-  return watcherUpdateQueue;
+  return watcherUpdateInFlight;
+}
+
+async function applyLatestWatchedFiles(): Promise<boolean> {
+  if (!isTauriRuntime()) return false;
+  const paths = watchedPathUnion();
+  const watchKey = paths.map(normalizeWatchPath).sort().join('\n');
+  if (watchKey === appliedWatchKey) return true;
+  try {
+    if (paths.length === 0) {
+      await invoke('unwatch_files_for_changes');
+    } else {
+      await invoke('watch_files_for_changes', { paths });
+    }
+    appliedWatchKey = watchKey;
+    return true;
+  } catch (error) {
+    appliedWatchKey = '';
+    console.warn('File watcher unavailable; falling back to metadata polling.', error);
+    return false;
+  }
+}
+
+function currentWatchKey(): string {
+  return watchedPathUnion().map(normalizeWatchPath).sort().join('\n');
 }
 
 function watchedPathUnion(): string[] {
@@ -71,9 +90,24 @@ function uniquePaths(paths: string[]): string[] {
   const unique: string[] = [];
   for (const rawPath of paths) {
     const path = rawPath.trim();
-    if (!path || seen.has(path)) continue;
-    seen.add(path);
+    const key = normalizeWatchPath(path);
+    if (!path || seen.has(key)) continue;
+    seen.add(key);
     unique.push(path);
   }
   return unique;
+}
+
+function normalizeWatchPath(path: string): string {
+  let normalized = path.trim();
+  if (/^\\\\\?\\UNC\\/i.test(normalized)) {
+    normalized = `\\\\${normalized.slice('\\\\?\\UNC\\'.length)}`;
+  } else if (/^\\\\\?\\/i.test(normalized)) {
+    normalized = normalized.slice('\\\\?\\'.length);
+  }
+  normalized = normalized.replace(/\\/g, '/');
+  const isUncPath = normalized.startsWith('//');
+  normalized = normalized.replace(/\/+/g, '/');
+  if (isUncPath && !normalized.startsWith('//')) normalized = `/${normalized}`;
+  return normalized.toLocaleLowerCase();
 }

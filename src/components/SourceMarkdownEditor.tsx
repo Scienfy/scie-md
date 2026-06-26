@@ -5,7 +5,8 @@ import { defaultKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown as markdownLanguage } from '@codemirror/lang-markdown';
 import { Compartment, EditorState, Transaction } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
-import { Decoration, EditorView, hoverTooltip, keymap } from '@codemirror/view';
+import { Decoration, EditorView, hoverTooltip, keymap, ViewPlugin } from '@codemirror/view';
+import type { DecorationSet, ViewUpdate } from '@codemirror/view';
 import type { AuthorshipMark } from '../markdown/authorship';
 import { fencedCodeRanges, inlineCodeRanges, isOffsetInsideRanges, mergeRanges, scieMdCommentRanges } from '../markdown/markdownRanges';
 import type { ValidationIssue } from '../markdown/markdownValidation';
@@ -626,7 +627,6 @@ export function createSourceCitationDecorationRanges(
     for (const citationMatch of raw.matchAll(/@([A-Za-z0-9_][A-Za-z0-9_:.#$%&+\-?<>~/]*)/g)) {
       const localIndex = citationMatch.index ?? 0;
       const from = bracketMatch.index + localIndex;
-      if (isCrossReferenceLike(citationMatch[1])) continue;
       ranges.push(createCitationDecorationRange(from, from + citationMatch[0].length, citationMatch[1], entryByKey, known, hasBibliography));
     }
   }
@@ -713,25 +713,43 @@ function cleanBibtexField(value: string): string {
   return value.replace(/[{}]/g, '').replace(/\\&/g, '&').replace(/\s+/g, ' ').trim();
 }
 
-function isCrossReferenceLike(key: string): boolean {
-  return /^(fig|tbl|eq|sec|lst|nte|tip|wrn|imp|cau)-/.test(key);
-}
-
 function createSourceFocusExtension(): Extension {
-  return EditorView.decorations.compute(['selection', 'doc'], (state) => {
-    const active = activeParagraphRange(state);
-    const ranges = [];
-    for (const paragraph of paragraphRanges(state)) {
-      const className = paragraph.from === active.from && paragraph.to === active.to
-        ? 'source-focus-active'
-        : 'source-focus-dimmed';
-      ranges.push(Decoration.line({ class: className }).range(paragraph.from));
-      for (let lineNumber = state.doc.lineAt(paragraph.from).number + 1; lineNumber <= state.doc.lineAt(paragraph.to).number; lineNumber += 1) {
-        ranges.push(Decoration.line({ class: className }).range(state.doc.line(lineNumber).from));
+  return ViewPlugin.fromClass(class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = buildSourceFocusDecorations(view);
+    }
+
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.selectionSet || update.viewportChanged) {
+        this.decorations = buildSourceFocusDecorations(update.view);
       }
     }
-    return Decoration.set(ranges, true);
+  }, {
+    decorations: (plugin) => plugin.decorations,
   });
+}
+
+function buildSourceFocusDecorations(view: EditorView): DecorationSet {
+  const active = activeParagraphRange(view.state);
+  const ranges = [];
+  let visibleParagraph: { from: number; to: number } | null = null;
+  let position = view.viewport.from;
+  while (position <= view.viewport.to) {
+    const line = view.state.doc.lineAt(position);
+    if (!visibleParagraph || line.from > visibleParagraph.to) {
+      visibleParagraph = paragraphRangeAtLine(view.state, line.number);
+    }
+    const paragraph = visibleParagraph;
+    const className = paragraph.from === active.from && paragraph.to === active.to
+      ? 'source-focus-active'
+      : 'source-focus-dimmed';
+    ranges.push(Decoration.line({ class: className }).range(line.from));
+    if (line.to >= view.viewport.to || line.to >= view.state.doc.length) break;
+    position = line.to + 1;
+  }
+  return Decoration.set(ranges, true);
 }
 
 function activeParagraphRange(state: EditorState): { from: number; to: number } {
@@ -746,33 +764,19 @@ function activeParagraphRange(state: EditorState): { from: number; to: number } 
   };
 }
 
-function paragraphRanges(state: EditorState): Array<{ from: number; to: number }> {
-  const ranges: Array<{ from: number; to: number }> = [];
-  let startLine: number | null = null;
-
-  for (let lineNumber = 1; lineNumber <= state.doc.lines; lineNumber += 1) {
-    const line = state.doc.line(lineNumber);
-    if (line.text.trim()) {
-      startLine ??= lineNumber;
-      continue;
-    }
-    if (startLine !== null) {
-      ranges.push({
-        from: state.doc.line(startLine).from,
-        to: state.doc.line(lineNumber - 1).to,
-      });
-      startLine = null;
-    }
+function paragraphRangeAtLine(state: EditorState, lineNumber: number): { from: number; to: number } {
+  const line = state.doc.line(lineNumber);
+  if (!line.text.trim()) {
+    return { from: line.from, to: line.to };
   }
-
-  if (startLine !== null) {
-    ranges.push({
-      from: state.doc.line(startLine).from,
-      to: state.doc.line(state.doc.lines).to,
-    });
-  }
-
-  return ranges;
+  let startLine = lineNumber;
+  let endLine = lineNumber;
+  while (startLine > 1 && state.doc.line(startLine - 1).text.trim()) startLine -= 1;
+  while (endLine < state.doc.lines && state.doc.line(endLine + 1).text.trim()) endLine += 1;
+  return {
+    from: state.doc.line(startLine).from,
+    to: state.doc.line(endLine).to,
+  };
 }
 
 export function buildInsertTransaction(view: Pick<EditorView, 'state'>, snippet: string) {

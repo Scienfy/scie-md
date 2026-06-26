@@ -330,10 +330,12 @@ button[type="submit"] {
 }
 
 .vscode-scie-review-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   border-bottom: 1px solid var(--scie-border);
   background: var(--scie-widget);
   max-height: 42vh;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .vscode-scie-review-panel header,
@@ -343,6 +345,12 @@ button[type="submit"] {
   gap: 10px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--scie-border);
+  background: var(--scie-widget);
+}
+
+.vscode-scie-review-panel footer {
+  border-top: 1px solid var(--scie-border);
+  border-bottom: 0;
 }
 
 .vscode-scie-review-panel header button {
@@ -352,7 +360,11 @@ button[type="submit"] {
 .vscode-scie-review-units {
   display: grid;
   gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 10px 12px;
+  scrollbar-gutter: stable;
 }
 
 .vscode-scie-review-unit {

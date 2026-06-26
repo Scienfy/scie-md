@@ -1,7 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { safeParseScienfyDocument } from '../../domain/document/documentModel';
 import type { DocumentDiagnostic } from '../../domain/document/documentModel';
-import { parseScienfyDocumentAsync } from '../../domain/document/documentParserWorker';
+import { isTransientParserWorkerFailure, parseScienfyDocumentAsync } from '../../domain/document/documentParserWorker';
 import { parseVariableDataFile } from '../../domain/variables/variableIndex';
 import type { VariableDefinition } from '../../domain/variables/variableIndex';
 import { resolveRelativeMarkdownAsset } from '../../markdown/documentIntelligence';
@@ -39,8 +39,13 @@ export function useLayerTwoDocument(markdown: string, filePath: string | null) {
       .then((document) => {
         if (!cancelled) setParsedState({ markdown: deferredMarkdown, document });
       })
-      .catch(() => {
-        if (!cancelled) setParsedState({ markdown: deferredMarkdown, document: safeParseScienfyDocument(deferredMarkdown, parseOptions) });
+      .catch((error) => {
+        if (cancelled) return;
+        if (isTransientParserWorkerFailure(error)) {
+          console.warn('Document parser worker could not complete; keeping previous parse until the next successful worker result.', error);
+          return;
+        }
+        setParsedState({ markdown: deferredMarkdown, document: safeParseScienfyDocument(deferredMarkdown, parseOptions) });
       });
     return () => {
       cancelled = true;
@@ -49,6 +54,8 @@ export function useLayerTwoDocument(markdown: string, filePath: string | null) {
 
   const bibliographyFilesKey = liveDocument.bibliographyFiles.join('|');
   const variableFilesKey = liveDocument.variableFiles.join('|');
+  const bibliographyFiles = useMemo(() => liveDocument.bibliographyFiles, [bibliographyFilesKey]);
+  const variableFiles = useMemo(() => liveDocument.variableFiles, [variableFilesKey]);
   const reloadBibliography = useCallback(() => {
     setBibliographyReloadToken((token) => token + 1);
   }, []);
@@ -61,7 +68,6 @@ export function useLayerTwoDocument(markdown: string, filePath: string | null) {
     let interval: number | null = null;
     let unlisten: (() => void) | undefined;
     let watchDisposed = false;
-    const bibliographyFiles = liveDocument.bibliographyFiles;
     if (!isTauriRuntime() || !filePath || bibliographyFiles.length === 0) {
       setBibliographyText('');
       setBibliographyDiagnostics([]);
@@ -118,31 +124,43 @@ export function useLayerTwoDocument(markdown: string, filePath: string | null) {
       }
     };
 
+    const loadBibliographyInBackground = () => {
+      void loadBibliography().catch((error) => {
+        console.warn('Bibliography refresh failed.', error);
+      });
+    };
+
     const startFallbackPolling = () => {
       if (interval !== null) return;
-      interval = window.setInterval(() => void loadBibliography(), 10000);
+      interval = window.setInterval(loadBibliographyInBackground, 10000);
     };
 
     const timer = window.setTimeout(() => {
-      void loadBibliography();
+      loadBibliographyInBackground();
     }, 250);
     const handleVisibilityChange = () => {
-      if (document.visibilityState !== 'hidden') void loadBibliography();
+      if (document.visibilityState !== 'hidden') loadBibliographyInBackground();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     const watchedPaths = resolvedLinkedFilePaths(filePath, bibliographyFiles);
     if (watchedPaths.length > 0) {
       void listenFileWatchChanges((event) => {
-        if (eventTouchesWatchedPath(event.paths, watchedPaths)) void loadBibliography();
+        if (eventTouchesWatchedPath(event.paths, watchedPaths)) loadBibliographyInBackground();
       }).then((dispose) => {
         if (watchDisposed) {
           dispose();
           return;
         }
         unlisten = dispose;
+      }).catch((error) => {
+        console.warn('Bibliography file watcher listener failed.', error);
+        if (!cancelled) startFallbackPolling();
       });
       void updateWatchedFiles(bibliographyWatchScopeRef.current, watchedPaths).then((active) => {
         if (!active && !cancelled) startFallbackPolling();
+      }).catch((error) => {
+        console.warn('Bibliography file watcher update failed.', error);
+        if (!cancelled) startFallbackPolling();
       });
     } else {
       startFallbackPolling();
@@ -154,10 +172,12 @@ export function useLayerTwoDocument(markdown: string, filePath: string | null) {
       window.clearTimeout(timer);
       if (interval !== null) window.clearInterval(interval);
       unlisten?.();
-      void clearWatchedFiles(bibliographyWatchScopeRef.current);
+      void clearWatchedFiles(bibliographyWatchScopeRef.current).catch((error) => {
+        console.warn('Bibliography file watcher cleanup failed.', error);
+      });
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [bibliographyFilesKey, bibliographyReloadToken, filePath, liveDocument.bibliographyFiles]);
+  }, [bibliographyFiles, bibliographyFilesKey, bibliographyReloadToken, filePath]);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,7 +188,6 @@ export function useLayerTwoDocument(markdown: string, filePath: string | null) {
     let interval: number | null = null;
     let unlisten: (() => void) | undefined;
     let watchDisposed = false;
-    const variableFiles = liveDocument.variableFiles;
     if (!isTauriRuntime() || !filePath || variableFiles.length === 0) {
       setExternalVariableDefinitions([]);
       setVariableFileDiagnostics([]);
@@ -233,29 +252,41 @@ export function useLayerTwoDocument(markdown: string, filePath: string | null) {
       }
     };
 
-    const startFallbackPolling = () => {
-      if (interval !== null) return;
-      interval = window.setInterval(() => void loadVariables(), 5000);
+    const loadVariablesInBackground = () => {
+      void loadVariables().catch((error) => {
+        console.warn('Variable file refresh failed.', error);
+      });
     };
 
-    const timer = window.setTimeout(() => void loadVariables(), 250);
+    const startFallbackPolling = () => {
+      if (interval !== null) return;
+      interval = window.setInterval(loadVariablesInBackground, 5000);
+    };
+
+    const timer = window.setTimeout(loadVariablesInBackground, 250);
     const handleVisibilityChange = () => {
-      if (document.visibilityState !== 'hidden') void loadVariables();
+      if (document.visibilityState !== 'hidden') loadVariablesInBackground();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     const watchedPaths = resolvedLinkedFilePaths(filePath, variableFiles);
     if (watchedPaths.length > 0) {
       void listenFileWatchChanges((event) => {
-        if (eventTouchesWatchedPath(event.paths, watchedPaths)) void loadVariables();
+        if (eventTouchesWatchedPath(event.paths, watchedPaths)) loadVariablesInBackground();
       }).then((dispose) => {
         if (watchDisposed) {
           dispose();
           return;
         }
         unlisten = dispose;
+      }).catch((error) => {
+        console.warn('Variable file watcher listener failed.', error);
+        if (!cancelled) startFallbackPolling();
       });
       void updateWatchedFiles(variableWatchScopeRef.current, watchedPaths).then((active) => {
         if (!active && !cancelled) startFallbackPolling();
+      }).catch((error) => {
+        console.warn('Variable file watcher update failed.', error);
+        if (!cancelled) startFallbackPolling();
       });
     } else {
       startFallbackPolling();
@@ -266,10 +297,12 @@ export function useLayerTwoDocument(markdown: string, filePath: string | null) {
       window.clearTimeout(timer);
       if (interval !== null) window.clearInterval(interval);
       unlisten?.();
-      void clearWatchedFiles(variableWatchScopeRef.current);
+      void clearWatchedFiles(variableWatchScopeRef.current).catch((error) => {
+        console.warn('Variable file watcher cleanup failed.', error);
+      });
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [filePath, liveDocument.variableFiles, variableFilesKey]);
+  }, [filePath, variableFiles, variableFilesKey]);
 
   return {
     document: liveDocument,
@@ -292,7 +325,17 @@ function eventTouchesWatchedPath(eventPaths: string[], watchedPaths: string[]): 
 }
 
 function normalizeWatchPath(path: string): string {
-  return path.replace(/\\/g, '/').toLowerCase();
+  let normalized = path.trim();
+  if (/^\\\\\?\\UNC\\/i.test(normalized)) {
+    normalized = `\\\\${normalized.slice('\\\\?\\UNC\\'.length)}`;
+  } else if (/^\\\\\?\\/i.test(normalized)) {
+    normalized = normalized.slice('\\\\?\\'.length);
+  }
+  normalized = normalized.replace(/\\/g, '/');
+  const isUncPath = normalized.startsWith('//');
+  normalized = normalized.replace(/\/+/g, '/');
+  if (isUncPath && !normalized.startsWith('//')) normalized = `/${normalized}`;
+  return normalized.toLowerCase();
 }
 
 async function linkedFilesSignature(documentPath: string, linkedPaths: string[]): Promise<string> {

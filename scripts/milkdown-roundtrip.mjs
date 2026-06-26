@@ -67,19 +67,31 @@ const value = "**keep this exact content**";
 `,
   },
   {
+    name: 'synthetic-gfm-footnotes',
+    markdown: `# Footnotes
+
+Scientific claims often need a note.[^synthesis]
+
+The same note can be referenced again without losing identity.[^synthesis]
+
+[^synthesis]: First note line with **formatting** and a citation-like token @paper2026.
+    Continuation line that must remain attached to the footnote.
+`,
+  },
+  {
     name: 'synthetic-html-and-directive',
     markdown: `# Advanced Content
 
 <div class="callout">Raw HTML should survive as source text.</div>
 
 ::: note
-Directive block should trigger source-only validation later.
+Directive block should remain visible through non-blocking visual diagnostics later.
 :::
 `,
   },
   {
     name: 'layer2-frontmatter-citation-labels',
-    sourceOnly: true,
+    skipVisualRoundTrip: true,
     markdown: `---
 title: Layer II Fixture
 bibliography: refs.bib
@@ -152,6 +164,19 @@ function extractLabels(markdown) {
   return [...markdown.matchAll(/\{#[A-Za-z][\w:.-]*\}/g)].map((m) => m[0]);
 }
 
+function extractFootnoteReferences(markdown) {
+  const references = [];
+  for (const line of markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')) {
+    if (/^ {0,3}\[\^[^\]\n]+]:/.test(line)) continue;
+    references.push(...[...line.matchAll(/\[\^[^\]\s]+]/g)].map((m) => m[0]));
+  }
+  return references;
+}
+
+function extractFootnoteDefinitions(markdown) {
+  return [...markdown.matchAll(/^ {0,3}\[\^[^\]\n]+]:/gm)].map((m) => m[0].trim());
+}
+
 function inspectRisk(original, serialized) {
   const risks = [];
 
@@ -207,6 +232,18 @@ function inspectRisk(original, serialized) {
   const serializedLabels = extractLabels(serialized);
   if (!sameSequence(originalLabels, serializedLabels)) {
     risks.push('attribute labels changed');
+  }
+
+  const originalFootnoteReferences = extractFootnoteReferences(original);
+  const serializedFootnoteReferences = extractFootnoteReferences(serialized);
+  if (!sameSequence(originalFootnoteReferences, serializedFootnoteReferences)) {
+    risks.push('footnote references changed');
+  }
+
+  const originalFootnoteDefinitions = extractFootnoteDefinitions(original);
+  const serializedFootnoteDefinitions = extractFootnoteDefinitions(serialized);
+  if (!sameSequence(originalFootnoteDefinitions, serializedFootnoteDefinitions)) {
+    risks.push('footnote definitions changed');
   }
 
   return risks;
@@ -294,13 +331,13 @@ const corpus = [
 const results = [];
 
 for (const item of corpus) {
-  if (item.sourceOnly) {
+  if (item.skipVisualRoundTrip) {
     results.push({
       name: item.name,
       pass: true,
       risks: [],
       diff: null,
-      note: 'source-only fixture is guarded from visual round-trip',
+      note: 'raw-fallback fixture is guarded from visual round-trip',
     });
     continue;
   }

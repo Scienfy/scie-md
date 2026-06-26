@@ -25,15 +25,31 @@ describe('style CSS variables', () => {
     expect(missing).toEqual([]);
   });
 
-  it('does not clip topbar dropdown menus', () => {
+  it('does not clip topbar dropdown menus or window controls', () => {
+    expect(appCss).toMatch(/\.topbar\s*{[^}]*grid-template-columns:\s*minmax\(0,\s*max-content\)\s+minmax\(72px,\s*1fr\)\s+max-content;/);
     expect(appCss).toMatch(/\.topbar-left\s*{[^}]*overflow:\s*visible;/);
+    expect(appCss).toMatch(/\.topbar-right\s*{[^}]*min-width:\s*max-content;/);
+    expect(appCss).toMatch(/\.window-controls\s*{[^}]*min-width:\s*calc\(\(var\(--control-height\)\s*\*\s*3\)\s*\+\s*6px\);/);
     expect(appCss).toContain('.app-menu-button');
+    expect(appCss).toMatch(/@media \(max-width:\s*1500px\)\s*{[\s\S]*\.app-menu-button\.is-secondary-menu\s*{[\s\S]*display:\s*none;/);
     expect(appCss).toContain('.quick-toolbar > button');
     expect(appCss).not.toMatch(/@media \(max-width:\s*1400px\)\s*{\s*\.topbar-left button\s*{/);
+    expect(appCss).not.toMatch(/@media \(max-width:\s*900px\)\s*{[\s\S]*\.app-menubar\s*{[\s\S]*display:\s*none;/);
   });
 
   it('keeps the selected editor mode legible while hovered or pressed', () => {
     expect(appCss).toMatch(/\.editor-mode-toggle button\.selected:hover:not\(:disabled\),\s*\.editor-mode-toggle button\.selected:active:not\(:disabled\)\s*{[\s\S]*background:\s*transparent;[\s\S]*color:\s*var\(--surface\);[\s\S]*transform:\s*none;/);
+  });
+
+  it('keeps app tooltips legible at viewport edges', () => {
+    expect(appCss).toMatch(/\.app-tooltip\s*{[\s\S]*width:\s*max-content;[\s\S]*max-width:\s*min\(320px,\s*calc\(100vw - 16px\)\);/);
+    expect(appCss).toMatch(/\.app-tooltip\s*{[\s\S]*overflow-wrap:\s*break-word;[\s\S]*word-break:\s*normal;/);
+  });
+
+  it('keeps review dialog actions fixed while the change list scrolls', () => {
+    expect(appCss).toMatch(/\.review-dialog\s*{[\s\S]*grid-template-areas:\s*"header"\s*"notice"\s*"body"\s*"actions";/);
+    expect(appCss).toMatch(/\.review-card-list\s*{[\s\S]*grid-area:\s*body;[\s\S]*overflow:\s*auto;[\s\S]*scrollbar-gutter:\s*stable;/);
+    expect(appCss).toMatch(/\.review-dialog-actions\s*{[\s\S]*grid-area:\s*actions;[\s\S]*position:\s*sticky;[\s\S]*bottom:\s*0;/);
   });
 
   it('keeps the Scienfy dotted reading surface subtle, scoped, and motion-safe', () => {

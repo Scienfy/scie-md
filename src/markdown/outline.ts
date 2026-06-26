@@ -1,3 +1,6 @@
+import { fencedCodeRanges, frontmatterRanges, isOffsetInsideRanges, mergeRanges, scieMdCommentRanges } from './markdownRanges';
+import { lineStartOffsets } from './textOffsets';
+
 export interface MarkdownHeading {
   id: string;
   level: number;
@@ -8,10 +11,17 @@ export interface MarkdownHeading {
 export function extractHeadings(markdown: string): MarkdownHeading[] {
   const headings: MarkdownHeading[] = [];
   const seen = new Map<string, number>();
+  const ignoredRanges = mergeRanges([
+    ...frontmatterRanges(markdown),
+    ...fencedCodeRanges(markdown),
+    ...scieMdCommentRanges(markdown),
+  ]);
+  const lineStarts = lineStartOffsets(markdown);
   let inFence: '`' | '~' | null = null;
   let fenceLength = 0;
 
   markdown.split('\n').forEach((line, index) => {
+    if (isOffsetInsideRanges(lineStarts[index] ?? 0, ignoredRanges)) return;
     const fence = line.match(/^\s*(`{3,}|~{3,})/);
     if (fence) {
       const marker = fence[1];

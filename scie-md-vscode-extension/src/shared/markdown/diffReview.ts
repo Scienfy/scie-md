@@ -1,6 +1,10 @@
 import { lineStartOffsets, offsetToLine } from './textOffsets';
 
 const MAX_INTERACTIVE_DIFF_CELLS = 1_000_000;
+const MAX_INTERACTIVE_DIFF_CHARS = 300_000;
+const MAX_WORD_DIFF_CHARS = 40_000;
+const MAX_WORD_DIFF_TOKENS = 2_000;
+const MAX_WORD_DIFF_CELLS = 200_000;
 
 export type DiffLineKind = 'same' | 'added' | 'removed';
 
@@ -30,7 +34,10 @@ export function createDiffHunks(before: string, after: string): DiffHunk[] {
   const beforeLines = splitLines(before);
   const afterLines = splitLines(after);
   const protectedLineState = createProtectedLineState(before);
-  if (beforeLines.length * afterLines.length > MAX_INTERACTIVE_DIFF_CELLS) {
+  if (
+    before.length + after.length > MAX_INTERACTIVE_DIFF_CHARS
+    || beforeLines.length * afterLines.length > MAX_INTERACTIVE_DIFF_CELLS
+  ) {
     return [createWholeDocumentDiffHunk(beforeLines, afterLines)];
   }
   const ops = createDiffOps(beforeLines, afterLines);
@@ -117,15 +124,24 @@ function attachWordDiffs(lines: DiffLine[]): void {
     const added = lines[index + 1];
     if (removed.kind !== 'removed' || added.kind !== 'added') continue;
     const pair = createWordDiffPair(removed.text, added.text);
+    if (!pair) continue;
     removed.segments = pair.removed;
     added.segments = pair.added;
     index += 1;
   }
 }
 
-function createWordDiffPair(before: string, after: string): { removed: DiffSegment[]; added: DiffSegment[] } {
+function createWordDiffPair(before: string, after: string): { removed: DiffSegment[]; added: DiffSegment[] } | null {
+  if (before.length + after.length > MAX_WORD_DIFF_CHARS) return null;
   const beforeTokens = tokenizeWords(before);
   const afterTokens = tokenizeWords(after);
+  if (
+    beforeTokens.length > MAX_WORD_DIFF_TOKENS
+    || afterTokens.length > MAX_WORD_DIFF_TOKENS
+    || beforeTokens.length * afterTokens.length > MAX_WORD_DIFF_CELLS
+  ) {
+    return null;
+  }
   const ops = createDiffOps(beforeTokens, afterTokens);
   return {
     removed: mergeSegments(ops.filter((op) => op.kind !== 'added')),

@@ -9,7 +9,7 @@ keywords:
 scienfy:
   schema: 2
   documentType: report
-  visualStyle: scienfy
+  visualStyle: science
   variables:
     cohort_n: 128
     exp1_p_value: 0.023
@@ -147,7 +147,7 @@ The right **Inspector** is where ScieMD summarizes document state:
 - **LLM review**: review pasted changes and toggle session authorship shading.
 - **LLM controls**: counts and examples of locked sections, LLM notes, LLM instructions, text versions, and bibliography entries.
 - **Scientific paper**: title, front matter, bibliography, citations, labels, references, variables, semantic blocks, and text versions.
-- **Validation**: warnings and source-mode-only blockers.
+- **Validation**: warnings and non-blocking visual diagnostics.
 - **Document**: path, save state, style, width, line endings, images, tables, code blocks, and Inkscape status.
 - **Recent files**: quick reopen list.
 

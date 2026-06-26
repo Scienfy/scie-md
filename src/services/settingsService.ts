@@ -26,7 +26,7 @@ export type DocumentType = 'lab-note' | 'report' | 'memo' | 'notes' | 'other';
 export type SidebarView = 'files' | 'outline' | 'references' | 'data';
 
 const SETTINGS_KEY = 'scienfy.markdown.settings.v1';
-const SCIE_SANS_DEFAULT_MIGRATION_KEY = 'scienfy.markdown.settings.scieSansDefaultMigrated';
+const SCIENCE_DEFAULT_MIGRATION_KEY = 'scienfy.markdown.settings.scienceDefaultMigrated.v1';
 const RECENT_LIMIT = 15;
 export const SIDEBAR_WIDTH_DEFAULT = 360;
 export const SIDEBAR_WIDTH_MIN = 248;
@@ -35,7 +35,7 @@ const DEFAULT_SETTINGS: PersistedSettings = {
   recentFiles: [],
   themeMode: 'dark',
   fontScale: 1,
-  visualStyle: 'scienfy',
+  visualStyle: 'science',
   outlineOpen: true,
   sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
   sidebarView: 'outline',
@@ -55,12 +55,10 @@ export function loadSettings(): PersistedSettings {
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<PersistedSettings>;
     const parsedVisualStyle = normalizeVisualStyleId(parsed.visualStyle);
-    const visualStyle = shouldMigrateLegacyScienceDefault(parsed.visualStyle, parsedVisualStyle)
-      ? 'scienfy'
-      : parsedVisualStyle ?? DEFAULT_SETTINGS.visualStyle;
-    localStorage.setItem(SCIE_SANS_DEFAULT_MIGRATION_KEY, 'true');
+    const shouldMigrateLegacyDefault = shouldMigrateLegacyScienfyDefault(parsed.visualStyle, parsedVisualStyle);
+    const visualStyle = shouldMigrateLegacyDefault ? 'science' : parsedVisualStyle ?? DEFAULT_SETTINGS.visualStyle;
 
-    return {
+    const settings = {
       recentFiles: Array.isArray(parsed.recentFiles) ? parsed.recentFiles.filter((item) => typeof item === 'string').slice(0, RECENT_LIMIT) : [],
       themeMode: isThemeMode(parsed.themeMode) ? parsed.themeMode : DEFAULT_SETTINGS.themeMode,
       fontScale: normalizeFontScale(parsed.fontScale),
@@ -77,6 +75,8 @@ export function loadSettings(): PersistedSettings {
       inkscapePath: typeof parsed.inkscapePath === 'string' && parsed.inkscapePath.trim() ? parsed.inkscapePath : DEFAULT_SETTINGS.inkscapePath,
       exportOptions: normalizeExportOptions(parsed.exportOptions),
     };
+    if (shouldMigrateLegacyDefault) saveSettings(settings);
+    return settings;
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -84,7 +84,7 @@ export function loadSettings(): PersistedSettings {
 
 export function saveSettings(settings: PersistedSettings): void {
   try {
-    localStorage.setItem(SCIE_SANS_DEFAULT_MIGRATION_KEY, 'true');
+    localStorage.setItem(SCIENCE_DEFAULT_MIGRATION_KEY, 'true');
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({
       recentFiles: settings.recentFiles.slice(0, RECENT_LIMIT),
       themeMode: settings.themeMode,
@@ -144,10 +144,10 @@ export function normalizeSidebarWidth(value: unknown): number {
   return Math.round(Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, value)));
 }
 
-function shouldMigrateLegacyScienceDefault(rawVisualStyle: unknown, visualStyle: VisualStyleId | null): boolean {
-  return rawVisualStyle === 'science'
-    && visualStyle === 'science'
-    && localStorage.getItem(SCIE_SANS_DEFAULT_MIGRATION_KEY) !== 'true';
+function shouldMigrateLegacyScienfyDefault(rawVisualStyle: unknown, visualStyle: VisualStyleId | null): boolean {
+  return rawVisualStyle === 'scienfy'
+    && visualStyle === 'scienfy'
+    && localStorage.getItem(SCIENCE_DEFAULT_MIGRATION_KEY) !== 'true';
 }
 
 export function forgetRecentFile(filePath: string): PersistedSettings {

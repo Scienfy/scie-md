@@ -22,9 +22,9 @@ export interface CrossReferenceIndex {
   missingLabels: string[];
 }
 
-export function buildCrossReferenceIndex(markdown: string): CrossReferenceIndex {
-  const labels = extractLabels(markdown);
-  const usages = extractReferenceUsages(markdown);
+export function buildCrossReferenceIndex(markdown: string, lineOffset = 0): CrossReferenceIndex {
+  const labels = extractLabels(markdown, lineOffset);
+  const usages = extractReferenceUsages(markdown, lineOffset);
   const labelCounts = labels.reduce<Record<string, number>>((counts, label) => {
     counts[label.id] = (counts[label.id] ?? 0) + 1;
     return counts;
@@ -43,7 +43,7 @@ export function buildCrossReferenceIndex(markdown: string): CrossReferenceIndex 
   };
 }
 
-export function extractLabels(markdown: string): CrossReferenceLabel[] {
+export function extractLabels(markdown: string, lineOffset = 0): CrossReferenceLabel[] {
   const labels: CrossReferenceLabel[] = [];
   const lineStarts = lineStartOffsets(markdown);
   const ignoredRanges = crossReferenceIgnoredRanges(markdown);
@@ -55,14 +55,14 @@ export function extractLabels(markdown: string): CrossReferenceLabel[] {
     labels.push({
       id: match[1],
       prefix: match[2],
-      line: offsetToLine(lineStarts, match.index),
+      line: offsetToLine(lineStarts, match.index) + lineOffset,
     });
   }
 
   return labels;
 }
 
-export function extractReferenceUsages(markdown: string): CrossReferenceUsage[] {
+export function extractReferenceUsages(markdown: string, lineOffset = 0): CrossReferenceUsage[] {
   const usages: CrossReferenceUsage[] = [];
   const lineStarts = lineStartOffsets(markdown);
   const ignoredRanges = crossReferenceIgnoredRanges(markdown);
@@ -76,7 +76,7 @@ export function extractReferenceUsages(markdown: string): CrossReferenceUsage[] 
     usages.push({
       id,
       prefix: match[3],
-      line: offsetToLine(lineStarts, atOffset),
+      line: offsetToLine(lineStarts, atOffset) + lineOffset,
     });
   }
 

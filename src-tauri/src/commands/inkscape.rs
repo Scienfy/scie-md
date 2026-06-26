@@ -16,7 +16,8 @@ use std::{
 };
 
 use super::{
-    path_grants::{assert_file_read_allowed, assert_file_write_allowed},
+    path_grants::{assert_file_read_allowed, assert_generated_asset_write_allowed},
+    path_utils::{external_safe_path, external_safe_path_string},
     process::{output_quiet, spawn_quiet, terminate_child_tree},
 };
 
@@ -67,7 +68,7 @@ pub fn check_inkscape_available(custom_path: Option<String>) -> Result<InkscapeI
     let path = resolve_inkscape_executable(custom_path.as_deref())?;
     let version = inkscape_version(&path)?;
     Ok(InkscapeInfo {
-        path: path.to_string_lossy().to_string(),
+        path: external_safe_path_string(&path),
         version,
     })
 }
@@ -96,9 +97,9 @@ pub fn open_svg_in_inkscape(
     let opened_modified_ms = file_modified_ms(&temp_path).unwrap_or(0);
 
     let inkscape = resolve_inkscape_executable(custom_path.as_deref())?;
-    let mut command = Command::new(&inkscape);
+    let mut command = Command::new(external_safe_path(&inkscape));
     command
-        .arg(&temp_path)
+        .arg(external_safe_path(&temp_path))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -120,7 +121,7 @@ pub fn open_svg_in_inkscape(
     limit_svg_sessions(&mut sessions, MAX_SVG_SESSIONS);
     Ok(InkscapeSessionResponse {
         session_id,
-        temp_path: temp_path.to_string_lossy().to_string(),
+        temp_path: external_safe_path_string(&temp_path),
     })
 }
 
@@ -133,7 +134,7 @@ pub fn stat_inkscape_svg_session(session_id: String) -> Result<InkscapeSessionSt
     let modified_ms = file_modified_ms(&session.path)?;
     Ok(InkscapeSessionStatus {
         session_id,
-        temp_path: session.path.to_string_lossy().to_string(),
+        temp_path: external_safe_path_string(&session.path),
         modified_ms,
         changed: modified_ms > session.opened_modified_ms,
     })
@@ -187,11 +188,11 @@ pub fn export_svg_with_inkscape(
     let digest = stable_hash(&svg_source, target);
     let input_path = output_dir.join(format!(".svg-{digest}.svg"));
     let output_path = output_dir.join(format!("svg-{digest}.{target}"));
-    assert_file_write_allowed(&input_path)?;
-    assert_file_write_allowed(&output_path)?;
+    assert_generated_asset_write_allowed(&document, &input_path)?;
+    assert_generated_asset_write_allowed(&document, &output_path)?;
     if output_path.is_file() {
         return Ok(SvgExportResponse {
-            output_path: output_path.to_string_lossy().to_string(),
+            output_path: external_safe_path_string(&output_path),
             format: target.to_string(),
             cached: true,
         });
@@ -201,7 +202,7 @@ pub fn export_svg_with_inkscape(
     let inkscape = resolve_inkscape_executable(custom_path.as_deref())?;
     run_inkscape_export(&inkscape, &input_path, &output_path, target)?;
     Ok(SvgExportResponse {
-        output_path: output_path.to_string_lossy().to_string(),
+        output_path: external_safe_path_string(&output_path),
         format: target.to_string(),
         cached: false,
     })
@@ -401,8 +402,8 @@ fn run_inkscape_export(
     format: &'static str,
 ) -> Result<(), String> {
     let version = inkscape_version(inkscape_path).unwrap_or_else(|_| "Inkscape".to_string());
-    let mut command = Command::new(inkscape_path);
-    command.arg(input_path);
+    let mut command = Command::new(external_safe_path(inkscape_path));
+    command.arg(external_safe_path(input_path));
     append_inkscape_export_args(&mut command, output_path, format, &version);
     command
         .stdin(Stdio::null())
@@ -447,15 +448,21 @@ fn append_inkscape_export_args(
     if uses_legacy_inkscape_cli(version) {
         match format {
             "pdf" => {
-                command.arg(format!("--export-pdf={}", output_path.to_string_lossy()));
+                command.arg(format!(
+                    "--export-pdf={}",
+                    external_safe_path_string(output_path)
+                ));
             }
             "png" => {
-                command.arg(format!("--export-png={}", output_path.to_string_lossy()));
+                command.arg(format!(
+                    "--export-png={}",
+                    external_safe_path_string(output_path)
+                ));
             }
             _ => {
                 command.arg(format!(
                     "--export-filename={}",
-                    output_path.to_string_lossy()
+                    external_safe_path_string(output_path)
                 ));
             }
         }
@@ -463,7 +470,7 @@ fn append_inkscape_export_args(
     }
     command.arg(format!("--export-type={format}")).arg(format!(
         "--export-filename={}",
-        output_path.to_string_lossy()
+        external_safe_path_string(output_path)
     ));
 }
 
@@ -549,7 +556,6 @@ fn validate_svg_source(svg: &str) -> Result<(), String> {
         "onload=",
         "onclick=",
         "onerror=",
-        " style=",
         "href=\"http",
         "href='http",
         "xlink:href=\"http",
@@ -563,6 +569,12 @@ fn validate_svg_source(svg: &str) -> Result<(), String> {
             );
         }
     }
+    if contains_unsafe_style_attribute(&lower) {
+        return Err(
+            "SVG contains unsafe style declarations. Clean it before opening or exporting."
+                .to_string(),
+        );
+    }
     if contains_external_href(&lower, "href=\"")
         || contains_external_href(&lower, "href='")
         || contains_external_href(&lower, "xlink:href=\"")
@@ -573,6 +585,154 @@ fn validate_svg_source(svg: &str) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+fn contains_unsafe_style_attribute(source: &str) -> bool {
+    let mut start = 0;
+    while let Some(index) = source[start..].find("style") {
+        let attribute_start = start + index;
+        if attribute_start > 0
+            && is_attribute_name_char(source.as_bytes()[attribute_start - 1] as char)
+        {
+            start = attribute_start + "style".len();
+            continue;
+        }
+        let mut cursor = attribute_start + "style".len();
+        cursor = skip_ascii_whitespace(source, cursor);
+        if source.as_bytes().get(cursor) != Some(&b'=') {
+            start = cursor;
+            continue;
+        }
+        cursor = skip_ascii_whitespace(source, cursor + 1);
+        let Some(quote) = source.as_bytes().get(cursor).copied() else {
+            return true;
+        };
+        if quote != b'"' && quote != b'\'' {
+            return true;
+        }
+        let value_start = cursor + 1;
+        let Some(value_end) = source[value_start..]
+            .find(quote as char)
+            .map(|offset| value_start + offset)
+        else {
+            return true;
+        };
+        if !is_safe_svg_style(&source[value_start..value_end]) {
+            return true;
+        }
+        start = value_end + 1;
+    }
+    false
+}
+
+fn is_safe_svg_style(style: &str) -> bool {
+    for declaration in style.split(';') {
+        let declaration = declaration.trim();
+        if declaration.is_empty() {
+            continue;
+        }
+        let Some((property, value)) = declaration.split_once(':') else {
+            return false;
+        };
+        let property = property.trim();
+        let value = value.trim();
+        if !SAFE_SVG_STYLE_PROPERTIES.contains(&property) || contains_unsafe_css_value(value) {
+            return false;
+        }
+    }
+    true
+}
+
+const SAFE_SVG_STYLE_PROPERTIES: &[&str] = &[
+    "baseline-shift",
+    "clip-rule",
+    "color",
+    "display",
+    "dominant-baseline",
+    "fill",
+    "fill-opacity",
+    "fill-rule",
+    "font-family",
+    "font-size",
+    "font-style",
+    "font-weight",
+    "marker-end",
+    "marker-mid",
+    "marker-start",
+    "opacity",
+    "paint-order",
+    "pointer-events",
+    "shape-rendering",
+    "stop-color",
+    "stop-opacity",
+    "stroke",
+    "stroke-dasharray",
+    "stroke-dashoffset",
+    "stroke-linecap",
+    "stroke-linejoin",
+    "stroke-miterlimit",
+    "stroke-opacity",
+    "stroke-width",
+    "text-anchor",
+    "vector-effect",
+    "visibility",
+];
+
+fn contains_unsafe_css_value(value: &str) -> bool {
+    if value.contains('<')
+        || value.contains('>')
+        || value.contains('{')
+        || value.contains('}')
+        || value.contains("javascript:")
+        || value.contains("vbscript:")
+        || value.contains("data:")
+        || value.contains("file:")
+        || value.contains("http:")
+        || value.contains("https:")
+        || value.contains("//")
+        || value.contains("@import")
+        || value.contains("expression(")
+    {
+        return true;
+    }
+    contains_unsafe_css_url(value)
+}
+
+fn contains_unsafe_css_url(value: &str) -> bool {
+    let mut start = 0;
+    while let Some(index) = value[start..].find("url(") {
+        let target_start = start + index + "url(".len();
+        let Some(end_offset) = value[target_start..].find(')') else {
+            return true;
+        };
+        let target = value[target_start..target_start + end_offset]
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'');
+        if !target.starts_with('#') || !target[1..].chars().all(is_safe_css_id_char) {
+            return true;
+        }
+        start = target_start + end_offset + 1;
+    }
+    false
+}
+
+fn is_safe_css_id_char(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | ':' | '.')
+}
+
+fn is_attribute_name_char(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | ':')
+}
+
+fn skip_ascii_whitespace(source: &str, mut index: usize) -> usize {
+    while matches!(
+        source.as_bytes().get(index),
+        Some(b' ' | b'\n' | b'\r' | b'\t')
+    ) {
+        index += 1;
+    }
+    index
 }
 
 fn contains_external_href(source: &str, marker: &str) -> bool {
@@ -628,8 +788,8 @@ fn stable_hash(source: &str, format: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_inkscape_export_args, cleanup_stale_svg_session_files, looks_like_inkscape,
-        limit_svg_sessions, prune_svg_sessions, stable_hash, svg_export_format,
+        append_inkscape_export_args, cleanup_stale_svg_session_files, limit_svg_sessions,
+        looks_like_inkscape, prune_svg_sessions, stable_hash, svg_export_format,
         uses_legacy_inkscape_cli, validate_svg_source, SvgSession,
     };
     use std::{
@@ -660,6 +820,15 @@ mod tests {
         .is_err());
         assert!(validate_svg_source("<svg><use href=\"#safe\" /></svg>").is_ok());
         assert!(validate_svg_source("<svg><use href=\"external.svg#payload\" /></svg>").is_err());
+    }
+
+    #[test]
+    fn allows_safe_inline_svg_styles() {
+        assert!(validate_svg_source(
+            "<svg><rect style=\"fill:none;stroke:#000;stroke-width:2;opacity:.9\" /></svg>"
+        )
+        .is_ok());
+        assert!(validate_svg_source("<svg><rect style=\"fill:url(#gradient)\" /></svg>").is_ok());
     }
 
     #[test]
@@ -742,8 +911,20 @@ mod tests {
         fs::write(&live, "<svg></svg>").unwrap();
 
         let mut sessions = HashMap::from([
-            ("live".to_string(), SvgSession { path: live.clone(), opened_modified_ms: 2 }),
-            ("missing".to_string(), SvgSession { path: dir.join("missing.svg"), opened_modified_ms: 1 }),
+            (
+                "live".to_string(),
+                SvgSession {
+                    path: live.clone(),
+                    opened_modified_ms: 2,
+                },
+            ),
+            (
+                "missing".to_string(),
+                SvgSession {
+                    path: dir.join("missing.svg"),
+                    opened_modified_ms: 1,
+                },
+            ),
         ]);
         prune_svg_sessions(&mut sessions, Duration::from_secs(60));
         assert!(sessions.contains_key("live"));
@@ -752,7 +933,13 @@ mod tests {
         for index in 0..4 {
             let path = dir.join(format!("svg-{index}.svg"));
             fs::write(&path, "<svg></svg>").unwrap();
-            sessions.insert(format!("session-{index}"), SvgSession { path, opened_modified_ms: index });
+            sessions.insert(
+                format!("session-{index}"),
+                SvgSession {
+                    path,
+                    opened_modified_ms: index,
+                },
+            );
         }
         limit_svg_sessions(&mut sessions, 2);
         assert_eq!(sessions.len(), 2);

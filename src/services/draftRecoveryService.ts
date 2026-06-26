@@ -206,13 +206,18 @@ function pruneFileDrafts(currentKey: string): void {
 
   try {
     const localCandidates: Array<{ key: string; savedAt: number }> = [];
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
+    const localKeys = Array.from({ length: localStorage.length }, (_value, index) => localStorage.key(index));
+    for (const key of localKeys) {
       if (!key || !isFileDraftKey(key)) continue;
       const raw = localStorage.getItem(key);
       if (!raw) continue;
-      const parsed = JSON.parse(raw) as Partial<UntitledDraft>;
-      localCandidates.push({ key, savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : 0 });
+      try {
+        const parsed = JSON.parse(raw) as Partial<UntitledDraft>;
+        localCandidates.push({ key, savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : 0 });
+      } catch {
+        localStorage.removeItem(key);
+        void queueIndexedDraftDelete(key);
+      }
     }
     for (const stale of staleDraftKeys(localCandidates, currentKey)) {
       localStorage.removeItem(stale);
@@ -354,7 +359,13 @@ function openDraftDb(): Promise<IDBDatabase> {
       reject(new Error('IndexedDB is not available.'));
       return;
     }
-    const request = indexedDB.open(DRAFT_DB_NAME, 1);
+    let request: IDBOpenDBRequest;
+    try {
+      request = indexedDB.open(DRAFT_DB_NAME, 1);
+    } catch (error) {
+      reject(error);
+      return;
+    }
     request.onupgradeneeded = () => {
       request.result.createObjectStore(DRAFT_STORE_NAME);
     };
@@ -462,6 +473,7 @@ function listIndexedFileDraftCandidates(db: IDBDatabase): Promise<Array<{ key: s
     request.onerror = () => reject(request.error ?? new Error('Could not enumerate draft database.'));
     transaction.oncomplete = () => resolve(candidates);
     transaction.onerror = () => reject(transaction.error ?? new Error('Could not enumerate draft database.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Draft database enumeration was aborted.'));
   });
 }
 
@@ -484,10 +496,51 @@ function runDraftTransaction<T>(
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(DRAFT_STORE_NAME, mode);
-    const request = operation(transaction.objectStore(DRAFT_STORE_NAME));
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error('Draft database request failed.'));
-    transaction.onerror = () => reject(transaction.error ?? new Error('Draft database transaction failed.'));
+    let requestResult: T | undefined;
+    let requestCompleted = false;
+    let settled = false;
+    const rejectOnce = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+
+    transaction.oncomplete = () => {
+      if (settled) return;
+      if (!requestCompleted) {
+        rejectOnce(new Error('Draft database request did not complete.'));
+        return;
+      }
+      settled = true;
+      resolve(requestResult as T);
+    };
+    transaction.onerror = () => rejectOnce(transaction.error ?? new Error('Draft database transaction failed.'));
+    transaction.onabort = () => rejectOnce(transaction.error ?? new Error('Draft database transaction was aborted.'));
+
+    let request: IDBRequest<T>;
+    try {
+      request = operation(transaction.objectStore(DRAFT_STORE_NAME));
+    } catch (error) {
+      try {
+        transaction.abort();
+      } catch {
+        // The transaction may already be inactive.
+      }
+      rejectOnce(error);
+      return;
+    }
+    request.onsuccess = () => {
+      requestResult = request.result;
+      requestCompleted = true;
+    };
+    request.onerror = () => {
+      rejectOnce(request.error ?? new Error('Draft database request failed.'));
+      try {
+        transaction.abort();
+      } catch {
+        // The browser may have already started aborting the transaction.
+      }
+    };
   });
 }
 

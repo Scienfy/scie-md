@@ -2,7 +2,7 @@
   "name": "sciemd-vscode",
   "displayName": "ScieMD Markdown Editor",
   "description": "WYSIWYG Markdown editor and reader for scientific writing, hybrid LLM drafting, direct document comments, visual styles, LaTeX math, and Mermaid diagrams.",
-  "version": "1.0.8",
+  "version": "1.0.11",
   "publisher": "scienfy",
   "author": "Scienfy Inc.",
   "license": "AGPL-3.0-or-later",
@@ -141,11 +141,11 @@
   "capabilities": {
     "virtualWorkspaces": {
       "supported": "limited",
-      "description": "ScieMD can preview and edit Markdown documents when the file-system provider supports text edits. Commands that write sibling files are limited to file-backed documents."
+      "description": "ScieMD can preview and edit Markdown documents when the file-system provider supports text edits. Commands that write sibling files require a writable document file-system provider."
     },
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Preview, source editing, and clipboard commands work in Restricted Mode. Commands that write sibling files may be blocked by the workspace or file-system provider."
+      "description": "Preview, source editing, and clipboard commands work in Restricted Mode. Commands that write sibling files may be blocked by trust, permissions, or the file-system provider."
     }
   },
   "dependencies": {
@@ -162,17 +162,19 @@
     "@milkdown/utils": "^7.21.2",
     "@tauri-apps/api": "^2.11.1",
     "katex": "^0.17.0",
+    "lucide-react": "^1.21.0",
     "markdown-it-deflist": "^3.0.1",
     "markdown-it-footnote": "^4.0.0",
     "markdown-it-task-lists": "^2.1.1",
-    "mermaid": "^11.15.0"
+    "mermaid": "^11.15.0",
+    "sciemd": "file:.."
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^25.9.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.0.0",
-    "@types/vscode": "^1.125.0",
+    "@types/vscode": "^1.90.0",
     "@vitejs/plugin-react": "^6.0.2",
     "@vscode/vsce": "^3.9.2",
     "dompurify": "^3.2.6",

@@ -1,4 +1,4 @@
-import { fencedCodeRanges, inlineCodeRanges, isOffsetInsideRanges, mergeRanges, scieMdCommentRanges } from '../../markdown/markdownRanges';
+import { fencedCodeRanges, frontmatterRanges, inlineCodeRanges, isOffsetInsideRanges, mergeRanges, scieMdCommentRanges } from '../../markdown/markdownRanges';
 
 export interface BibtexEntry {
   type: string;
@@ -150,6 +150,7 @@ export function renameCitationKeyUsages(markdown: string, originalKey: string, n
   const normalizedNext = normalizeBibtexKey(nextKey);
   if (!normalizedOriginal || !normalizedNext || normalizedOriginal === normalizedNext) return markdown;
   const ignoredRanges = mergeRanges([
+    ...frontmatterRanges(markdown),
     ...fencedCodeRanges(markdown),
     ...inlineCodeRanges(markdown),
     ...scieMdCommentRanges(markdown),
@@ -317,7 +318,10 @@ function readBibtexItem(input: string, fromIndex: number): BibtexItem | null {
     }
     const openIndex = at + header[0].length - 1;
     const closeIndex = findMatchingDelimiter(input, openIndex, header[2] as '{' | '(');
-    if (closeIndex < 0) return null;
+    if (closeIndex < 0) {
+      index = openIndex + 1;
+      continue;
+    }
     return {
       type: header[1].toLowerCase(),
       body: input.slice(openIndex + 1, closeIndex),
@@ -338,7 +342,7 @@ function findTopLevelComma(input: string): number {
       escaping = false;
       continue;
     }
-    if (quote && char === '\\') {
+    if (char === '\\') {
       escaping = true;
       continue;
     }
@@ -366,7 +370,7 @@ function findMatchingDelimiter(input: string, openIndex: number, opener: '{' | '
       escaping = false;
       continue;
     }
-    if (quote && char === '\\') {
+    if (char === '\\') {
       escaping = true;
       continue;
     }
@@ -393,8 +397,17 @@ function findMatchingDelimiter(input: string, openIndex: number, opener: '{' | '
 
 function findMatchingBrace(input: string, openIndex: number): number {
   let depth = 0;
+  let escaping = false;
   for (let index = openIndex; index < input.length; index += 1) {
     const char = input[index];
+    if (escaping) {
+      escaping = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaping = true;
+      continue;
+    }
     if (char === '{') depth += 1;
     else if (char === '}') {
       depth -= 1;
@@ -422,6 +435,7 @@ function applyCrossrefInheritance(entries: BibtexEntry[]): BibtexEntry[] {
 function extractUsedCitationKeys(markdown: string): string[] {
   const keys: string[] = [];
   const ignoredRanges = mergeRanges([
+    ...frontmatterRanges(markdown),
     ...fencedCodeRanges(markdown),
     ...inlineCodeRanges(markdown),
     ...scieMdCommentRanges(markdown),

@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { FileMetadata } from '../documentState';
+import { metadataChanged } from '../documentState';
 import { readTextFile } from '../../services/fileService';
 import { createAcceptedHunkAuthorshipMarks } from '../../markdown/authorship';
 import type { AuthorshipMark } from '../../markdown/authorship';
@@ -9,6 +10,8 @@ import type { DiffHunk } from '../../markdown/diffReview';
 import { detectProtectedChanges } from '../../markdown/protectedBlocks';
 
 interface ExternalConflictReviewState {
+  filePath: string;
+  documentEpoch: number;
   hunks: DiffHunk[];
   baseMarkdown: string;
   diskMarkdown: string;
@@ -17,6 +20,7 @@ interface ExternalConflictReviewState {
 
 interface ExternalConflictReviewWorkflowParams {
   filePath: string | null;
+  documentEpochRef: MutableRefObject<number>;
   markdown: string;
   lastSavedMarkdown: string;
   adoptReviewedDiskMerge: (content: string, diskContent: string, diskMetadata: FileMetadata) => void;
@@ -26,6 +30,7 @@ interface ExternalConflictReviewWorkflowParams {
 
 export function useExternalConflictReviewWorkflow({
   filePath,
+  documentEpochRef,
   markdown,
   lastSavedMarkdown,
   adoptReviewedDiskMerge,
@@ -33,6 +38,15 @@ export function useExternalConflictReviewWorkflow({
   pushToast,
 }: ExternalConflictReviewWorkflowParams) {
   const [externalConflictReview, setExternalConflictReview] = useState<ExternalConflictReviewState | null>(null);
+  useEffect(() => {
+    setExternalConflictReview((current) => {
+      if (!current) return current;
+      return current.filePath === filePath && current.documentEpoch === documentEpochRef.current
+        ? current
+        : null;
+    });
+  }, [documentEpochRef, filePath]);
+
   const externalProtectedChanges = useMemo(
     () => externalConflictReview ? detectProtectedChanges(externalConflictReview.baseMarkdown, externalConflictReview.hunks) : [],
     [externalConflictReview],
@@ -43,6 +57,8 @@ export function useExternalConflictReviewWorkflow({
     try {
       const response = await readTextFile(filePath);
       setExternalConflictReview({
+        filePath,
+        documentEpoch: documentEpochRef.current,
         hunks: createDiffHunks(lastSavedMarkdown, response.content),
         baseMarkdown: lastSavedMarkdown,
         diskMarkdown: response.content,
@@ -51,14 +67,40 @@ export function useExternalConflictReviewWorkflow({
     } catch (error) {
       pushToast(error instanceof Error ? error.message : 'Could not load disk version for review.', 'error');
     }
-  }, [filePath, lastSavedMarkdown, pushToast]);
+  }, [documentEpochRef, filePath, lastSavedMarkdown, pushToast]);
 
   const closeExternalConflictReview = useCallback(() => {
     setExternalConflictReview(null);
   }, []);
 
-  const applyReviewedMerge = useCallback((rejectedDiskHunkIds: Set<string>, successMessage: string) => {
+  const applyReviewedMerge = useCallback(async (rejectedDiskHunkIds: Set<string>, successMessage: string) => {
     if (!externalConflictReview) return;
+    if (externalConflictReview.filePath !== filePath || externalConflictReview.documentEpoch !== documentEpochRef.current) {
+      setExternalConflictReview(null);
+      pushToast('Disk review was closed because the document changed before it was applied.', 'warning');
+      return;
+    }
+    let latestDisk;
+    try {
+      latestDisk = await readTextFile(externalConflictReview.filePath);
+    } catch (error) {
+      pushToast(error instanceof Error ? error.message : 'Could not refresh disk version before applying review.', 'error');
+      return;
+    }
+    if (
+      latestDisk.content !== externalConflictReview.diskMarkdown
+      || metadataChanged(externalConflictReview.diskMetadata, latestDisk.metadata)
+    ) {
+      setExternalConflictReview({
+        ...externalConflictReview,
+        hunks: createDiffHunks(lastSavedMarkdown, latestDisk.content),
+        baseMarkdown: lastSavedMarkdown,
+        diskMarkdown: latestDisk.content,
+        diskMetadata: latestDisk.metadata,
+      });
+      pushToast('Disk changed again while review was open. Review refreshed before applying.', 'warning');
+      return;
+    }
     const merged = applyThreeWayDiffDecisions(
       externalConflictReview.baseMarkdown,
       markdown,
@@ -79,15 +121,15 @@ export function useExternalConflictReviewWorkflow({
     adoptReviewedDiskMerge(merged, externalConflictReview.diskMarkdown, externalConflictReview.diskMetadata);
     setExternalConflictReview(null);
     pushToast(successMessage, 'success');
-  }, [adoptReviewedDiskMerge, externalConflictReview, markdown, pushToast, setAuthorshipMarks]);
+  }, [adoptReviewedDiskMerge, documentEpochRef, externalConflictReview, filePath, lastSavedMarkdown, markdown, pushToast, setAuthorshipMarks]);
 
   const reloadReviewedDiskVersion = useCallback(() => {
-    applyReviewedMerge(new Set(), 'Applied disk changes and preserved non-conflicting local edits');
+    void applyReviewedMerge(new Set(), 'Applied disk changes and preserved non-conflicting local edits');
   }, [applyReviewedMerge]);
 
   const applyExternalConflictReview = useCallback((rejectedDiskHunkIds: Set<string>) => {
     if (!externalConflictReview) return;
-    applyReviewedMerge(
+    void applyReviewedMerge(
       rejectedDiskHunkIds,
       rejectedDiskHunkIds.size === 0
         ? 'Accepted disk changes'

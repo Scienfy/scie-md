@@ -1688,7 +1688,7 @@ button:disabled {
 }
 
 .app-shell.focus-mode .status-actions {
-  display: none;
+  display: flex;
 }
 
 .app-shell.focus-mode .visual-editor .focus-dimmed-block {
@@ -1729,7 +1729,7 @@ button:disabled {
   z-index: 30;
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: max-content minmax(120px, 1fr) max-content;
+  grid-template-columns: minmax(0, max-content) minmax(72px, 1fr) max-content;
   align-items: center;
   gap: var(--ui-pad-x);
   min-height: var(--topbar-min-height);
@@ -1751,6 +1751,7 @@ button:disabled {
 
 .topbar-left {
   min-width: 0;
+  max-width: 100%;
   position: relative;
   z-index: 4;
   overflow: visible;
@@ -2060,6 +2061,7 @@ button:disabled {
 }
 
 .document-title {
+  min-width: 0;
   cursor: grab;
   overflow: hidden;
   color: var(--text-strong);
@@ -2075,7 +2077,7 @@ button:disabled {
   align-items: center;
   justify-content: flex-end;
   gap: var(--toolbar-gap);
-  min-width: 0;
+  min-width: max-content;
   overflow: visible;
 }
 
@@ -2182,9 +2184,14 @@ button:disabled {
   display: inline-flex;
   flex: 0 0 auto;
   gap: 3px;
+  min-width: calc((var(--control-height) * 3) + 6px);
   margin-left: 6px;
   position: relative;
   z-index: 3;
+}
+
+.window-controls button {
+  flex: 0 0 var(--control-height);
 }
 
 .window-controls button[aria-label="Close window"]:hover {
@@ -2209,13 +2216,26 @@ button:disabled {
   }
 }
 
+@media (max-width: 1500px) {
+  .app-menu-button.is-secondary-menu {
+    display: none;
+  }
+}
+
 @media (max-width: 1120px) {
   .quick-toolbar {
     display: none;
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 620px) {
+  .topbar-right > .topbar-popover-anchor,
+  .topbar-right > .topbar-icon-button {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
   .app-menubar {
     display: none;
   }
@@ -2880,6 +2900,7 @@ button:disabled {
   );
   position: fixed;
   z-index: 10000;
+  width: max-content;
   max-width: min(320px, calc(100vw - 16px));
   transform: translateX(-50%);
   overflow: hidden;
@@ -2897,7 +2918,8 @@ button:disabled {
   font-size: 12px;
   font-weight: 400;
   line-height: 1.32;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
   white-space: normal;
   animation: app-tooltip-in 55ms ease-out both;
 }
@@ -5082,6 +5104,44 @@ button:disabled {
 .scie-md-visual-atom-rendered,
 .scie-md-visual-atom-content {
   min-width: 0;
+}
+
+.scie-md-visual-atom-raw-fallback {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warning);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--surface-muted), transparent 24%);
+  color: var(--text);
+}
+
+.scie-md-visual-atom-raw-fallback strong {
+  font-family: var(--ui-font);
+  font-size: 12px;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.scie-md-visual-atom-raw-fallback span {
+  color: var(--text-muted);
+  font-family: var(--ui-font);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.scie-md-visual-atom-raw-fallback pre {
+  max-height: min(38vh, 360px);
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: var(--mono-font);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .scie-md-visual-atom-content > .directive-card {
@@ -7756,11 +7816,25 @@ button:disabled {
   white-space: nowrap;
 }
 
+.editor-fallback-raw {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  resize: none;
+  border: 0;
+  outline: 0;
+  padding: 24px clamp(18px, 4vw, 56px);
+  background: var(--editor-bg);
+  color: var(--text);
+  font: 14px/1.65 var(--mono-font);
+}
+
 .statusbar {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   min-height: var(--statusbar-min-height);
   padding: 6px var(--ui-pad-x);
@@ -7773,10 +7847,19 @@ button:disabled {
 .status-left {
   position: relative;
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   min-width: 0;
   outline: 0;
+}
+
+.status-actions {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: min(100%, 220px);
 }
 
 .status-left:focus-visible {
@@ -7875,8 +7958,8 @@ button:disabled {
 }
 
 .status-save-text,
-.status-word-count,
-.status-empty-section {
+.status-word-count {
+  flex: 0 0 auto;
   white-space: nowrap;
 }
 
@@ -7901,8 +7984,9 @@ button:disabled {
 .status-breadcrumb {
   display: inline-flex;
   align-items: center;
+  flex: 0 1 24ch;
   min-width: 0;
-  max-width: min(42vw, 620px);
+  max-width: min(24ch, 18vw);
   overflow: hidden;
 }
 
@@ -7910,10 +7994,11 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   min-width: 0;
+  max-width: 100%;
 }
 
 .status-breadcrumb-segment button {
-  max-width: 180px;
+  max-width: 100%;
   min-height: 24px;
   overflow: hidden;
   border: 0;
@@ -7921,16 +8006,12 @@ button:disabled {
   background: transparent;
   color: var(--text-muted);
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-breadcrumb-segment button:hover {
   color: var(--accent);
   text-decoration: underline;
-}
-
-.status-breadcrumb-separator {
-  margin: 0 3px;
-  color: var(--border-strong);
 }
 
 .status-badge {
@@ -8259,6 +8340,8 @@ button:disabled {
 .citation-dialog {
   width: min(920px, calc(100vw - 32px));
   max-height: min(820px, calc(100vh - 48px));
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -8311,6 +8394,9 @@ button:disabled {
 .citation-form {
   display: grid;
   gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .citation-search-row {
@@ -8333,9 +8419,18 @@ button:disabled {
 .citation-entry-list {
   display: grid;
   gap: 8px;
-  max-height: min(520px, 58vh);
+  max-height: none;
   overflow: auto;
   padding-right: 2px;
+}
+
+.citation-form .dialog-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 4px -2px -2px;
+  padding-top: 10px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface), transparent 16%), var(--surface) 32%);
 }
 
 .citation-entry-card {
@@ -8859,10 +8954,15 @@ button:disabled {
 }
 
 .diff-dialog {
+  box-sizing: border-box;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   width: min(1180px, 100%);
+  height: min(760px, calc(100vh - 72px));
+  height: min(760px, calc(100dvh - 72px));
   max-height: min(760px, calc(100vh - 72px));
+  max-height: min(760px, calc(100dvh - 72px));
+  min-height: 0;
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
@@ -8877,6 +8977,11 @@ button:disabled {
 
 .review-dialog {
   grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "header"
+    "notice"
+    "body"
+    "actions";
   width: min(1040px, 100%);
   border-radius: 18px;
   background:
@@ -8918,13 +9023,24 @@ button:disabled {
   font-weight: 650;
 }
 
+.review-dialog-header {
+  grid-area: header;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--surface), transparent 4%);
+}
+
 .review-card-list {
+  grid-area: body;
   display: grid;
   align-content: start;
   gap: 12px;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 14px;
+  scrollbar-gutter: stable;
   background:
     radial-gradient(circle at 24px 24px, color-mix(in srgb, var(--accent) 10%, transparent) 0 1px, transparent 1px 100%) 0 0 / 24px 24px,
     var(--editor-bg);
@@ -9091,7 +9207,12 @@ button:disabled {
 }
 
 .review-dialog-actions {
+  grid-area: actions;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   background: color-mix(in srgb, var(--surface), transparent 4%);
+  box-shadow: 0 -12px 28px color-mix(in srgb, var(--shadow), transparent 84%);
 }
 
 .review-dialog-actions > span {
@@ -9167,6 +9288,7 @@ button:disabled {
 }
 
 .diff-protected-warning {
+  grid-area: notice;
   display: grid;
   gap: 3px;
   margin: 0 12px 10px;
@@ -9544,6 +9666,71 @@ button:disabled {
 
 .export-status-banner .is-spinning {
   animation: export-status-spin 0.9s linear infinite;
+}
+
+.document-open-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(7, 13, 20, 0.34);
+  color: var(--text);
+  backdrop-filter: blur(6px);
+}
+
+.document-open-panel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  box-sizing: border-box;
+  width: min(440px, calc(100vw - 32px));
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 18px;
+  background: var(--surface);
+  box-shadow: 0 22px 70px var(--shadow);
+}
+
+.document-open-spinner {
+  margin-top: 2px;
+  color: var(--accent);
+  animation: export-status-spin 0.9s linear infinite;
+}
+
+.document-open-copy {
+  min-width: 0;
+}
+
+.document-open-title,
+.document-open-file,
+.document-open-detail {
+  margin: 0;
+}
+
+.document-open-title {
+  color: var(--text-strong);
+  font-size: 1rem;
+  font-weight: 750;
+}
+
+.document-open-file {
+  overflow: hidden;
+  margin-top: 4px;
+  color: var(--text);
+  font-family: var(--mono-font);
+  font-size: 0.84rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-open-detail {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
 }
 
 .command-search {
@@ -10255,7 +10442,7 @@ button:disabled {
   }
 
   .topbar {
-    grid-template-columns: max-content minmax(88px, 1fr) max-content;
+    grid-template-columns: minmax(0, max-content) minmax(72px, 1fr) max-content;
     gap: calc(var(--ui-pad-x) * 0.75);
   }
 
@@ -10325,7 +10512,7 @@ button:disabled {
 
 @media (max-width: 780px) {
   .topbar {
-    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr) max-content;
     gap: 8px;
   }
 
@@ -10360,7 +10547,7 @@ button:disabled {
 
 @media (max-width: 680px) {
   .topbar {
-    grid-template-columns: max-content max-content;
+    grid-template-columns: minmax(0, max-content) max-content;
     justify-content: space-between;
   }
 

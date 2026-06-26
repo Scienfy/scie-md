@@ -75,7 +75,7 @@ To install it:
 Command-line installation also works:
 
 ```bash
-code --install-extension sciemd-vscode-1.0.8.vsix
+code --install-extension sciemd-vscode-1.0.10.vsix
 ```
 
 ## Public Preview Status

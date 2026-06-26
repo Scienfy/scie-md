@@ -51,6 +51,18 @@ export async function getInitialMarkdownPath(): Promise<string | null> {
   return invoke<string | null>('initial_markdown_path');
 }
 
+export async function peekPendingMarkdownOpen(): Promise<string | null> {
+  return invoke<string | null>('peek_pending_markdown_open');
+}
+
+export async function takePendingMarkdownOpen(): Promise<string | null> {
+  return invoke<string | null>('take_pending_markdown_open');
+}
+
+export async function clearPendingMarkdownOpen(path: string): Promise<void> {
+  await invoke('clear_pending_markdown_open', { path });
+}
+
 export async function readTextFile(path: string): Promise<ReadTextFileResponse> {
   return invoke<ReadTextFileResponse>('read_text_file', { path });
 }

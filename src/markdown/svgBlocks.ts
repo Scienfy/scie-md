@@ -1,4 +1,5 @@
 import { lineStartOffsets, offsetToLine } from './textOffsets';
+import { fencedCodeRanges } from './markdownRanges';
 
 export interface SvgFenceBlock {
   raw: string;
@@ -12,11 +13,14 @@ export function findSvgFenceBlocks(markdown: string): SvgFenceBlock[] {
   const normalized = markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const starts = lineStartOffsets(normalized);
   const lines = normalized.split('\n');
+  const outerCodeRanges = fencedCodeRanges(normalized);
   const blocks: SvgFenceBlock[] = [];
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const opening = lines[lineIndex].match(/^[ \t]*(`{3,}|~{3,})[ \t]*svg(?:[ \t].*)?$/i);
     if (!opening) continue;
+    const start = starts[lineIndex] ?? 0;
+    if (outerCodeRanges.some((range) => start > range.start && start < range.end)) continue;
     const marker = opening[1];
     const markerChar = marker[0];
     const markerLength = marker.length;
@@ -25,7 +29,6 @@ export function findSvgFenceBlocks(markdown: string): SvgFenceBlock[] {
       const closing = lines[closeIndex].match(/^[ \t]*(`{3,}|~{3,})[ \t]*$/);
       if (!closing || closing[1][0] !== markerChar || closing[1].length < markerLength) continue;
 
-      const start = starts[lineIndex] ?? 0;
       const end = closeIndex + 1 < starts.length
         ? (starts[closeIndex + 1] ?? normalized.length) - 1
         : normalized.length;

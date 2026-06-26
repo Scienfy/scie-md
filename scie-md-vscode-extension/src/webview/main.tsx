@@ -15,6 +15,9 @@ window.addEventListener('error', (event) => {
 });
 
 window.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled ScieMD webview promise rejection:', event.reason);
+  event.preventDefault();
+  if (document.documentElement.dataset.scieMdBoot === 'mounted') return;
   document.documentElement.dataset.scieMdBoot = 'error';
   const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
   setBootMessage(`ScieMD webview error: ${reason}`);

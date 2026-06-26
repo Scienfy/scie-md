@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearFileDraft,
   clearUntitledDraft,
+  flushDraftRecoveryForTests,
   resetDraftRecoveryForTests,
   isBundledWelcomeMarkdown,
+  loadFileDraftAsync,
   loadFileDraft,
   loadUntitledDraft,
   saveFileDraft,
@@ -11,12 +13,23 @@ import {
   shouldOfferFileDraftRestore,
   shouldPersistUntitledDraft,
 } from './draftRecoveryService';
+import type { UntitledDraft } from './draftRecoveryService';
 import type { FileMetadata } from '../app/documentState';
 
 describe('draftRecoveryService', () => {
+  let originalIndexedDb: IDBFactory | undefined;
+
   beforeEach(() => {
     localStorage.clear();
     resetDraftRecoveryForTests();
+    originalIndexedDb = globalThis.indexedDB;
+  });
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'indexedDB', {
+      configurable: true,
+      value: originalIndexedDb,
+    });
   });
 
   it('stores and restores an untitled draft', () => {
@@ -118,12 +131,16 @@ describe('draftRecoveryService', () => {
   });
 
   it('prunes older file-specific drafts so local recovery storage cannot grow without bound', () => {
+    const corruptKey = `scie_md.fileDraft.v2.sha256.${'0'.repeat(64)}`;
+    localStorage.setItem(corruptKey, '{not-json');
+
     for (let index = 0; index < 45; index += 1) {
       saveFileDraft(`C:\\docs\\paper-${index}.md`, `# Draft ${index}\n`, 1000 + index);
     }
 
     const fileDraftKeys = Object.keys(localStorage).filter((key) => key.startsWith('scie_md.fileDraft.v2.sha256.'));
     expect(fileDraftKeys).toHaveLength(40);
+    expect(localStorage.getItem(corruptKey)).toBeNull();
     expect(loadFileDraft('C:\\docs\\paper-0.md', 2000)).toBeNull();
     expect(loadFileDraft('C:\\docs\\paper-44.md', 2000)?.markdown).toBe('# Draft 44\n');
   });
@@ -165,6 +182,45 @@ describe('draftRecoveryService', () => {
     expect(shouldPersistUntitledDraft('# ScieMD Tutorial\nUser draft.\n', '# Blank\n', { suppressBundledWelcome: true })).toBe(true);
   });
 
+  it('serializes IndexedDB draft writes so an older slow transaction cannot overwrite a newer draft', async () => {
+    Object.defineProperty(globalThis, 'indexedDB', {
+      configurable: true,
+      value: createFakeIndexedDb(),
+    });
+    const firstLargeDraft = `${'a'.repeat(1_050_000)}\n`;
+    const secondLargeDraft = `${'b'.repeat(1_050_000)}\n`;
+
+    saveFileDraft('C:\\docs\\paper.md', firstLargeDraft, 1000);
+    saveFileDraft('C:\\docs\\paper.md', secondLargeDraft, 2000);
+    await flushDraftRecoveryForTests();
+    resetDraftRecoveryForTests();
+
+    expect(await loadFileDraftAsync('C:\\docs\\paper.md', 3000)).toEqual({
+      markdown: secondLargeDraft,
+      savedAt: 2000,
+    });
+  });
+
+  it('keeps a large draft recoverable in memory when IndexedDB access is blocked', async () => {
+    Object.defineProperty(globalThis, 'indexedDB', {
+      configurable: true,
+      value: {
+        open: () => {
+          throw new DOMException('IndexedDB is blocked', 'SecurityError');
+        },
+      },
+    });
+    const largeDraft = `${'x'.repeat(1_050_000)}\n`;
+
+    expect(() => saveFileDraft('C:\\docs\\blocked-db.md', largeDraft, 1000)).not.toThrow();
+    await flushDraftRecoveryForTests();
+
+    expect(await loadFileDraftAsync('C:\\docs\\blocked-db.md', 1500)).toEqual({
+      markdown: largeDraft,
+      savedAt: 1000,
+    });
+  });
+
   it('clears drafts explicitly', () => {
     saveUntitledDraft('# Draft\n', 1000);
     clearUntitledDraft();
@@ -185,4 +241,156 @@ function fileMetadata(overrides: Partial<FileMetadata> = {}): FileMetadata {
     cloudState: 'local',
     ...overrides,
   };
+}
+
+function createFakeIndexedDb(): IDBFactory {
+  const values = new Map<IDBValidKey, unknown>();
+  const db = new FakeDraftDb(values);
+  return {
+    open: () => {
+      const request = new FakeOpenRequest(db);
+      scheduleMicrotasks(0, () => {
+        request.result = db as unknown as IDBDatabase;
+        request.onupgradeneeded?.({ target: request } as unknown as IDBVersionChangeEvent);
+        request.onsuccess?.({ target: request } as unknown as Event);
+      });
+      return request as unknown as IDBOpenDBRequest;
+    },
+  } as unknown as IDBFactory;
+}
+
+class FakeOpenRequest {
+  result: IDBDatabase | null = null;
+  error: DOMException | null = null;
+  onsuccess: ((event: Event) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onupgradeneeded: ((event: IDBVersionChangeEvent) => void) | null = null;
+
+  constructor(readonly db: FakeDraftDb) {}
+}
+
+class FakeDraftDb {
+  constructor(private readonly values: Map<IDBValidKey, unknown>) {}
+
+  createObjectStore() {
+    return {};
+  }
+
+  transaction(_storeName: string, _mode: IDBTransactionMode) {
+    return new FakeTransaction(this.values);
+  }
+
+  close() {
+    // No-op for the in-memory test database.
+  }
+}
+
+class FakeTransaction {
+  oncomplete: ((event: Event) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onabort: ((event: Event) => void) | null = null;
+  error: DOMException | null = null;
+
+  constructor(private readonly values: Map<IDBValidKey, unknown>) {}
+
+  objectStore(_storeName: string) {
+    return new FakeObjectStore(this, this.values);
+  }
+
+  complete() {
+    scheduleMicrotasks(0, () => this.oncomplete?.(new Event('complete')));
+  }
+
+  abort() {
+    this.onabort?.(new Event('abort'));
+  }
+}
+
+class FakeObjectStore {
+  constructor(
+    private readonly transaction: FakeTransaction,
+    private readonly values: Map<IDBValidKey, unknown>,
+  ) {}
+
+  put(value: UntitledDraft, key: IDBValidKey) {
+    const request = new FakeRequest<IDBValidKey>();
+    const delay = value.savedAt === 1000 ? 3 : 0;
+    scheduleMicrotasks(delay, () => {
+      this.values.set(key, value);
+      request.succeed(key);
+      this.transaction.complete();
+    });
+    return request as unknown as IDBRequest<IDBValidKey>;
+  }
+
+  get(key: IDBValidKey) {
+    const request = new FakeRequest<unknown>();
+    scheduleMicrotasks(0, () => {
+      request.succeed(this.values.get(key));
+      this.transaction.complete();
+    });
+    return request as unknown as IDBRequest<unknown>;
+  }
+
+  delete(key: IDBValidKey) {
+    const request = new FakeRequest<undefined>();
+    scheduleMicrotasks(0, () => {
+      this.values.delete(key);
+      request.succeed(undefined);
+      this.transaction.complete();
+    });
+    return request as unknown as IDBRequest<undefined>;
+  }
+
+  openCursor() {
+    const request = new FakeRequest<FakeCursor | null>();
+    const entries = Array.from(this.values.entries());
+    let index = 0;
+    const fire = () => {
+      if (index >= entries.length) {
+        request.succeed(null);
+        this.transaction.complete();
+        return;
+      }
+      const [key, value] = entries[index];
+      request.succeed(new FakeCursor(key, value, () => {
+        index += 1;
+        scheduleMicrotasks(0, fire);
+      }));
+    };
+    scheduleMicrotasks(0, fire);
+    return request as unknown as IDBRequest<IDBCursorWithValue | null>;
+  }
+}
+
+class FakeRequest<T> {
+  result!: T;
+  error: DOMException | null = null;
+  onsuccess: ((event: Event) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+
+  succeed(result: T) {
+    this.result = result;
+    this.onsuccess?.({ target: this } as unknown as Event);
+  }
+}
+
+class FakeCursor {
+  constructor(
+    readonly key: IDBValidKey,
+    readonly value: unknown,
+    private readonly continueCallback: () => void,
+  ) {}
+
+  continue() {
+    this.continueCallback();
+  }
+}
+
+function scheduleMicrotasks(count: number, callback: () => void): void {
+  if (count <= 0) {
+    queueMicrotask(callback);
+    return;
+  }
+  queueMicrotask(() => scheduleMicrotasks(count - 1, callback));
 }

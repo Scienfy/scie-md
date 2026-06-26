@@ -4,6 +4,7 @@ import { AUTOSAVE_DELAY_MS, shouldScheduleAutosave } from '../../services/autosa
 
 interface UseAutosaveTimerOptions {
   filePath: string | null;
+  markdown: string;
   dirty: boolean;
   externalConflict: boolean;
   autosaveBlocked?: boolean;
@@ -13,6 +14,7 @@ interface UseAutosaveTimerOptions {
 
 export function useAutosaveTimer({
   filePath,
+  markdown,
   dirty,
   externalConflict,
   autosaveBlocked = false,
@@ -20,6 +22,11 @@ export function useAutosaveTimer({
   setAutosaveStatus,
 }: UseAutosaveTimerOptions) {
   const timerRef = useRef<number | null>(null);
+  const savingRef = useRef<Promise<string | false> | null>(null);
+  const rerunAfterSaveRef = useRef(false);
+  const latestStateRef = useRef({ filePath, dirty, externalConflict, autosaveBlocked });
+
+  latestStateRef.current = { filePath, dirty, externalConflict, autosaveBlocked };
 
   const cancelAutosave = useCallback(() => {
     if (timerRef.current) {
@@ -28,14 +35,47 @@ export function useAutosaveTimer({
     }
   }, []);
 
+  const runAutosave = useCallback(async () => {
+    if (savingRef.current) {
+      rerunAfterSaveRef.current = true;
+      return savingRef.current;
+    }
+
+    const saveTask = (async () => {
+      let result: string | false = false;
+      do {
+        rerunAfterSaveRef.current = false;
+        result = await saveCurrent({ autosave: true });
+      } while (
+        rerunAfterSaveRef.current
+        && !latestStateRef.current.autosaveBlocked
+        && shouldScheduleAutosave({
+          filePath: latestStateRef.current.filePath,
+          dirty: latestStateRef.current.dirty,
+          conflictDetected: latestStateRef.current.externalConflict,
+        })
+      );
+      return result;
+    })();
+
+    savingRef.current = saveTask;
+    try {
+      return await saveTask;
+    } finally {
+      if (savingRef.current === saveTask) {
+        savingRef.current = null;
+      }
+    }
+  }, [saveCurrent]);
+
   const flushAutosave = useCallback(async () => {
     cancelAutosave();
     if (filePath && dirty && !autosaveBlocked) {
-      return saveCurrent({ autosave: true });
+      return runAutosave();
     }
     if (filePath && dirty && autosaveBlocked) return false;
     return true;
-  }, [autosaveBlocked, cancelAutosave, dirty, filePath, saveCurrent]);
+  }, [autosaveBlocked, cancelAutosave, dirty, filePath, runAutosave]);
 
   useEffect(() => {
     cancelAutosave();
@@ -52,11 +92,14 @@ export function useAutosaveTimer({
 
     timerRef.current = window.setTimeout(() => {
       timerRef.current = null;
-      void saveCurrent({ autosave: true });
+      void runAutosave().catch((error) => {
+        console.warn('Autosave task failed before it could report status.', error);
+        setAutosaveStatus('error');
+      });
     }, AUTOSAVE_DELAY_MS);
 
     return cancelAutosave;
-  }, [autosaveBlocked, cancelAutosave, dirty, externalConflict, filePath, saveCurrent, setAutosaveStatus]);
+  }, [autosaveBlocked, cancelAutosave, dirty, externalConflict, filePath, markdown, runAutosave, setAutosaveStatus]);
 
   return { cancelAutosave, flushAutosave };
 }

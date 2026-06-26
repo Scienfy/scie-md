@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { MouseEvent } from 'react';
 import { Editor, defaultValueCtx, editorViewCtx, rootCtx } from '@milkdown/kit/core';
 import type { Editor as MilkdownEditor } from '@milkdown/kit/core';
-import { TextSelection } from '@milkdown/prose/state';
+import { Plugin, TextSelection } from '@milkdown/prose/state';
 import { commonmark } from '@milkdown/kit/preset/commonmark';
 import { gfm } from '@milkdown/kit/preset/gfm';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
@@ -11,7 +11,7 @@ import type { EditorView } from '@milkdown/prose/view';
 import { nord } from '@milkdown/theme-nord';
 import { fromVisualImagePaths, toVisualImagePaths } from '../markdown/imagePaths';
 import { quoteAnchorPrefix, quoteAnchorSuffix } from '../markdown/quoteAnchors';
-import { getMarkdown, insert, replaceAll } from '@milkdown/kit/utils';
+import { $prose, getMarkdown, insert, replaceAll } from '@milkdown/kit/utils';
 import type { EditorHistoryControls } from './editorControls';
 import type { EditorSelectionGetter } from './editorSelection';
 import { visualSourceLineForPosition } from './visualSourceMapping';
@@ -23,7 +23,7 @@ import { blockHandlePlugin } from './blockHandlePlugin';
 import { editableTailPlugin } from './editableTailPlugin';
 import { focusModePlugin } from './focusModePlugin';
 import { visualEditingBoundaryPlugin } from './visualEditingBoundaryPlugin';
-import { flushScieMetadataNodeViews, isScieMetadataNode, scieMetadataPlugins, setScieMetadataCitationEntries, setScieMetadataDocumentPath, setScieMetadataUiCallbacks } from './milkdown/scieMetadataNodes';
+import { flushScieMetadataNodeViews, isScieMetadataNode, registerScieMetadataEditorContext, scieMetadataPlugins, unregisterScieMetadataEditorContext, updateScieMetadataEditorContext } from './milkdown/scieMetadataNodes';
 import { setVisualEditorStateReader } from './visualEditorStateSync';
 import '@milkdown/theme-nord/style.css';
 import 'katex/dist/katex.min.css';
@@ -34,8 +34,10 @@ import type { MarkdownHeading } from '../markdown/outline';
 
 export type VisualMarkdownInsert = (markdown: string, options?: { filePath?: string | null }) => void;
 export interface VisualMarkdownJumpTarget {
+  id: string;
   level: number;
   text: string;
+  line: number;
   occurrence: number;
 }
 export type VisualMarkdownJump = (target: VisualMarkdownJumpTarget) => void;
@@ -65,11 +67,10 @@ interface VisualMarkdownEditorProps {
   highlightedVariableName?: string | null;
   onEditCitation?: (key: string) => void;
   onEditVariable?: (name: string) => void;
+  registerStateReader?: boolean;
 }
 
-function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsertReady, onJumpReady, onFindReady, onHistoryReady, onSelectionTextReady, onCursorLineChange, onViewportLineChange, outlineHeadings = [], onLockViolation, onToast, confirmText, citationKeys = [], citationEntries = [], variableDefinitions = [], highlightedVariableName = null, onEditCitation, onEditVariable }: VisualMarkdownEditorProps) {
-  setScieMetadataDocumentPath(filePath);
-  setScieMetadataCitationEntries(citationEntries);
+function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsertReady, onJumpReady, onFindReady, onHistoryReady, onSelectionTextReady, onCursorLineChange, onViewportLineChange, outlineHeadings = [], onLockViolation, onToast, confirmText, citationKeys = [], citationEntries = [], variableDefinitions = [], highlightedVariableName = null, onEditCitation, onEditVariable, registerStateReader = true }: VisualMarkdownEditorProps) {
   const initialSplit = useRef(splitVisualMarkdown(markdown));
   const citationKeysRef = useRef(citationKeys);
   const citationEntriesRef = useRef(citationEntries);
@@ -93,6 +94,18 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
   const initialEmissionHandled = useRef(false);
   const visualContentMutated = useRef(false);
   const visualEditorRootRef = useRef<HTMLDivElement | null>(null);
+  const metadataContextId = useRef(`scie-md-${Math.random().toString(36).slice(2)}`);
+
+  useEffect(() => {
+    const contextId = metadataContextId.current;
+    registerScieMetadataEditorContext(contextId, {
+      documentPath: filePathRef.current,
+      citationEntries: citationEntriesRef.current,
+      pushToast: onToast,
+      confirmText,
+    });
+    return () => unregisterScieMetadataEditorContext(contextId);
+  }, []);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -115,7 +128,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
   }, [onLockViolation]);
 
   useEffect(() => {
-    setScieMetadataUiCallbacks({
+    updateScieMetadataEditorContext(metadataContextId.current, {
       pushToast: onToast,
       confirmText,
     });
@@ -127,7 +140,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
 
   useEffect(() => {
     filePathRef.current = filePath;
-    setScieMetadataDocumentPath(filePath);
+    updateScieMetadataEditorContext(metadataContextId.current, { documentPath: filePath });
   }, [filePath]);
 
   useEffect(() => {
@@ -150,7 +163,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
 
   useEffect(() => {
     citationEntriesRef.current = citationEntries;
-    setScieMetadataCitationEntries(citationEntries);
+    updateScieMetadataEditorContext(metadataContextId.current, { citationEntries });
   }, [citationEntries]);
 
   useEffect(() => {
@@ -184,6 +197,12 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
         .use(visualEditingBoundaryPlugin)
         .use(editableTailPlugin)
         .use(focusModePlugin)
+        .use(createVisualChangeListenerPlugin(
+          () => applyingExternalUpdate.current || !initialEmissionHandled.current,
+          () => {
+            visualContentMutated.current = true;
+          },
+        ))
         .use(listener)
         .config((ctx) => {
           ctx.set(rootCtx, root);
@@ -253,7 +272,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
     onJumpReady?.((target) => {
       editor.action((ctx) => {
         const view = ctx.get(editorViewCtx);
-        const position = findHeadingPosition(view.state.doc, target);
+        const position = findHeadingPosition(view, target, sourceMarkdownRef.current, frontmatterPrefixRef.current);
         if (position === null) return;
         const selection = TextSelection.near(view.state.doc.resolve(Math.min(position + 1, view.state.doc.content.size)));
         view.dispatch(view.state.tr.setSelection(selection));
@@ -340,7 +359,13 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
         let lastViewportLine = 0;
         const emitViewportLocation = () => {
           animationFrame = null;
-          const line = visualViewportTopLine(view, outlineHeadingsRef.current, scroller);
+          const line = visualViewportTopLine(
+            view,
+            outlineHeadingsRef.current,
+            scroller,
+            sourceMarkdownRef.current,
+            frontmatterPrefixRef.current,
+          );
           if (line === null || line === lastViewportLine) return;
           lastViewportLine = line;
           onViewportLineChangeRef.current?.(line);
@@ -424,7 +449,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
         console.warn('Could not validate visual editor state synchronization.', error);
       }
     };
-    setVisualEditorStateReader(() => {
+    const disposeStateReader = registerStateReader ? setVisualEditorStateReader(() => {
       if (!visualContentMutated.current) return sourceMarkdownRef.current;
       const fullMarkdown = readFullMarkdownFromEditor();
       if (fullMarkdown === null) return null;
@@ -433,7 +458,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
         onChangeRef.current(fullMarkdown);
       }
       return fullMarkdown;
-    });
+    }) : () => undefined;
     const scheduleStateSynchronization = () => {
       if (idleSyncHandle !== null || timeoutSyncHandle !== null || document.visibilityState === 'hidden' || !document.hasFocus()) return;
       if ('requestIdleCallback' in window) {
@@ -455,7 +480,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
       }
       if (timeoutSyncHandle !== null) clearTimeout(timeoutSyncHandle);
       synchronizeEditorState(true);
-      setVisualEditorStateReader(null);
+      disposeStateReader();
       if (editorRef.current === editor) {
         editorRef.current = undefined;
         onEditorReady(undefined);
@@ -469,7 +494,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
         disposeMutationListeners?.();
       }
     };
-  }, [loading, onEditorReady, onInsertReady, onJumpReady, onFindReady, onHistoryReady, onSelectionTextReady]);
+  }, [loading, onEditorReady, onInsertReady, onJumpReady, onFindReady, onHistoryReady, onSelectionTextReady, registerStateReader]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -502,7 +527,13 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
   };
 
   return (
-    <div ref={visualEditorRootRef} className="visual-editor" spellCheck={false} onMouseDown={handleVisualEditorMouseDown}>
+    <div
+      ref={visualEditorRootRef}
+      className="visual-editor"
+      spellCheck={false}
+      data-scie-md-runtime-context={metadataContextId.current}
+      onMouseDown={handleVisualEditorMouseDown}
+    >
       <Milkdown />
     </div>
   );
@@ -564,7 +595,54 @@ function refreshVariablePreviewDecorations(editor: MilkdownEditor | undefined): 
   });
 }
 
-function findHeadingPosition(doc: { descendants: (callback: (node: { type: { name: string }; attrs?: { level?: number }; textContent: string }, pos: number) => boolean | void) => void; content: { size: number } }, target: VisualMarkdownJumpTarget): number | null {
+function createVisualChangeListenerPlugin(
+  shouldIgnoreTransaction: () => boolean,
+  markVisualMutation: () => void,
+) {
+  return $prose(() => new Plugin({
+    appendTransaction(transactions) {
+      if (shouldIgnoreTransaction()) return null;
+      if (transactions.some((transaction) => transaction.docChanged)) {
+        markVisualMutation();
+      }
+      return null;
+    },
+  }));
+}
+
+function findHeadingPosition(
+  view: EditorView,
+  target: VisualMarkdownJumpTarget,
+  sourceMarkdown: string,
+  frontmatterPrefix: string,
+): number | null {
+  const lineMatch = findHeadingPositionBySourceLine(view, target, sourceMarkdown, frontmatterPrefix);
+  if (lineMatch !== null) return lineMatch;
+  return findHeadingPositionByText(view.state.doc, target);
+}
+
+function findHeadingPositionBySourceLine(
+  view: EditorView,
+  target: VisualMarkdownJumpTarget,
+  sourceMarkdown: string,
+  frontmatterPrefix: string,
+): number | null {
+  let found: number | null = null;
+  view.state.doc.descendants((node, pos) => {
+    if (found !== null) return false;
+    if (node.type.name !== 'heading' || node.attrs?.level !== target.level) return true;
+    const line = visualSourceLineForPosition(view.state.doc, Math.min(pos + 1, view.state.doc.content.size), sourceMarkdown)
+      ?? visualLineForPosition(view, Math.min(pos + 1, view.state.doc.content.size), frontmatterPrefix);
+    if (line === target.line) {
+      found = pos;
+      return false;
+    }
+    return false;
+  });
+  return found;
+}
+
+function findHeadingPositionByText(doc: { descendants: (callback: (node: { type: { name: string }; attrs?: { level?: number }; textContent: string }, pos: number) => boolean | void) => void; content: { size: number } }, target: VisualMarkdownJumpTarget): number | null {
   let seen = 0;
   let found: number | null = null;
   const targetText = normalizeHeadingText(target.text);
@@ -643,13 +721,19 @@ function scrollEditorPosition(view: EditorView, position: number, topOffset: num
   });
 }
 
-function visualViewportTopLine(view: EditorView, headings: MarkdownHeading[], scroller: HTMLElement | Window): number | null {
+function visualViewportTopLine(
+  view: EditorView,
+  headings: MarkdownHeading[],
+  scroller: HTMLElement | Window,
+  sourceMarkdown: string,
+  frontmatterPrefix: string,
+): number | null {
   if (headings.length === 0) return 1;
   const headingElements = Array.from(view.dom.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6'))
     .filter((element) => !element.closest('.scie-md-visual-atom'));
   if (headingElements.length === 0) return headings[0]?.line ?? 1;
 
-  const lineByElement = mapVisualHeadingElementsToLines(headingElements, headings);
+  const lineByElement = mapVisualHeadingElementsToLines(view, headingElements, headings, sourceMarkdown, frontmatterPrefix);
   const viewportTop = scroller instanceof Window ? 0 : scroller.getBoundingClientRect().top;
   const activationY = viewportTop + 96;
   let activeLine: number | null = null;
@@ -670,7 +754,45 @@ function visualViewportTopLine(view: EditorView, headings: MarkdownHeading[], sc
   return activeLine ?? nextLine ?? headings[0]?.line ?? 1;
 }
 
-function mapVisualHeadingElementsToLines(elements: HTMLElement[], headings: MarkdownHeading[]): Map<HTMLElement, number> {
+function mapVisualHeadingElementsToLines(
+  view: EditorView,
+  elements: HTMLElement[],
+  headings: MarkdownHeading[],
+  sourceMarkdown: string,
+  frontmatterPrefix: string,
+): Map<HTMLElement, number> {
+  const fallback = mapVisualHeadingElementsToLinesByText(elements, headings);
+  const headingLines = new Set(headings.map((heading) => `${heading.level}:${heading.line}`));
+  const lineByElement = new Map<HTMLElement, number>();
+  for (const element of elements) {
+    const level = Number(element.tagName.slice(1));
+    const line = sourceLineForHeadingElement(view, element, sourceMarkdown, frontmatterPrefix);
+    if (line !== null && headingLines.has(`${level}:${line}`)) {
+      lineByElement.set(element, line);
+      continue;
+    }
+    const fallbackLine = fallback.get(element);
+    if (fallbackLine) lineByElement.set(element, fallbackLine);
+  }
+  return lineByElement;
+}
+
+function sourceLineForHeadingElement(
+  view: EditorView,
+  element: HTMLElement,
+  sourceMarkdown: string,
+  frontmatterPrefix: string,
+): number | null {
+  try {
+    const position = Math.min(view.posAtDOM(element, 0) + 1, view.state.doc.content.size);
+    return visualSourceLineForPosition(view.state.doc, position, sourceMarkdown)
+      ?? visualLineForPosition(view, position, frontmatterPrefix);
+  } catch {
+    return null;
+  }
+}
+
+function mapVisualHeadingElementsToLinesByText(elements: HTMLElement[], headings: MarkdownHeading[]): Map<HTMLElement, number> {
   const headingsByKey = new Map<string, MarkdownHeading[]>();
   for (const heading of headings) {
     const key = headingKey(heading.level, heading.text);

@@ -30,16 +30,36 @@ describe('settingsService', () => {
     ]);
   });
 
-  it('starts first-run users in the Scienfy writing defaults', () => {
+  it('starts first-run users in Science dark-mode defaults', () => {
     expect(loadSettings()).toMatchObject({
       themeMode: 'dark',
-      visualStyle: 'scienfy',
+      visualStyle: 'science',
       sidebarView: 'outline',
       sidebarWidth: 360,
       documentType: 'report',
       onboardingComplete: false,
       inkscapePath: null,
     });
+  });
+
+  it('migrates the old Scienfy default to Science once', () => {
+    localStorage.setItem('scienfy.markdown.settings.v1', JSON.stringify({
+      recentFiles: [],
+      themeMode: 'dark',
+      fontScale: 1,
+      visualStyle: 'scienfy',
+      sidebarView: 'outline',
+      documentType: 'report',
+    }));
+
+    expect(loadSettings().visualStyle).toBe('science');
+    expect(JSON.parse(localStorage.getItem('scienfy.markdown.settings.v1') ?? '{}').visualStyle).toBe('science');
+  });
+
+  it('preserves Scienfy after the user explicitly selects it post-migration', () => {
+    updateSettings({ visualStyle: 'scienfy' });
+
+    expect(loadSettings().visualStyle).toBe('scienfy');
   });
 
   it('forgets missing recent files', () => {
@@ -86,7 +106,7 @@ describe('settingsService', () => {
     });
   });
 
-  it('migrates the legacy Science default once without blocking future Science selections', () => {
+  it('preserves an explicitly saved Science style selection', () => {
     localStorage.setItem('scienfy.markdown.settings.v1', JSON.stringify({
       recentFiles: ['/tmp/a.md'],
       themeMode: 'dark',
@@ -98,12 +118,8 @@ describe('settingsService', () => {
 
     expect(loadSettings()).toMatchObject({
       recentFiles: ['/tmp/a.md'],
-      visualStyle: 'scienfy',
+      visualStyle: 'science',
     });
-
-    updateSettings({ visualStyle: 'science' });
-
-    expect(loadSettings().visualStyle).toBe('science');
   });
 
   it('persists the data sidebar view', () => {
@@ -128,7 +144,7 @@ describe('settingsService', () => {
     expect(loadSettings()).toMatchObject({
       themeMode: 'dark',
       fontScale: 1.35,
-      visualStyle: 'scienfy',
+      visualStyle: 'science',
       sidebarWidth: 560,
       sidebarView: 'outline',
       explorerRootPath: null,

@@ -81,6 +81,53 @@ describe('bibtex utilities', () => {
     expect(renamed).toContain('keep [@smith2026]');
   });
 
+  it('renames and syncs citation usages only in the Markdown body, not front matter', () => {
+    const markdown = [
+      '---',
+      'title: "Front matter cites [@smith2026]"',
+      'bibliography: refs.bib',
+      '---',
+      '',
+      'Body claim [@smith2026].',
+    ].join('\n');
+
+    const renamed = renameCitationKeyUsages(markdown, 'smith2026', 'lee2027');
+    expect(renamed).toContain('title: "Front matter cites [@smith2026]"');
+    expect(renamed).toContain('Body claim [@lee2027].');
+
+    const synced = syncGeneratedBibliography([
+      '---',
+      'title: "Front matter cites [@smith2026]"',
+      '---',
+      '',
+      'No body citations.',
+    ].join('\n'), parseBibtexEntries(bibtex));
+    expect(synced).toContain('No citation keys were found');
+    expect(synced).not.toContain('Hybrid Markdown for Scientific Writing');
+  });
+
+  it('updates and deletes parenthesized BibTeX entries', () => {
+    const parenthesized = '@article(smith2026, title = "Original", year = 2026)';
+    expect(parseBibtexEntries(parenthesized)[0]).toMatchObject({
+      key: 'smith2026',
+      fields: { title: 'Original', year: '2026' },
+    });
+
+    const replacement = createBibtexEntrySource({
+      type: 'article',
+      key: 'smith2026',
+      title: 'Updated',
+      year: '2027',
+    });
+    const updated = upsertBibtexEntrySource(parenthesized, 'smith2026', replacement);
+    expect(parseBibtexEntries(updated)[0]).toMatchObject({
+      key: 'smith2026',
+      fields: { title: 'Updated', year: '2027' },
+    });
+
+    expect(parseBibtexEntries(deleteBibtexEntrySource(parenthesized, 'smith2026'))).toEqual([]);
+  });
+
   it('creates compact website and DOI-only entries', () => {
     const website = createBibtexEntrySource({
       type: 'misc',
@@ -143,5 +190,33 @@ describe('bibtex utilities', () => {
     expect(entries[1].fields.month).toBe('January');
     expect(entries[1].fields.publisher).toBe('Open Tools');
     expect(entries[1].fields.title).toContain('{Smith}');
+  });
+
+  it('continues after malformed control items with unmatched delimiters', () => {
+    const entries = parseBibtexEntries(`
+@comment(contact (at) example.org)
+@article{later2026,
+  title = {Later Entry},
+  year = {2026}
+}
+`);
+
+    expect(entries.map((entry) => entry.key)).toEqual(['later2026']);
+    expect(entries[0].fields.title).toBe('Later Entry');
+  });
+
+  it('ignores escaped braces while parsing entries and brace-delimited values', () => {
+    const entries = parseBibtexEntries(`
+@article{escaped2026,
+  title = {A \\{literal\\} brace pair},
+  note = {Ends with escaped closer \\}},
+  year = {2026}
+}
+`);
+
+    expect(entries.map((entry) => entry.key)).toEqual(['escaped2026']);
+    expect(entries[0].fields.title).toBe('A \\{literal\\} brace pair');
+    expect(entries[0].fields.note).toBe('Ends with escaped closer \\}');
+    expect(entries[0].fields.year).toBe('2026');
   });
 });

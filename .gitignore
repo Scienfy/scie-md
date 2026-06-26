@@ -6,6 +6,9 @@ src-tauri/target/
 src-tauri/gen/
 .scienfy-backups/
 artifacts/
+output/
+tmp/
+nul
 desktop-build-smoke/
 .runtime-test/
 *.exe

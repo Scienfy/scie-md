@@ -107,6 +107,25 @@ describe('scieMetadataPlugins round-trip', () => {
     expect(serialized).toContain('<svg viewBox="0 0 120 40"><text x="8" y="24">Vector</text></svg>');
   });
 
+  it('keeps unsupported visual content as raw editable Markdown', async () => {
+    const markdown = [
+      '# Advanced',
+      '',
+      '<div class="callout">Raw HTML should stay raw.</div>',
+      '',
+      ':::custom',
+      'Unknown directive body.',
+      ':::',
+    ].join('\n');
+
+    const serialized = await serializeWithMetadata(markdown);
+
+    expect(serialized).toContain('<div class="callout">Raw HTML should stay raw.</div>');
+    expect(serialized).toContain(':::custom');
+    expect(serialized).toContain('Unknown directive body.');
+    expect(validateMarkdown(serialized).sourceOnly).toBe(false);
+  });
+
   it('decorates structured note quote targets without highlighting the whole block', async () => {
     const editor = await createMetadataEditor([
       '<!-- scie_md:note id="llm-quote-1" kind="llm" target="quote" quote="selected sentence: with colon": Tighten only this sentence. -->',

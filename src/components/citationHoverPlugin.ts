@@ -144,7 +144,6 @@ export function createCitationHoverRanges(
     const clusterStart = cluster.index ?? 0;
     for (const citation of clusterText.matchAll(/@([A-Za-z0-9_][A-Za-z0-9_:.#$%&+\-?<>~/]*)/g)) {
       const key = citation[1];
-      if (isCrossReferenceLike(key)) continue;
       const entry = entryByKey.get(key);
       const missing = hasBibliography && !known.has(key);
       const from = baseOffset + clusterStart + (citation.index ?? 0);
@@ -192,10 +191,6 @@ function citationLink(entry: BibtexEntry): string | null {
 
 function cleanBibtexField(value: string): string {
   return value.replace(/[{}]/g, '').replace(/\\&/g, '&').replace(/\s+/g, ' ').trim();
-}
-
-function isCrossReferenceLike(key: string): boolean {
-  return /^(fig|tbl|tab|sec|eq|eqn|alg|lst|def|thm|lem|cor|prop|ex)-/i.test(key);
 }
 
 function transactionCouldAffectCitations(

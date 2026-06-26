@@ -195,6 +195,7 @@ fn write_unique_asset(assets_dir: &Path, file_name: &str, bytes: &[u8]) -> Resul
         {
             Ok(mut file) => {
                 if let Err(error) = file.write_all(bytes).and_then(|_| file.sync_all()) {
+                    drop(file);
                     let _ = fs::remove_file(&candidate);
                     return Err(format!("Could not save image: {error}"));
                 }
@@ -329,6 +330,56 @@ mod tests {
     }
 
     #[test]
+    fn save_image_bytes_sanitizes_reserved_windows_asset_names() {
+        let _grants = isolate_test_path_grants();
+        let dir = env::temp_dir().join(format!("scie-md-assets-reserved-{}", suffix()));
+        fs::create_dir_all(&dir).unwrap();
+        let document = dir.join("document.md");
+        fs::write(&document, b"# Doc").unwrap();
+        grant_file_and_parent(&document).unwrap();
+
+        let image = save_image_bytes_to_assets(
+            document.to_string_lossy().to_string(),
+            "..\\NUL.png".to_string(),
+            png_bytes(),
+            "reserved".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(image.file_name, "_NUL.png");
+        assert_eq!(image.markdown_path, "assets/_NUL.png");
+        assert!(dir.join("assets").join("_NUL.png").exists());
+        assert!(!dir.join("NUL.png").exists());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn save_image_bytes_strips_nested_path_components_from_pasted_names() {
+        let _grants = isolate_test_path_grants();
+        let dir = env::temp_dir().join(format!("scie-md-assets-path-strip-{}", suffix()));
+        fs::create_dir_all(&dir).unwrap();
+        let document = dir.join("document.md");
+        fs::write(&document, b"# Doc").unwrap();
+        grant_file_and_parent(&document).unwrap();
+
+        let image = save_image_bytes_to_assets(
+            document.to_string_lossy().to_string(),
+            "nested/clipboard.png".to_string(),
+            png_bytes(),
+            "clipboard".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(image.file_name, "clipboard.png");
+        assert_eq!(image.markdown_path, "assets/clipboard.png");
+        assert!(dir.join("assets").join("clipboard.png").exists());
+        assert!(!dir.join("assets").join("nested").exists());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn image_signature_must_match_extension() {
         let error =
             validate_image_signature(Path::new("clipboard.png"), &[137, 80, 78, 71]).unwrap_err();
@@ -346,5 +397,9 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos()
+    }
+
+    fn png_bytes() -> Vec<u8> {
+        vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]
     }
 }

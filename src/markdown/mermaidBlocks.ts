@@ -1,4 +1,5 @@
 import { lineStartOffsets, offsetToLine } from './textOffsets';
+import { fencedCodeRanges } from './markdownRanges';
 
 export interface MermaidFenceBlock {
   raw: string;
@@ -12,11 +13,14 @@ export function findMermaidFenceBlocks(markdown: string): MermaidFenceBlock[] {
   const normalized = markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const starts = lineStartOffsets(normalized);
   const lines = normalized.split('\n');
+  const fencedRanges = fencedCodeRanges(normalized);
   const blocks: MermaidFenceBlock[] = [];
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const opening = lines[lineIndex].match(/^[ \t]*(`{3,}|~{3,})[ \t]*mermaid(?:[ \t].*)?$/i);
     if (!opening) continue;
+    const start = starts[lineIndex] ?? 0;
+    if (fencedRanges.some((range) => range.start < start && start < range.end)) continue;
     const marker = opening[1];
     const markerChar = marker[0];
     const markerLength = marker.length;
@@ -25,7 +29,6 @@ export function findMermaidFenceBlocks(markdown: string): MermaidFenceBlock[] {
       const closing = lines[closeIndex].match(/^[ \t]*(`{3,}|~{3,})[ \t]*$/);
       if (!closing || closing[1][0] !== markerChar || closing[1].length < markerLength) continue;
 
-      const start = starts[lineIndex] ?? 0;
       const end = closeIndex + 1 < starts.length
         ? (starts[closeIndex + 1] ?? normalized.length) - 1
         : normalized.length;

@@ -3,19 +3,31 @@ use parking_lot::Mutex;
 use serde::Serialize;
 use std::{
     collections::BTreeSet,
-    path::PathBuf,
+    ffi::OsString,
+    path::{Path, PathBuf},
     sync::OnceLock,
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Emitter};
 
-use super::path_grants::{assert_directory_read_allowed, assert_file_read_allowed};
+use super::{
+    path_grants::{assert_directory_read_allowed, assert_file_read_allowed},
+    path_utils::external_safe_path,
+};
 
 static ACTIVE_WATCHER: OnceLock<Mutex<Option<ActiveFileWatcher>>> = OnceLock::new();
 
 struct ActiveFileWatcher {
     _watcher: RecommendedWatcher,
-    _paths: Vec<PathBuf>,
+    _targets: Vec<WatchTarget>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WatchTarget {
+    path: PathBuf,
+    watch_path: PathBuf,
+    file_name: Option<OsString>,
+    is_directory: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -28,13 +40,24 @@ pub struct FileWatchChangeEvent {
 
 #[tauri::command]
 pub fn watch_files_for_changes(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
-    let paths = normalize_watch_paths(paths)?;
-    if paths.is_empty() {
+    let requested_any_path = paths.iter().any(|path| !path.trim().is_empty());
+    let targets = match normalize_watch_paths(paths) {
+        Ok(targets) => targets,
+        Err(error) => {
+            if requested_any_path {
+                clear_active_watcher();
+            }
+            return Err(error);
+        }
+    };
+    if targets.is_empty() {
         clear_active_watcher();
         return Ok(());
     }
+    clear_active_watcher();
 
     let app_for_events = app.clone();
+    let event_targets = targets.clone();
     let mut watcher = recommended_watcher(move |result: notify::Result<Event>| {
         let Ok(event) = result else {
             return;
@@ -42,8 +65,15 @@ pub fn watch_files_for_changes(app: AppHandle, paths: Vec<String>) -> Result<(),
         if !is_relevant_event(&event.kind) {
             return;
         }
+        let changed_paths = matching_target_paths(&event_targets, &event.paths);
+        if changed_paths.is_empty() {
+            return;
+        }
         let payload = FileWatchChangeEvent {
-            paths: event.paths.iter().map(|path| path.to_string_lossy().to_string()).collect(),
+            paths: changed_paths
+                .iter()
+                .map(|path| path.to_string_lossy().to_string())
+                .collect(),
             kind: format!("{:?}", event.kind),
             changed_at_ms: timestamp_ms(),
         };
@@ -51,7 +81,11 @@ pub fn watch_files_for_changes(app: AppHandle, paths: Vec<String>) -> Result<(),
     })
     .map_err(|error| format!("Could not create file watcher: {error}"))?;
 
-    for path in &paths {
+    let watch_paths: BTreeSet<PathBuf> = targets
+        .iter()
+        .map(|target| target.watch_path.clone())
+        .collect();
+    for path in &watch_paths {
         watcher
             .watch(path, RecursiveMode::NonRecursive)
             .map_err(|error| format!("Could not watch {}: {error}", path.to_string_lossy()))?;
@@ -59,7 +93,7 @@ pub fn watch_files_for_changes(app: AppHandle, paths: Vec<String>) -> Result<(),
 
     *watcher_state().lock() = Some(ActiveFileWatcher {
         _watcher: watcher,
-        _paths: paths,
+        _targets: targets,
     });
     Ok(())
 }
@@ -78,7 +112,7 @@ fn clear_active_watcher() {
     *watcher_state().lock() = None;
 }
 
-fn normalize_watch_paths(paths: Vec<String>) -> Result<Vec<PathBuf>, String> {
+fn normalize_watch_paths(paths: Vec<String>) -> Result<Vec<WatchTarget>, String> {
     let mut unique = BTreeSet::new();
     let mut normalized = Vec::new();
     let mut requested = false;
@@ -96,15 +130,113 @@ fn normalize_watch_paths(paths: Vec<String>) -> Result<Vec<PathBuf>, String> {
         } else {
             assert_file_read_allowed(&path)?;
         }
-        let key = path.to_string_lossy().to_string();
+        let path = external_safe_path(&path.canonicalize().unwrap_or(path));
+        let key = comparable_path(&path);
         if unique.insert(key) {
-            normalized.push(path);
+            normalized.push(watch_target_for_path(path)?);
         }
     }
     if requested && normalized.is_empty() {
         return Err("No readable file watcher paths are currently available.".to_string());
     }
     Ok(normalized)
+}
+
+fn watch_target_for_path(path: PathBuf) -> Result<WatchTarget, String> {
+    if path.is_dir() {
+        return Ok(WatchTarget {
+            watch_path: path.clone(),
+            path,
+            file_name: None,
+            is_directory: true,
+        });
+    }
+    let watch_path = path
+        .parent()
+        .ok_or_else(|| "File watcher target has no parent directory.".to_string())?
+        .to_path_buf();
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| "File watcher target has no file name.".to_string())?
+        .to_os_string();
+    Ok(WatchTarget {
+        path,
+        watch_path,
+        file_name: Some(file_name),
+        is_directory: false,
+    })
+}
+
+fn matching_target_paths(targets: &[WatchTarget], event_paths: &[PathBuf]) -> Vec<PathBuf> {
+    let mut changed = BTreeSet::new();
+    for target in targets {
+        if event_paths
+            .iter()
+            .any(|path| event_path_matches_target(path, target))
+        {
+            changed.insert(target.path.clone());
+        }
+    }
+    changed.into_iter().collect()
+}
+
+fn event_path_matches_target(event_path: &Path, target: &WatchTarget) -> bool {
+    if target.is_directory {
+        return same_path(event_path, &target.path) || path_is_under(event_path, &target.path);
+    }
+    if same_path(event_path, &target.path) {
+        return true;
+    }
+    event_path.file_name() == target.file_name.as_deref()
+        && event_path
+            .parent()
+            .is_some_and(|parent| same_path(parent, &target.watch_path))
+}
+
+#[cfg(windows)]
+fn same_path(left: &Path, right: &Path) -> bool {
+    comparable_path(left) == comparable_path(right)
+}
+
+#[cfg(not(windows))]
+fn same_path(left: &Path, right: &Path) -> bool {
+    left == right
+}
+
+#[cfg(windows)]
+fn path_is_under(path: &Path, parent: &Path) -> bool {
+    let path = comparable_path(path);
+    let parent = comparable_path(parent);
+    path.strip_prefix(&parent)
+        .is_some_and(|suffix| suffix.starts_with('/'))
+}
+
+#[cfg(not(windows))]
+fn path_is_under(path: &Path, parent: &Path) -> bool {
+    path.starts_with(parent)
+}
+
+#[cfg(windows)]
+fn comparable_path(path: &Path) -> String {
+    let mut value = path.to_string_lossy().replace('\\', "/");
+    if let Some(rest) = value.strip_prefix("//?/UNC/") {
+        value = format!("//{rest}");
+    } else if let Some(rest) = value.strip_prefix("//?/") {
+        value = rest.to_string();
+    }
+    let is_unc = value.starts_with("//");
+    while value.contains("//") {
+        value = value.replace("//", "/");
+    }
+    if is_unc && !value.starts_with("//") {
+        value = format!("/{value}");
+    }
+    value.trim_end_matches('/').to_ascii_lowercase()
+}
+
+#[cfg(not(windows))]
+fn comparable_path(path: &Path) -> String {
+    path.to_string_lossy().to_string()
 }
 
 fn is_relevant_event(kind: &EventKind) -> bool {
@@ -115,7 +247,9 @@ fn is_relevant_event(kind: &EventKind) -> bool {
             | EventKind::Create(CreateKind::Any)
             | EventKind::Modify(ModifyKind::Data(_))
             | EventKind::Modify(ModifyKind::Metadata(_))
-            | EventKind::Modify(ModifyKind::Name(RenameMode::Any | RenameMode::Both | RenameMode::From | RenameMode::To))
+            | EventKind::Modify(ModifyKind::Name(
+                RenameMode::Any | RenameMode::Both | RenameMode::From | RenameMode::To
+            ))
             | EventKind::Modify(ModifyKind::Any)
             | EventKind::Remove(RemoveKind::File)
             | EventKind::Remove(RemoveKind::Any)
@@ -132,8 +266,10 @@ fn timestamp_ms() -> u128 {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_relevant_event, normalize_watch_paths};
+    use super::{is_relevant_event, matching_target_paths, normalize_watch_paths};
+    use crate::commands::path_grants::{grant_file_and_parent, isolate_test_path_grants};
     use notify::event::{DataChange, EventKind, ModifyKind};
+    use std::{env, fs};
 
     #[test]
     fn file_watcher_filters_empty_or_missing_paths() {
@@ -144,6 +280,78 @@ mod tests {
 
     #[test]
     fn file_watcher_treats_data_changes_as_relevant() {
-        assert!(is_relevant_event(&EventKind::Modify(ModifyKind::Data(DataChange::Content))));
+        assert!(is_relevant_event(&EventKind::Modify(ModifyKind::Data(
+            DataChange::Content
+        ))));
+    }
+
+    #[test]
+    fn file_watcher_watches_parent_directory_for_file_targets() {
+        let _grants = isolate_test_path_grants();
+        let root = env::temp_dir().join(format!("scie-md-watch-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let file = root.join("paper.md");
+        fs::write(&file, "# Paper").unwrap();
+        grant_file_and_parent(&file).unwrap();
+
+        let targets = normalize_watch_paths(vec![file.to_string_lossy().to_string()]).unwrap();
+
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].path, file);
+        assert_eq!(targets[0].watch_path, root);
+        assert!(!targets[0].is_directory);
+        let _ = fs::remove_dir_all(targets[0].watch_path.clone());
+    }
+
+    #[test]
+    fn file_watcher_filters_directory_events_to_requested_file() {
+        let root = env::temp_dir().join(format!("scie-md-watch-filter-{}", std::process::id()));
+        let target = root.join("paper.md");
+        let temp = root.join(".paper.md.tmp");
+        let targets = vec![super::WatchTarget {
+            path: target.clone(),
+            watch_path: root,
+            file_name: Some("paper.md".into()),
+            is_directory: false,
+        }];
+
+        assert_eq!(
+            matching_target_paths(&targets, std::slice::from_ref(&temp)),
+            Vec::<std::path::PathBuf>::new()
+        );
+        assert_eq!(
+            matching_target_paths(&targets, std::slice::from_ref(&target)),
+            vec![target]
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn file_watcher_matches_windows_verbatim_and_unc_variants() {
+        let drive_target = std::path::PathBuf::from(r"C:\Lab\paper.md");
+        let drive_event = std::path::PathBuf::from(r"\\?\C:\Lab\paper.md");
+        let unc_target = std::path::PathBuf::from(r"\\server\share\paper.md");
+        let unc_event = std::path::PathBuf::from(r"\\?\UNC\server\share\paper.md");
+        let targets = vec![
+            super::WatchTarget {
+                path: drive_target.clone(),
+                watch_path: std::path::PathBuf::from(r"C:\Lab"),
+                file_name: Some("paper.md".into()),
+                is_directory: false,
+            },
+            super::WatchTarget {
+                path: unc_target.clone(),
+                watch_path: std::path::PathBuf::from(r"\\server\share"),
+                file_name: Some("paper.md".into()),
+                is_directory: false,
+            },
+        ];
+
+        let mut expected = vec![drive_target, unc_target];
+        expected.sort();
+        assert_eq!(
+            matching_target_paths(&targets, &[drive_event, unc_event]),
+            expected
+        );
     }
 }

@@ -60,23 +60,24 @@ pub fn read_text_file(path: String) -> Result<ReadTextFileResponse, String> {
     let path = PathBuf::from(path);
     assert_file_read_allowed(&path)?;
     grant_file(&path)?;
-    let metadata =
+    let file_metadata =
         fs::metadata(&path).map_err(|error| format!("Could not read file metadata: {error}"))?;
-    if metadata.len() > MAX_TEXT_IPC_BYTES {
+    if file_metadata.len() > MAX_TEXT_IPC_BYTES {
         return Err("Text file is too large to open safely in ScieMD.".to_string());
     }
     let bytes = fs::read(&path).map_err(|error| format!("Could not read file: {error}"))?;
     let decoded = decode_text_bytes(&bytes)?;
     let line_endings = detect_line_endings(&decoded.raw);
     let content = normalize_to_lf(&decoded.raw);
-    let metadata = metadata_from_path(
+    let metadata = metadata_from_file_metadata(
         &path,
+        &file_metadata,
         line_endings.line_ending,
         decoded.encoding,
         decoded.has_bom,
         line_endings.has_mixed_line_endings,
-        true,
-    )?;
+        Some(content_hash(&bytes)),
+    );
 
     Ok(ReadTextFileResponse { content, metadata })
 }
@@ -91,7 +92,8 @@ pub fn read_text_file_preview(
     let metadata =
         fs::metadata(&path).map_err(|error| format!("Could not read file metadata: {error}"))?;
     let byte_limit = max_bytes.unwrap_or(8192).clamp(512, 65_536);
-    let mut file = fs::File::open(&path).map_err(|error| format!("Could not read file: {error}"))?;
+    let mut file =
+        fs::File::open(&path).map_err(|error| format!("Could not read file: {error}"))?;
     let mut bytes = Vec::with_capacity(byte_limit);
     Read::by_ref(&mut file)
         .take(byte_limit as u64)
@@ -249,6 +251,7 @@ pub fn write_text_file_atomic(
         .map_err(|error| format!("Could not create temporary file: {error}"))?;
 
     if let Err(error) = file.write_all(&bytes).and_then(|_| file.sync_all()) {
+        drop(file);
         let _ = fs::remove_file(&temp_path);
         return Err(format!("Could not write temporary file: {error}"));
     }
@@ -312,28 +315,40 @@ fn verify_expected_metadata(
     expected_size_bytes: Option<u64>,
     expected_content_hash: Option<&str>,
 ) -> Result<(), String> {
-    let (Some(expected_mtime_ms), Some(expected_size_bytes), Some(expected_content_hash)) = (
-        expected_mtime_ms,
-        expected_size_bytes,
-        expected_content_hash,
-    ) else {
-        return Ok(());
-    };
+    if expected_mtime_ms.is_none()
+        && expected_size_bytes.is_none()
+        && expected_content_hash.is_none()
+    {
+        return if path.exists() {
+            Err(
+                "The target file appeared on disk before ScieMD could save. Choose another name or reload it first."
+                    .to_string(),
+            )
+        } else {
+            Ok(())
+        };
+    }
 
-    let bytes = fs::read(path)
-        .map_err(|error| format!("Could not verify target before saving: {error}"))?;
     let metadata = fs::metadata(path)
         .map_err(|error| format!("Could not verify target metadata before saving: {error}"))?;
     let current_mtime_ms = metadata_mtime_ms(&metadata);
-    let current_hash = content_hash(&bytes);
-    if current_mtime_ms != expected_mtime_ms
-        || metadata.len() != expected_size_bytes
-        || current_hash != expected_content_hash
+    if expected_mtime_ms.is_some_and(|expected| current_mtime_ms != expected)
+        || expected_size_bytes.is_some_and(|expected| metadata.len() != expected)
     {
         return Err(
             "The file changed on disk before ScieMD could save. Reload or save as a new file."
                 .to_string(),
         );
+    }
+    if let Some(expected_content_hash) = expected_content_hash {
+        let bytes = fs::read(path)
+            .map_err(|error| format!("Could not verify target before saving: {error}"))?;
+        if content_hash(&bytes) != expected_content_hash {
+            return Err(
+                "The file changed on disk before ScieMD could save. Reload or save as a new file."
+                    .to_string(),
+            );
+        }
     }
     Ok(())
 }
@@ -366,6 +381,32 @@ pub fn metadata_from_path(
 ) -> Result<FileMetadata, String> {
     let metadata =
         fs::metadata(path).map_err(|error| format!("Could not read file metadata: {error}"))?;
+    let content_hash = if include_content_hash {
+        content_hash_from_path(path, metadata.len())
+    } else {
+        None
+    };
+
+    Ok(metadata_from_file_metadata(
+        path,
+        &metadata,
+        line_ending,
+        encoding,
+        has_bom,
+        has_mixed_line_endings,
+        content_hash,
+    ))
+}
+
+fn metadata_from_file_metadata(
+    path: &Path,
+    metadata: &fs::Metadata,
+    line_ending: String,
+    encoding: String,
+    has_bom: bool,
+    has_mixed_line_endings: bool,
+    content_hash: Option<String>,
+) -> FileMetadata {
     let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
     let last_known_mtime_ms = modified
         .duration_since(UNIX_EPOCH)
@@ -373,20 +414,16 @@ pub fn metadata_from_path(
         .as_millis()
         .min(u128::from(u64::MAX)) as u64;
 
-    Ok(FileMetadata {
+    FileMetadata {
         line_ending,
         encoding,
         has_bom,
         has_mixed_line_endings,
         last_known_mtime_ms,
         last_known_size_bytes: metadata.len(),
-        content_hash: if include_content_hash {
-            content_hash_from_path(path, metadata.len())
-        } else {
-            None
-        },
+        content_hash,
         cloud_state: cloud_file_state(path),
-    })
+    }
 }
 
 fn content_hash_from_path(path: &Path, size_bytes: u64) -> Option<String> {
@@ -422,7 +459,10 @@ fn classify_cloud_attributes(attributes: u32) -> &'static str {
     const FILE_ATTRIBUTE_UNPINNED: u32 = 0x0010_0000;
     const FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS: u32 = 0x0040_0000;
 
-    if attributes & (FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS | FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_UNPINNED) != 0 {
+    if attributes
+        & (FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS | FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_UNPINNED)
+        != 0
+    {
         "cloud-placeholder"
     } else if attributes & FILE_ATTRIBUTE_RECALL_ON_OPEN != 0 {
         "cloud-recall-on-open"
@@ -828,6 +868,7 @@ fn copy_sync_and_replace_windows(temp_path: &Path, target_path: &Path) -> Result
         .open(&copy_path)
         .map_err(|error| format!("Could not create same-volume replacement file: {error}"))?;
     if let Err(error) = std::io::copy(&mut source, &mut copy).and_then(|_| copy.sync_all()) {
+        drop(copy);
         let _ = fs::remove_file(&copy_path);
         return Err(format!(
             "Could not copy replacement file onto the target volume: {error}"
@@ -835,7 +876,11 @@ fn copy_sync_and_replace_windows(temp_path: &Path, target_path: &Path) -> Result
     }
     drop(copy);
     let copy: Vec<u16> = copy_path.as_os_str().encode_wide().chain(Some(0)).collect();
-    let target: Vec<u16> = target_path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let target: Vec<u16> = target_path
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
     let result = unsafe {
         MoveFileExW(
             copy.as_ptr(),
@@ -880,6 +925,7 @@ fn copy_sync_and_rename(temp_path: &Path, target_path: &Path) -> Result<(), Stri
         .open(&copy_path)
         .map_err(|error| format!("Could not create cross-device replacement file: {error}"))?;
     if let Err(error) = std::io::copy(&mut source, &mut copy).and_then(|_| copy.sync_all()) {
+        drop(copy);
         let _ = fs::remove_file(&copy_path);
         return Err(format!(
             "Could not copy replacement file across file systems: {error}"
@@ -925,6 +971,7 @@ mod tests {
     use crate::commands::path_grants::{
         grant_directory, grant_file, grant_file_and_parent, isolate_test_path_grants,
     };
+    use filetime::{set_file_mtime, FileTime};
     use std::{env, fs};
 
     #[cfg(windows)]
@@ -932,7 +979,10 @@ mod tests {
     fn cloud_attribute_classification_marks_placeholders() {
         assert_eq!(classify_cloud_attributes(0), "local");
         assert_eq!(classify_cloud_attributes(0x0008_0000), "cloud-pinned");
-        assert_eq!(classify_cloud_attributes(0x0004_0000), "cloud-recall-on-open");
+        assert_eq!(
+            classify_cloud_attributes(0x0004_0000),
+            "cloud-recall-on-open"
+        );
         assert_eq!(classify_cloud_attributes(0x0010_0000), "cloud-placeholder");
         assert_eq!(classify_cloud_attributes(0x0040_0000), "cloud-placeholder");
         assert_eq!(classify_cloud_attributes(0x0000_1000), "cloud-placeholder");
@@ -970,6 +1020,7 @@ mod tests {
         assert_eq!(read.metadata.line_ending, "crlf");
         assert_eq!(read.metadata.encoding, "utf8");
         assert!(read.metadata.has_bom);
+        assert_eq!(read.metadata.content_hash, Some(content_hash(&raw)));
 
         let _ = fs::remove_dir_all(dir);
     }
@@ -999,6 +1050,33 @@ mod tests {
 
         assert!(error.contains("changed on disk"));
         assert_eq!(fs::read_to_string(&path).unwrap(), "old");
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn atomic_write_rejects_existing_file_when_expected_metadata_is_empty() {
+        let _grants = isolate_test_path_grants();
+        let dir = env::temp_dir().join(format!("scie-md-appeared-{}", temp_suffix()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("document.md");
+        fs::write(&path, b"appeared").unwrap();
+        grant_file_and_parent(&path).unwrap();
+
+        let error = write_text_file_atomic(
+            path.to_string_lossy().to_string(),
+            "new\n".to_string(),
+            "lf".to_string(),
+            "utf8".to_string(),
+            false,
+            None,
+            None,
+            None,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("target file appeared"));
+        assert_eq!(fs::read_to_string(&path).unwrap(), "appeared");
 
         let _ = fs::remove_dir_all(dir);
     }
@@ -1085,8 +1163,7 @@ mod tests {
         fs::write(&path, content.as_bytes()).unwrap();
         grant_file(&path).unwrap();
 
-        let preview =
-            read_text_file_preview(path.to_string_lossy().to_string(), Some(24)).unwrap();
+        let preview = read_text_file_preview(path.to_string_lossy().to_string(), Some(24)).unwrap();
 
         assert!(preview.content.starts_with("# Preview"));
         assert!(preview.content.len() <= 512);
@@ -1141,6 +1218,95 @@ mod tests {
         assert!(other.exists());
 
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cleanup_stale_temp_files_respects_age_threshold() {
+        let dir = env::temp_dir().join(format!("scie-md-temp-age-{}", temp_suffix()));
+        fs::create_dir_all(&dir).unwrap();
+        let stale = dir.join(".document.md.stale.tmp");
+        let fresh = dir.join(".document.md.fresh.tmp");
+        let sibling = dir.join(".other.md.stale.tmp");
+        fs::write(&stale, b"stale").unwrap();
+        fs::write(&fresh, b"fresh").unwrap();
+        fs::write(&sibling, b"sibling").unwrap();
+        let old_time = SystemTime::now() - Duration::from_secs(2 * 60 * 60);
+        set_file_mtime(&stale, FileTime::from_system_time(old_time)).unwrap();
+        set_file_mtime(&sibling, FileTime::from_system_time(old_time)).unwrap();
+
+        cleanup_stale_temp_files(&dir, "document.md", Duration::from_secs(60 * 60));
+
+        assert!(!stale.exists());
+        assert!(fresh.exists());
+        assert!(sibling.exists());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn atomic_write_reports_locked_target_without_replacing_original() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let _grants = isolate_test_path_grants();
+        let dir = env::temp_dir().join(format!("scie-md-locked-{}", temp_suffix()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("document.md");
+        fs::write(&path, b"original").unwrap();
+        grant_file_and_parent(&path).unwrap();
+        let metadata = fs::metadata(&path).unwrap();
+        let _lock = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(0)
+            .open(&path)
+            .unwrap();
+
+        let error = write_text_file_atomic(
+            path.to_string_lossy().to_string(),
+            "new\n".to_string(),
+            "lf".to_string(),
+            "utf8".to_string(),
+            false,
+            Some(metadata_mtime_ms(&metadata)),
+            Some(metadata.len()),
+            None,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("Could not replace target file atomically"));
+        drop(_lock);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "original");
+        assert_eq!(
+            fs::read_dir(&dir)
+                .unwrap()
+                .flatten()
+                .filter(|entry| entry
+                    .path()
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .is_some_and(|name| is_temp_file_for_target(name, "document.md")))
+                .count(),
+            0
+        );
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn temp_path_for_uses_hidden_sibling_file_name() {
+        let dir = env::temp_dir().join(format!("scie-md-temp-path-{}", temp_suffix()));
+        let target = dir.join("document.md");
+
+        let temp_path = temp_path_for(&target);
+        let temp_name = temp_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap();
+
+        assert_eq!(temp_path.parent(), Some(dir.as_path()));
+        assert!(temp_name.starts_with(".document.md."));
+        assert!(temp_name.ends_with(".tmp"));
     }
 
     #[test]

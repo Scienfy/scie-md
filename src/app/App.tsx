@@ -6,51 +6,38 @@ import { PanelLeftOpen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { EditorMode } from './documentState';
 import { createWindowTitle, DEFAULT_METADATA } from './documentState';
-import { AboutDialog } from '../components/AboutDialog';
+import { AppOverlays } from './AppOverlays';
 import { AmbientSuggestions } from '../components/AmbientSuggestions';
 import { AppTopbar, type AppTopbarMenuId } from '../components/AppTopbar';
-import { AppTooltip } from '../components/AppTooltip';
-import { BlockTypeDialog } from '../components/BlockTypeDialog';
 import type { SelectionBlockType } from '../components/BlockTypeDialog';
-import { CitationDialog } from '../components/CitationDialog';
-import { CommandPalette } from '../components/CommandPalette';
 import type { CommandItem } from '../components/CommandPalette';
-import { ConfirmDialog } from '../components/ConfirmDialog';
-import { DiffReviewDialog } from '../components/DiffReviewDialog';
-import { DocumentTypeDialog } from '../components/DocumentTypeDialog';
 import { EditorErrorBoundary } from '../components/EditorErrorBoundary';
-import { ExternalConflictDialog } from '../components/ExternalConflictDialog';
-import { ExportDialog } from '../components/ExportDialog';
-import { ExportLogDialog } from '../components/ExportLogDialog';
-import { ExportRenderHost } from '../components/ExportRenderHost';
 import type { ExportRenderHostHandle } from '../components/ExportRenderHost';
-import { ExportStatusBanner } from '../components/ExportStatusBanner';
 import { FindReplacePanel } from '../components/FindReplacePanel';
 import { FloatingFormatToolbar } from '../components/FloatingFormatToolbar';
 import { InspectorPane } from '../components/InspectorPane';
-import { LinkDialog } from '../components/LinkDialog';
 import { MarkdownToolbar } from '../components/MarkdownToolbar';
 import { MetadataRail } from '../components/MetadataRail';
 import { NavigationSidebar } from '../components/NavigationSidebar';
-import { PromptDialog } from '../components/PromptDialog';
 import { QuickOutlineHover } from '../components/QuickOutlineHover';
-import { SlashCommandMenu } from '../components/SlashCommandMenu';
 import { SavePill } from '../components/SavePill';
-import { SettingsDialog } from '../components/SettingsDialog';
-import { ShortcutDialog } from '../components/ShortcutDialog';
 import { StatusBar } from '../components/StatusBar';
-import { TemplateDialog } from '../components/TemplateDialog';
-import { ToastViewport } from '../components/ToastViewport';
-import { VariableDialog } from '../components/VariableDialog';
 import type { VariableDialogState } from '../components/VariableDialog';
 import type { EditorHistoryControls } from '../components/editorControls';
 import type { EditorSelectionSnapshot } from '../components/editorSelection';
 import { SourceMarkdownEditor } from '../components/SourceMarkdownEditor';
 import type { SourceMarkdownFind, SourceMarkdownInsert, SourceMarkdownJump, SourceMarkdownSelection } from '../components/SourceMarkdownEditor';
-import { UnsavedDialog } from '../components/UnsavedDialog';
 import { VisualMarkdownEditor } from '../components/VisualMarkdownEditor';
 import type { VisualMarkdownFind, VisualMarkdownInsert, VisualMarkdownJump, VisualMarkdownSelection } from '../components/VisualMarkdownEditor';
+import { flushVisualEditorState } from '../components/visualEditorStateSync';
 import { useDialogs } from './hooks/useDialogs';
+import {
+  initialDocumentMarkdownForLaunch,
+  initialExplorerPathForLaunch,
+  parentDirectoryForDocument,
+  shouldCommitWelcomeAfterStartup,
+  shouldShowAutomaticOnboardingDialog,
+} from './documentLaunch';
 import { useAppCommandRegistry } from './hooks/useAppCommandRegistry';
 import { useDocumentDropPaste } from './hooks/useDocumentDropPaste';
 import type { PasteReviewState } from './hooks/useDocumentDropPaste';
@@ -62,6 +49,7 @@ import { useFileExplorer } from './hooks/useFileExplorer';
 import { useImageInsertion } from './hooks/useImageInsertion';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useLayoutAttributes, useThemeAttribute } from './hooks/useResolvedTheme';
+import { useRendererDiagnostics } from './hooks/useRendererDiagnostics';
 import { useExportActions } from './hooks/useExportActions';
 import { useExportWorkflow } from './hooks/useExportWorkflow';
 import { useExternalConflictReviewWorkflow } from './hooks/useExternalConflictReviewWorkflow';
@@ -78,7 +66,7 @@ import { cleanupStaleTempFilesForPaths } from '../services/fileService';
 import { copyImageToAssets, defaultImageAlt, markdownImageSyntax, pickImageFile } from '../services/assetService';
 import { checkPandocAvailable } from '../services/exportService';
 import { checkInkscapeAvailable } from '../services/inkscapeService';
-import { consumePlainSourceModeRequest, PLAIN_SOURCE_MODE_EVENT, updateRawDocumentRescue } from '../services/rawDocumentRescue';
+import { updateRawDocumentRescue } from '../services/rawDocumentRescue';
 import { revealInFileManager } from '../services/revealService';
 import { loadSettings, normalizeSidebarWidth, updateSettings } from '../services/settingsService';
 import type { DocumentType, SidebarView, ThemeMode } from '../services/settingsService';
@@ -95,7 +83,7 @@ import { insertStandaloneMarkdownBlockNearSelection, wrapMarkdownBlockSelection,
 import { insertEditorNote, parseEditorComments } from '../markdown/editorComments';
 import type { EditorNoteKind } from '../markdown/editorComments';
 import { createTargetedInstructionSnippet, parseTargetedInstructions } from '../markdown/targetedInstructions';
-import { createAnchoredVariantGroupSnippet, createVariantGroupSnippet } from '../markdown/variants';
+import { createAnchoredVariantGroupSnippet, createVariantGroupSnippet, parseVariantGroups } from '../markdown/variants';
 import { createProtectedAnchorSnippet, createProtectedBlockSnippet, detectProtectedChanges, parseProtectedBlocks } from '../markdown/protectedBlocks';
 import { syncGeneratedBibliography } from '../domain/citations/bibtex';
 import type { BibtexEntry } from '../domain/citations/bibtex';
@@ -173,6 +161,12 @@ export function App() {
   const [authorshipMarks, setAuthorshipMarks] = useState<AuthorshipMark[]>([]);
   const { promptState, confirmState, promptText, confirmText, completePrompt, completeConfirm } = useDialogs();
   const { toasts, pushToast, dismissToast, pauseToast, resumeToast } = useToasts();
+  const [pasteReview, setPasteReview] = useState<PasteReviewState | null>(null);
+  const documentEpochRef = useRef(0);
+  const handleDocumentReplaced = useCallback(() => {
+    documentEpochRef.current += 1;
+    setPasteReview(null);
+  }, []);
   const {
     markdown,
     commitMarkdownEdit,
@@ -187,6 +181,9 @@ export function App() {
     autosaveStatus,
     lastAutosavedAt,
     saveQueueDepth,
+    startupDocumentOpenPending,
+    startupDocumentOpenFailed,
+    documentOpenStatus,
     externalConflict,
     dirty,
     validation,
@@ -197,6 +194,7 @@ export function App() {
     closeDialogOpen,
     setCloseDialogOpen,
     closeWindow,
+    cancelAutosave,
     saveCurrent,
     ensureDocumentPathForAssets,
     settleDirtyDocumentBeforeReplace,
@@ -207,10 +205,16 @@ export function App() {
     handleNewFromTemplate,
     handleCloseSave,
     handleCloseDiscard,
+    handleReloadFromDisk,
   } = useDocumentSession({
-    initialMarkdown: settings.onboardingComplete ? welcomeMarkdown : '',
+    initialMarkdown: initialDocumentMarkdownForLaunch({
+      onboardingComplete: settings.onboardingComplete,
+      nativeRuntime: isTauriRuntime(),
+      welcomeMarkdown,
+    }),
     setSettings,
     setAuthorshipMarks,
+    onDocumentReplaced: handleDocumentReplaced,
     confirmText,
     pushToast,
   });
@@ -235,8 +239,6 @@ export function App() {
   const [linkDialog, setLinkDialog] = useState<{ selectedText: string; text: string; url: string } | null>(null);
   const [activeTopbarMenu, setActiveTopbarMenu] = useState<AppTopbarMenuId | null>(null);
   const [editorResetToken, setEditorResetToken] = useState(0);
-  const [visualEditorRecoveredInSource, setVisualEditorRecoveredInSource] = useState(false);
-  const [pasteReview, setPasteReview] = useState<PasteReviewState | null>(null);
   const [variableDialog, setVariableDialog] = useState<VariableDialogState | null>(null);
   const [citationDialogInitialKey, setCitationDialogInitialKey] = useState<string | null>(null);
   const [blockDialogState, setBlockDialogState] = useState<{ selection: EditorSelectionSnapshot | null } | null>(null);
@@ -247,6 +249,9 @@ export function App() {
   useEffect(() => {
     setSidebarWidth(normalizeSidebarWidth(settings.sidebarWidth));
   }, [settings.sidebarWidth]);
+  useEffect(() => {
+    if (filePath) setDocumentTypeDialogOpen(false);
+  }, [filePath]);
   const editorStageRef = useRef<HTMLElement | null>(null);
   const dropDepthRef = useRef(0);
   const exportRenderHostRef = useRef<ExportRenderHostHandle | null>(null);
@@ -275,12 +280,7 @@ export function App() {
     return { text: (window.getSelection()?.toString() || '').trim(), surface: 'unknown' };
   }, []);
   const getSelectedEditorText = useCallback(() => getEditorSelectionSnapshot().text.trim(), [getEditorSelectionSnapshot]);
-  const sourceOnlyNoticeShownRef = useRef(false);
-  const effectiveEditorMode: EditorMode = visualEditorRecoveredInSource ? 'source' : mode;
-
-  useEffect(() => {
-    setVisualEditorRecoveredInSource(false);
-  }, [editorResetToken, filePath, mode]);
+  const effectiveEditorMode: EditorMode = mode;
 
   const documentTitle = createWindowTitle(filePath, dirty);
   const warnings = validation.issues.filter((issue) => issue.severity === 'warning');
@@ -299,16 +299,23 @@ export function App() {
   const parsedMarkdownGraph = useMemo(() => ({
     baseDocumentInsights: analyzeMarkdownDocument(deferredMarkdownForPanels),
     navigationHeadings: extractHeadings(deferredMarkdownForPanels),
-    editorComments: parseEditorComments(deferredMarkdownForPanels),
-    targetedInstructions: parseTargetedInstructions(deferredMarkdownForPanels),
   }), [deferredMarkdownForPanels]);
-  const protectedBlocks = useMemo(() => parseProtectedBlocks(deferredMarkdownForPanels), [deferredMarkdownForPanels]);
+  const liveAnnotationGraph = useMemo(() => ({
+    editorComments: parseEditorComments(markdown),
+    targetedInstructions: parseTargetedInstructions(markdown),
+    protectedBlocks: parseProtectedBlocks(markdown),
+    variantGroups: parseVariantGroups(markdown),
+  }), [markdown]);
   const {
     baseDocumentInsights,
     navigationHeadings,
+  } = parsedMarkdownGraph;
+  const {
     editorComments,
     targetedInstructions,
-  } = parsedMarkdownGraph;
+    protectedBlocks,
+    variantGroups,
+  } = liveAnnotationGraph;
   const {
     currentLine,
     currentColumn,
@@ -332,7 +339,7 @@ export function App() {
   const wrapSelectedEditorText = useCallback((selectedText: string, wrap: (rawSelection: string) => string) => {
     const nextMarkdown = wrapMarkdownSelection(markdownRef.current, selectedText, wrap, currentLine);
     if (!nextMarkdown) {
-      pushToast('Could not safely map this visual selection to Markdown. Try placing the cursor in the exact block or switch to Source mode.', 'warning');
+      pushToast('Could not safely map this visual selection to Markdown. Try placing the cursor in the exact block before applying this command.', 'warning');
       return false;
     }
     commitMarkdown(nextMarkdown);
@@ -366,7 +373,6 @@ export function App() {
     () => assessManuscriptReadiness(deferredMarkdownForPanels, layerTwoDocument, documentInsights, missingImageCount, navigationHeadings),
     [deferredMarkdownForPanels, documentInsights, layerTwoDocument, missingImageCount, navigationHeadings],
   );
-  const variantGroups = layerTwoDocument.variantGroups;
   const nextVariantGroupId = useMemo(
     () => nextReferenceLabel('variant', variantGroups.map((group) => group.id)),
     [variantGroups],
@@ -395,30 +401,6 @@ export function App() {
     markdownRef.current = markdown;
     updateRawDocumentRescue(markdown, filePath);
   }, [filePath, markdown]);
-
-  useEffect(() => {
-    const openPlainSourceMode = () => {
-      setVisualEditorRecoveredInSource(false);
-      setMode('source');
-      pushToast('Opened the raw Markdown in source mode.', 'warning');
-    };
-    if (consumePlainSourceModeRequest()) openPlainSourceMode();
-    window.addEventListener(PLAIN_SOURCE_MODE_EVENT, openPlainSourceMode);
-    return () => window.removeEventListener(PLAIN_SOURCE_MODE_EVENT, openPlainSourceMode);
-  }, [pushToast, setMode]);
-
-  useEffect(() => {
-    if (!validation.sourceOnly) {
-      sourceOnlyNoticeShownRef.current = false;
-      return;
-    }
-    if (mode !== 'visual') return;
-    setMode('source');
-    if (!sourceOnlyNoticeShownRef.current) {
-      pushToast('Switched to source mode to preserve source-only syntax.', 'warning');
-      sourceOnlyNoticeShownRef.current = true;
-    }
-  }, [mode, pushToast, validation.sourceOnly]);
 
   useAuthorshipMaintenance(setAuthorshipMarks);
 
@@ -712,9 +694,12 @@ export function App() {
 
   const { handlePasteCapture, handleDropCapture } = useDocumentDropPaste({
     markdownRef,
+    documentEpochRef,
     insertImageBlob,
     insertImageFromPath,
-    openDocumentPath: handleOpen,
+    openDocumentPath: async (path) => {
+      await handleOpen(path);
+    },
     settleDirtyDocumentBeforeReplace,
     commitOpenedDocument,
     validateNow,
@@ -730,6 +715,7 @@ export function App() {
     rejectPasteReview,
     applyPasteReview,
   } = usePasteReviewWorkflow({
+    getCurrentMarkdown: () => markdownRef.current,
     setMarkdown: commitMarkdown,
     setAuthorshipMarks,
     setPasteReview,
@@ -743,6 +729,12 @@ export function App() {
   const openExplorerDocument = useCallback((path: string) => {
     void handleOpen(path);
   }, [handleOpen]);
+  const initialExplorerPath = useMemo(() => initialExplorerPathForLaunch({
+    persistedExplorerRootPath: settings.explorerRootPath,
+    startupDocumentOpenPending,
+    startupDocumentOpenFailed,
+    filePath,
+  }), [filePath, settings.explorerRootPath, startupDocumentOpenFailed, startupDocumentOpenPending]);
 
   const {
     currentPath: explorerCurrentPath,
@@ -754,10 +746,41 @@ export function App() {
     chooseFolder: chooseExplorerFolder,
     openEntry: handleOpenExplorerEntry,
   } = useFileExplorer({
-    initialPath: settings.explorerRootPath,
+    initialPath: initialExplorerPath,
     onPersistPath: persistExplorerPath,
     onOpenDocument: openExplorerDocument,
   });
+
+  const syncDocumentParentToExplorer = useCallback((path: string) => {
+    const parentPath = parentDirectoryForDocument(path);
+    if (!parentPath) return;
+    updateUserSettings({ outlineOpen: true, sidebarView: 'files' });
+    void loadExplorerDirectory(parentPath, { silent: true, suppressError: true }).catch((error) => {
+      console.warn('Document parent folder could not be loaded in the file panel.', error);
+    });
+  }, [loadExplorerDirectory, updateUserSettings]);
+
+  useEffect(() => {
+    if (filePath) syncDocumentParentToExplorer(filePath);
+  }, [filePath, syncDocumentParentToExplorer]);
+
+  useEffect(() => {
+    if (!shouldCommitWelcomeAfterStartup({
+      onboardingComplete: settings.onboardingComplete,
+      startupDocumentOpenPending,
+      startupDocumentOpenFailed,
+      filePath,
+      markdown,
+    })) return;
+    commitOpenedDocument(null, welcomeMarkdown, DEFAULT_METADATA, 'visual');
+  }, [
+    commitOpenedDocument,
+    filePath,
+    markdown,
+    settings.onboardingComplete,
+    startupDocumentOpenFailed,
+    startupDocumentOpenPending,
+  ]);
 
   const handleChooseExplorerFolder = useCallback(async () => {
     updateUserSettings({ outlineOpen: true, sidebarView: 'files' });
@@ -1029,6 +1052,37 @@ export function App() {
   useEffect(() => {
     exportLogSinkRef.current = exportWorkflow.handleLog;
   }, [exportWorkflow.handleLog]);
+
+  const visualAtomCount = useMemo(
+    () => editorComments.length + targetedInstructions.length + variantGroups.length + protectedBlocks.length,
+    [editorComments.length, protectedBlocks.length, targetedInstructions.length, variantGroups.length],
+  );
+  const activeBackgroundJobCount = useMemo(
+    () => [
+      bibliographyLoading,
+      startupDocumentOpenPending,
+      Boolean(documentOpenStatus),
+      Boolean(exportWorkflow.activeExport),
+    ].filter(Boolean).length,
+    [bibliographyLoading, documentOpenStatus, exportWorkflow.activeExport, startupDocumentOpenPending],
+  );
+  const handlePreviousRendererCrashDetected = useCallback(() => {
+    pushToast(
+      'Previous ScieMD session ended unexpectedly. A local diagnostics marker and raw recovery snapshot are available if needed.',
+      'warning',
+    );
+  }, [pushToast]);
+  useRendererDiagnostics({
+    markdown,
+    filePath,
+    mode,
+    warningCount: warnings.length,
+    errorCount: errors.length,
+    visualAtomCount,
+    activeBackgroundJobCount,
+    onPreviousSessionCrashDetected: handlePreviousRendererCrashDetected,
+  });
+
   const {
     externalConflictReview,
     externalProtectedChanges,
@@ -1037,6 +1091,7 @@ export function App() {
     applyExternalConflictReview,
   } = useExternalConflictReviewWorkflow({
     filePath,
+    documentEpochRef,
     markdown,
     lastSavedMarkdown,
     adoptReviewedDiskMerge,
@@ -1119,19 +1174,27 @@ export function App() {
     };
     updateUserSettings({ ...defaults[documentType], documentType, onboardingComplete: true });
     setDocumentTypeDialogOpen(false);
-    if (!filePath && markdownRef.current.trim() === '') {
+    if (!startupDocumentOpenPending && !startupDocumentOpenFailed && !filePath && markdownRef.current.trim() === '') {
       commitOpenedDocument(null, welcomeMarkdown, DEFAULT_METADATA, 'visual');
     }
     pushToast('Writing defaults applied', 'success');
-  }, [commitOpenedDocument, filePath, pushToast, updateUserSettings]);
+  }, [commitOpenedDocument, filePath, pushToast, startupDocumentOpenFailed, startupDocumentOpenPending, updateUserSettings]);
 
   const skipDocumentType = useCallback(() => {
     updateUserSettings({ onboardingComplete: true });
     setDocumentTypeDialogOpen(false);
-    if (!filePath && markdownRef.current.trim() === '') {
+    if (!startupDocumentOpenPending && !startupDocumentOpenFailed && !filePath && markdownRef.current.trim() === '') {
       commitOpenedDocument(null, welcomeMarkdown, DEFAULT_METADATA, 'visual');
     }
-  }, [commitOpenedDocument, filePath, updateUserSettings]);
+  }, [commitOpenedDocument, filePath, startupDocumentOpenFailed, startupDocumentOpenPending, updateUserSettings]);
+
+  const automaticDocumentTypeDialogOpen = shouldShowAutomaticOnboardingDialog({
+    onboardingComplete: settings.onboardingComplete,
+    startupDocumentOpenPending,
+    startupDocumentOpenFailed,
+    filePath,
+    markdown,
+  });
 
   const shortcutsEnabled = !closeDialogOpen
     && !promptState
@@ -1153,7 +1216,7 @@ export function App() {
     && !findOpen
     && !slashMenu
     && !activeTopbarMenu
-    && settings.onboardingComplete;
+    && (settings.onboardingComplete || !automaticDocumentTypeDialogOpen);
 
   const runHistoryCommand = useCallback((command: keyof EditorHistoryControls) => {
     const handledByDocumentHistory = command === 'undo'
@@ -1182,29 +1245,13 @@ export function App() {
 
   const handleModeChange = useCallback(async (nextMode: EditorMode) => {
     if (nextMode === mode) return;
-    if (nextMode === 'visual') {
-      if (validation.sourceOnly) {
-        pushToast('This document contains source-mode-only syntax.', 'warning');
-        setMode('source');
-        return;
-      }
-      if (validation.formattingWillNormalize) {
-        const proceed = await confirmText({
-          title: 'Normalize Markdown formatting?',
-          message: 'Visual mode may rewrite reference links, setext headings, hard breaks, tabs, or list markers in this document. Continue only if you are ready for ScieMD to save normalized Markdown.',
-          okLabel: 'Use Visual',
-          cancelLabel: 'Stay in Source',
-        });
-        if (!proceed) {
-          setMode('source');
-          return;
-        }
-        pushToast('Visual mode enabled. Markdown formatting may be normalized when saved.', 'warning');
-      }
+    const flushedMarkdown = flushVisualEditorState();
+    if (flushedMarkdown !== null) {
+      commitMarkdown(flushedMarkdown);
     }
     preserveLineForModeChange(currentLine, nextMode);
     setMode(nextMode);
-  }, [confirmText, currentLine, mode, preserveLineForModeChange, pushToast, validation.formattingWillNormalize, validation.sourceOnly]);
+  }, [commitMarkdown, currentLine, mode, preserveLineForModeChange]);
 
   const openLinkDialog = useCallback(() => {
     const selectedText = getSelectedEditorText();
@@ -1267,7 +1314,7 @@ export function App() {
     handleWindowClose,
     handleTitlebarMouseDown,
     handleTitlebarDoubleClick,
-  } = useWindowChrome({ dirty, setCloseDialogOpen, closeWindow });
+  } = useWindowChrome({ dirty, onDirtyCloseRequested: cancelAutosave, setCloseDialogOpen, closeWindow });
 
   const copySelectionFromFloatingToolbar = useCallback(async () => {
     const selectedText = getSelectedEditorText();
@@ -1648,42 +1695,25 @@ export function App() {
           <QuickOutlineHover headings={headings} activeHeadingId={activeHeadingId} onJump={jumpToHeading} />
           <EditorErrorBoundary
             resetKey={`${filePath ?? 'untitled'}:${mode}:${editorResetToken}`}
-            onError={() => setVisualEditorRecoveredInSource(true)}
             fallback={(error, reset) => (
               <div className="editor-fallback">
                 <div className="editor-fallback-banner">
-                  <strong>Editor recovered in source mode.</strong>
+                  <strong>Visual editor could not render this view.</strong>
                   <span>{error.message || 'The visual editor failed to render this document.'}</span>
                   <button
                     onClick={() => {
-                      setMode('source');
-                      setVisualEditorRecoveredInSource(false);
                       setEditorResetToken((current) => current + 1);
                       reset();
                     }}
                   >
-                    Reload editor
+                    Retry visual editor
                   </button>
                 </div>
-                <SourceMarkdownEditor
-                  markdown={markdown}
-                  onChange={commitEditorMarkdownEdit}
-                  onInsertReady={handleSourceInsertReady}
-                  onJumpReady={handleSourceJumpReady}
-                  onFindReady={handleSourceFindReady}
-                  onHistoryReady={handleSourceHistoryReady}
-                  onSelectionTextReady={handleSelectionTextReady}
-                  onCursorLineChange={handleCursorPositionChange}
-                  onViewportLineChange={handleViewportLineChange}
-                  authorshipMarks={settings.authorshipVisible ? authorshipMarks : []}
-                  citationKeys={citationCompletionKeys}
-                  citationEntries={layerTwoDocument.citations.bibtexEntries}
-                  crossReferenceLabels={layerTwoDocument.references.labels}
-                  variableDefinitions={layerTwoDocument.variables.definitions}
-                  highlightedVariableName={selectedVariableName}
-                  validationIssues={validation.issues}
-                  protectedBlocks={protectedBlocks}
-                  onLockViolation={(message) => pushToast(message, 'warning')}
+                <textarea
+                  className="editor-fallback-raw"
+                  aria-label="Raw Markdown fallback"
+                  value={markdown}
+                  onChange={(event) => commitEditorMarkdownEdit(event.target.value)}
                 />
               </div>
             )}
@@ -1823,7 +1853,7 @@ export function App() {
         onReviewConflict={() => void openExternalConflictReview()}
         onSaveAnyway={() => void saveCurrent({ forceOverwrite: true })}
         onReveal={() => filePath && void revealInFileManager(filePath)}
-        onReload={() => filePath && void handleOpen(filePath)}
+        onReload={() => filePath && void handleReloadFromDisk()}
         onSaveNow={() => void saveCurrent({ forceSaveAs: true })}
         onJumpToHeading={jumpToHeading}
         onOpenReadiness={() => {
@@ -1836,153 +1866,109 @@ export function App() {
         }}
       />
 
-      <UnsavedDialog
-        open={closeDialogOpen}
-        onSave={() => void handleCloseSave()}
-        onDiscard={() => void handleCloseDiscard()}
-        onCancel={() => setCloseDialogOpen(false)}
-      />
-      <PromptDialog
-        open={Boolean(promptState)}
-        title={promptState?.title ?? ''}
-        label={promptState?.label ?? ''}
-        defaultValue={promptState?.defaultValue ?? ''}
-        onSubmit={(value) => completePrompt(value)}
-        onCancel={() => completePrompt(null)}
-      />
-      <LinkDialog
-        open={Boolean(linkDialog)}
-        initialText={linkDialog?.text ?? ''}
-        initialUrl={linkDialog?.url ?? ''}
-        onSubmit={insertLinkFromDialog}
-        onCancel={() => setLinkDialog(null)}
-      />
-      <ConfirmDialog
-        open={Boolean(confirmState)}
-        title={confirmState?.title ?? ''}
-        message={confirmState?.message ?? ''}
-        okLabel={confirmState?.okLabel}
-        cancelLabel={confirmState?.cancelLabel}
-        onConfirm={() => completeConfirm(true)}
-        onCancel={() => completeConfirm(false)}
-      />
-      <VariableDialog
-        state={variableDialog}
-        definitions={layerTwoDocument.variables.definitions}
-        suggestedName={suggestedVariableName}
-        onUseExisting={insertVariableToken}
-        onCreate={createVariableAndInsert}
-        onSave={saveVariableEdit}
-        onCancel={() => setVariableDialog(null)}
-      />
-      <CitationDialog
-        open={citationDialogOpen}
-        documentPath={filePath}
-        entries={layerTwoDocument.citations.bibtexEntries}
-        bibliographyFiles={layerTwoDocument.citations.bibliographyFiles}
-        loading={bibliographyLoading}
-        initialEditKey={citationDialogInitialKey}
-        onClose={() => {
+      <AppOverlays
+        closeDialogOpen={closeDialogOpen}
+        onCloseSave={() => void handleCloseSave()}
+        onCloseDiscard={() => void handleCloseDiscard()}
+        onCloseCancel={() => setCloseDialogOpen(false)}
+        promptState={promptState}
+        onPromptComplete={completePrompt}
+        confirmState={confirmState}
+        onConfirmComplete={completeConfirm}
+        linkDialog={linkDialog}
+        onLinkSubmit={insertLinkFromDialog}
+        onLinkCancel={() => setLinkDialog(null)}
+        variableDialog={variableDialog}
+        variableDefinitions={layerTwoDocument.variables.definitions}
+        suggestedVariableName={suggestedVariableName}
+        onUseExistingVariable={insertVariableToken}
+        onCreateVariable={createVariableAndInsert}
+        onSaveVariable={saveVariableEdit}
+        onCancelVariable={() => setVariableDialog(null)}
+        citationDialogOpen={citationDialogOpen}
+        citationDocumentPath={filePath}
+        citationEntries={layerTwoDocument.citations.bibtexEntries}
+        citationBibliographyFiles={layerTwoDocument.citations.bibliographyFiles}
+        citationLoading={bibliographyLoading}
+        citationDialogInitialKey={citationDialogInitialKey}
+        onCloseCitationDialog={() => {
           setCitationDialogOpen(false);
           setCitationDialogInitialKey(null);
         }}
-        onInsert={(key) => {
+        onInsertCitation={(key) => {
           insertMarkdown(`[@${key}]`);
           setCitationDialogOpen(false);
           setCitationDialogInitialKey(null);
         }}
-        onSaveEntry={saveCitationEntry}
-        onDeleteEntry={deleteCitationEntry}
+        onSaveCitationEntry={saveCitationEntry}
+        onDeleteCitationEntry={deleteCitationEntry}
         onReloadBibliography={reloadBibliographyFromDisk}
-      />
-      <BlockTypeDialog
-        open={Boolean(blockDialogState)}
-        mode={blockDialogState?.selection ? 'wrap' : 'insert'}
-        onSelect={wrapSelectionAsBlock}
-        onCancel={() => setBlockDialogState(null)}
-      />
-      <ExportDialog
-        open={Boolean(exportWorkflow.dialogFormat)}
-        format={exportWorkflow.dialogFormat}
-        initialOptions={settings.exportOptions}
-        onCancel={exportWorkflow.closeDialog}
-        onExport={(format, options) => {
+        blockDialogState={blockDialogState}
+        onSelectBlockType={wrapSelectionAsBlock}
+        onCancelBlockType={() => setBlockDialogState(null)}
+        exportDialogFormat={exportWorkflow.dialogFormat}
+        exportOptions={settings.exportOptions}
+        onCancelExportDialog={exportWorkflow.closeDialog}
+        onRunExport={(format, options) => {
           updateUserSettings({ exportOptions: options });
           void exportWorkflow.runConfiguredExport(format, options);
         }}
-      />
-      <ExportLogDialog
-        open={exportWorkflow.logOpen}
-        entries={exportWorkflow.logEntries}
-        onClose={exportWorkflow.closeLog}
-      />
-      <DiffReviewDialog
-        open={Boolean(pasteReview?.open)}
-        hunks={pasteReview?.hunks ?? []}
-        reviewPlan={pasteReview?.reviewPlan}
-        largeChangeSummary={pasteReview?.bulkReview?.summary}
-        protectedChanges={pasteProtectedChanges}
-        onApply={applyPasteReview}
-        onAcceptAll={acceptPasteReview}
-        onRejectAll={rejectPasteReview}
-        onClose={closePasteReview}
-        onFocusLine={jumpToLineInCurrentMode}
-      />
-      <ExternalConflictDialog
-        open={Boolean(externalConflictReview)}
-        hunks={externalConflictReview?.hunks ?? []}
-        protectedChanges={externalProtectedChanges}
-        onApplyReview={applyExternalConflictReview}
-        onClose={closeExternalConflictReview}
-        onFocusLine={jumpToLineInCurrentMode}
-      />
-      <ShortcutDialog open={shortcutDialogOpen} onClose={() => setShortcutDialogOpen(false)} />
-      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
-      <SettingsDialog
-        open={settingsOpen}
+        exportLogOpen={exportWorkflow.logOpen}
+        exportLogEntries={exportWorkflow.logEntries}
+        onCloseExportLog={exportWorkflow.closeLog}
+        pasteReviewOpen={Boolean(pasteReview?.open)}
+        pasteReviewHunks={pasteReview?.hunks ?? []}
+        pasteReviewPlan={pasteReview?.reviewPlan}
+        pasteReviewLargeChangeSummary={pasteReview?.bulkReview?.summary}
+        pasteProtectedChanges={pasteProtectedChanges}
+        onApplyPasteReview={applyPasteReview}
+        onAcceptPasteReview={acceptPasteReview}
+        onRejectPasteReview={rejectPasteReview}
+        onClosePasteReview={closePasteReview}
+        onFocusReviewLine={jumpToLineInCurrentMode}
+        externalConflictOpen={Boolean(externalConflictReview)}
+        externalConflictHunks={externalConflictReview?.hunks ?? []}
+        externalProtectedChanges={externalProtectedChanges}
+        onApplyExternalConflictReview={applyExternalConflictReview}
+        onCloseExternalConflictReview={closeExternalConflictReview}
+        shortcutDialogOpen={shortcutDialogOpen}
+        onCloseShortcutDialog={() => setShortcutDialogOpen(false)}
+        aboutOpen={aboutOpen}
+        onCloseAbout={() => setAboutOpen(false)}
+        settingsOpen={settingsOpen}
         settings={settings}
-        onUpdate={updateUserSettings}
+        onUpdateSettings={updateUserSettings}
         onCheckInkscape={() => void checkInkscape()}
         onSetInkscapePath={() => void setInkscapePath()}
         onOpenWritingDefaults={openWritingDefaults}
-        onClose={() => setSettingsOpen(false)}
-      />
-      <TemplateDialog
-        open={templateDialogOpen}
-        onCreate={createFromTemplate}
-        onCancel={() => setTemplateDialogOpen(false)}
-      />
-      <DocumentTypeDialog
-        open={!settings.onboardingComplete || documentTypeDialogOpen}
-        onSelect={applyDocumentType}
-        onSkip={skipDocumentType}
-      />
-      <CommandPalette
-        open={commandPaletteOpen}
+        onCloseSettings={() => setSettingsOpen(false)}
+        templateDialogOpen={templateDialogOpen}
+        onCreateFromTemplate={createFromTemplate}
+        onCancelTemplateDialog={() => setTemplateDialogOpen(false)}
+        automaticDocumentTypeDialogOpen={automaticDocumentTypeDialogOpen}
+        documentTypeDialogOpen={documentTypeDialogOpen}
+        onSelectDocumentType={applyDocumentType}
+        onSkipDocumentType={skipDocumentType}
+        commandPaletteOpen={commandPaletteOpen}
         commands={commands}
         dynamicCommands={commandPaletteDynamicCommands}
-        onClose={() => setCommandPaletteOpen(false)}
+        onCloseCommandPalette={() => setCommandPaletteOpen(false)}
+        slashMenu={slashMenu}
+        slashCommands={slashCommands}
+        onSelectSlashCommand={insertSlashCommand}
+        onCloseSlashMenu={closeSlashMenu}
+        exportStatus={exportWorkflow.activeExport ?? exportWorkflow.lastExportStatus}
+        exportBusy={Boolean(exportWorkflow.activeExport)}
+        documentOpenStatus={documentOpenStatus}
+        onOpenExportLog={exportWorkflow.openLog}
+        onDismissExportStatus={exportWorkflow.activeExport ? undefined : exportWorkflow.clearLastStatus}
+        toasts={toasts}
+        onDismissToast={dismissToast}
+        onPauseToast={pauseToast}
+        onResumeToast={resumeToast}
+        exportRenderHostMounted={exportRenderHostMounted}
+        exportRenderHostRef={exportRenderHostRef}
       />
-      <SlashCommandMenu
-        open={Boolean(slashMenu)}
-        top={slashMenu?.top ?? 0}
-        left={slashMenu?.left ?? 0}
-        initialCommandId={slashMenu?.initialCommandId}
-        commands={slashCommands}
-        onSelect={insertSlashCommand}
-        onClose={closeSlashMenu}
-      />
-      {(exportWorkflow.activeExport || exportWorkflow.lastExportStatus) && (
-        <ExportStatusBanner
-          status={(exportWorkflow.activeExport ?? exportWorkflow.lastExportStatus)!}
-          busy={Boolean(exportWorkflow.activeExport)}
-          onOpenLog={exportWorkflow.openLog}
-          onDismiss={exportWorkflow.activeExport ? undefined : exportWorkflow.clearLastStatus}
-        />
-      )}
-      <ToastViewport toasts={toasts} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />
-      <AppTooltip />
-      {exportRenderHostMounted && <ExportRenderHost ref={exportRenderHostRef} />}
     </div>
   );
 }

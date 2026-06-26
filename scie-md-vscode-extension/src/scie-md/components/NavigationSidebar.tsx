@@ -101,6 +101,7 @@ export const NavigationSidebar = memo(function NavigationSidebar({
   const handleResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
     const startX = event.clientX;
     const startWidth = width;
     let latestWidth = width;
@@ -109,14 +110,29 @@ export const NavigationSidebar = memo(function NavigationSidebar({
       latestWidth = startWidth + moveEvent.clientX - startX;
       onResize(latestWidth);
     };
-    const handlePointerUp = () => {
+    const cleanupResize = () => {
       document.documentElement.classList.remove('resizing-navigation-sidebar');
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerCancel);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+    const handlePointerUp = () => {
+      cleanupResize();
+      onResizeCommit(latestWidth);
+    };
+    const handlePointerCancel = () => {
+      cleanupResize();
+      onResizeCommit(latestWidth);
+    };
+    const handleWindowBlur = () => {
+      cleanupResize();
       onResizeCommit(latestWidth);
     };
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerCancel);
+    window.addEventListener('blur', handleWindowBlur);
   };
 
   return (
@@ -372,7 +388,7 @@ function ReferencesPanel({ layerTwoDocument, bibliographyLoading, onJumpToLine, 
         <strong>Citations</strong>
         {layerTwoDocument.citations.usages.length === 0 ? (
           <div className="sidebar-empty-state compact">
-            <span>No citations yet. Use the Citation toolbar button or type `[@` in source mode.</span>
+            <span>No citations yet. Use the Citation toolbar button or type `[@` in Markdown.</span>
             <button type="button" onClick={onManageCitations}>Open citation manager</button>
           </div>
         ) : (

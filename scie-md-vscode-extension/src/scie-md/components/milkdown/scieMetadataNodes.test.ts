@@ -132,6 +132,55 @@ describe('scieMetadataNodes', () => {
     ]);
   });
 
+  it('keeps oversized variant groups as raw atoms without duplicating item bodies', () => {
+    const largeText = 'A'.repeat(270 * 1024);
+    const markdown = [
+      '<!-- scie_md:variant:group id="large" active="v1" target="quote" quote="large quote" -->',
+      '<!-- scie_md:variant:item id="v1" name="Large" -->',
+      largeText,
+      '<!-- scie_md:variant:end -->',
+    ].join('\n');
+    const children = [
+      htmlNode('<!-- scie_md:variant:group id="large" active="v1" target="quote" quote="large quote" -->', markdown, 0),
+      htmlNode('<!-- scie_md:variant:item id="v1" name="Large" -->', markdown, 1),
+      textNode(largeText, markdown, 2),
+      htmlNode('<!-- scie_md:variant:end -->', markdown, 3),
+    ];
+    const tree = { type: 'root', children };
+
+    transformScieMetadataAst(tree, markdown);
+
+    expect(tree.children).toHaveLength(1);
+    expect(tree.children[0]).toMatchObject({
+      type: 'scie_variant_group',
+      groupId: 'large',
+      active: 'v1',
+      target: 'quote',
+      quote: 'large quote',
+      itemsJson: '[]',
+    });
+    expect(String((tree.children[0] as unknown as { raw: string }).raw)).toContain(largeText);
+  });
+
+  it('keeps oversized rendered blocks raw and omits duplicate rendered body attrs', () => {
+    const largeMermaid = `\`\`\`mermaid\nflowchart LR\n${'A --> B\n'.repeat(40_000)}\`\`\``;
+    const largeSvg = `\`\`\`svg\n<svg>${'<path d="M0 0 L1 1"/>'.repeat(14_000)}</svg>\n\`\`\``;
+    const largeDirective = `:::note\n${'Large body\n'.repeat(30_000)}:::\n`;
+
+    expect(metadataAttrsFromRaw('scie_mermaid_block', largeMermaid)).toMatchObject({
+      raw: largeMermaid.trim(),
+      body: '',
+    });
+    expect(metadataAttrsFromRaw('scie_svg_block', largeSvg)).toMatchObject({
+      raw: largeSvg.trim(),
+      body: '',
+    });
+    expect(metadataAttrsFromRaw('scie_directive_block', largeDirective)).toMatchObject({
+      name: 'note',
+      body: '',
+    });
+  });
+
   it('preserves anchored variant target attributes when rebuilding raw', () => {
     const raw = buildVariantGroupRaw('variant-1', 'v1', [
       { id: 'v1', name: 'Original', markdown: 'Selected text.' },

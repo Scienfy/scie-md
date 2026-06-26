@@ -152,16 +152,16 @@ interface AppTopbarProps {
   onTitlebarDoubleClick: MouseEventHandler<HTMLElement>;
 }
 
-const menuLabels: Array<{ id: AppTopbarMenuId; label: string }> = [
-  { id: 'file', label: 'File' },
-  { id: 'edit', label: 'Edit' },
-  { id: 'view', label: 'View' },
-  { id: 'insert', label: 'Insert' },
-  { id: 'format', label: 'Format' },
-  { id: 'references', label: 'References' },
-  { id: 'review', label: 'LLM' },
-  { id: 'tools', label: 'Tools' },
-  { id: 'help', label: 'Help' },
+const menuLabels: Array<{ id: AppTopbarMenuId; label: string; priority: 'core' | 'secondary' }> = [
+  { id: 'file', label: 'File', priority: 'core' },
+  { id: 'edit', label: 'Edit', priority: 'core' },
+  { id: 'view', label: 'View', priority: 'core' },
+  { id: 'insert', label: 'Insert', priority: 'secondary' },
+  { id: 'format', label: 'Format', priority: 'secondary' },
+  { id: 'references', label: 'References', priority: 'secondary' },
+  { id: 'review', label: 'LLM', priority: 'secondary' },
+  { id: 'tools', label: 'Tools', priority: 'secondary' },
+  { id: 'help', label: 'Help', priority: 'secondary' },
 ];
 
 const themeOptions: Array<{ id: ThemeMode; label: string; icon: typeof Monitor }> = [
@@ -283,7 +283,7 @@ export function AppTopbar({
         <ScieMDBrandMark />
         <nav className="app-menubar" aria-label="Application menu">
           {menuLabels.map((menu) => (
-            <div key={menu.id} className="app-menu-button">
+            <div key={menu.id} className={`app-menu-button is-${menu.priority}-menu`}>
               <button
                 type="button"
                 className="app-menu-trigger"

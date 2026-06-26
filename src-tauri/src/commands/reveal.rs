@@ -6,6 +6,7 @@ use std::{path::PathBuf, process::Command};
 use super::process::output_quiet;
 use super::{
     path_grants::{assert_directory_read_allowed, assert_file_read_allowed},
+    path_utils::external_safe_path_string,
     process::spawn_quiet,
 };
 
@@ -21,9 +22,9 @@ pub fn reveal_in_file_manager(path: String) -> Result<(), String> {
     #[cfg(windows)]
     {
         let argument = if path.is_file() {
-            format!("/select,{}", path.to_string_lossy())
+            format!("/select,{}", external_safe_path_string(&path))
         } else {
-            path.to_string_lossy().to_string()
+            external_safe_path_string(&path)
         };
         let mut command = Command::new("explorer.exe");
         command.arg(argument);

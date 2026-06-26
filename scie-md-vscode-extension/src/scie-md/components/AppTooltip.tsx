@@ -8,6 +8,7 @@ interface TooltipState {
   kind?: string;
   left: number;
   top: number;
+  width: number;
   placement: 'above' | 'below' | 'left';
 }
 
@@ -34,6 +35,10 @@ const tooltipTargetSelector = [
 ].join(',');
 
 const nativeTitleAttribute = 'data-native-title';
+const nativeAriaLabelAttribute = 'data-native-aria-label';
+const nativeAriaLabelPresentAttribute = 'data-native-aria-label-present';
+const tooltipDescribedByAttribute = 'data-tooltip-described-by';
+const tooltipId = 'scie-app-tooltip';
 
 export function AppTooltip() {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -41,7 +46,7 @@ export function AppTooltip() {
 
   useEffect(() => {
     const hide = () => {
-      restoreNativeTitle(activeTargetRef.current);
+      restoreTooltipTarget(activeTargetRef.current);
       activeTargetRef.current = null;
       setTooltip(null);
     };
@@ -59,10 +64,10 @@ export function AppTooltip() {
       }
 
       if (activeTargetRef.current && activeTargetRef.current !== target) {
-        restoreNativeTitle(activeTargetRef.current);
+        restoreTooltipTarget(activeTargetRef.current);
       }
       activeTargetRef.current = target;
-      suppressNativeTitle(target);
+      prepareTooltipTarget(target, tooltipId);
       setTooltip(positionTooltip(target, content));
     };
 
@@ -125,6 +130,7 @@ export function AppTooltip() {
 
   return (
     <div
+      id={tooltipId}
       className={[
         'app-tooltip',
         `app-tooltip-${tooltip.placement}`,
@@ -132,7 +138,7 @@ export function AppTooltip() {
         tooltip.kind ? `app-tooltip-kind-${tooltip.kind}` : '',
       ].filter(Boolean).join(' ')}
       role="tooltip"
-      style={{ left: tooltip.left, top: tooltip.top }}
+      style={{ left: tooltip.left, top: tooltip.top, width: tooltip.width }}
     >
       {tooltip.title || tooltip.detail || tooltip.meta ? (
         <>
@@ -185,10 +191,26 @@ function isInteractiveTooltipTarget(target: HTMLElement): boolean {
     || target.getAttribute('role') === 'tab';
 }
 
+function prepareTooltipTarget(target: HTMLElement, describedById: string): void {
+  suppressNativeTitle(target);
+  describeTooltipTarget(target, describedById);
+}
+
+function restoreTooltipTarget(target: HTMLElement | null): void {
+  restoreTooltipDescription(target);
+  restoreNativeTitle(target);
+}
+
 function suppressNativeTitle(target: HTMLElement): void {
   const title = target.getAttribute('title');
   if (!title) return;
   if (!target.hasAttribute(nativeTitleAttribute)) target.setAttribute(nativeTitleAttribute, title);
+  const ariaLabel = target.getAttribute('aria-label');
+  if (isInteractiveTooltipTarget(target) && !ariaLabel?.trim() && !target.hasAttribute(nativeAriaLabelAttribute)) {
+    target.setAttribute(nativeAriaLabelAttribute, ariaLabel ?? '');
+    target.setAttribute(nativeAriaLabelPresentAttribute, target.hasAttribute('aria-label') ? 'true' : 'false');
+    target.setAttribute('aria-label', title);
+  }
   target.removeAttribute('title');
 }
 
@@ -196,6 +218,35 @@ function restoreNativeTitle(target: HTMLElement | null): void {
   if (!target || !target.hasAttribute(nativeTitleAttribute)) return;
   if (!target.hasAttribute('title')) target.setAttribute('title', target.getAttribute(nativeTitleAttribute) ?? '');
   target.removeAttribute(nativeTitleAttribute);
+  if (target.hasAttribute(nativeAriaLabelAttribute)) {
+    if (target.getAttribute(nativeAriaLabelPresentAttribute) === 'true') {
+      target.setAttribute('aria-label', target.getAttribute(nativeAriaLabelAttribute) ?? '');
+    } else {
+      target.removeAttribute('aria-label');
+    }
+    target.removeAttribute(nativeAriaLabelAttribute);
+    target.removeAttribute(nativeAriaLabelPresentAttribute);
+  }
+}
+
+function describeTooltipTarget(target: HTMLElement, describedById: string): void {
+  if (target.hasAttribute(tooltipDescribedByAttribute)) return;
+  const current = target.getAttribute('aria-describedby') ?? '';
+  target.setAttribute(tooltipDescribedByAttribute, current);
+  const ids = current.split(/\s+/).filter(Boolean);
+  if (!ids.includes(describedById)) ids.push(describedById);
+  target.setAttribute('aria-describedby', ids.join(' '));
+}
+
+function restoreTooltipDescription(target: HTMLElement | null): void {
+  if (!target || !target.hasAttribute(tooltipDescribedByAttribute)) return;
+  const original = target.getAttribute(tooltipDescribedByAttribute) ?? '';
+  if (original.trim()) {
+    target.setAttribute('aria-describedby', original);
+  } else {
+    target.removeAttribute('aria-describedby');
+  }
+  target.removeAttribute(tooltipDescribedByAttribute);
 }
 
 function normalizeTooltipKind(kind: string | null): string | undefined {
@@ -211,13 +262,13 @@ function positionTooltip(target: HTMLElement, content: TooltipContent): TooltipS
   const rect = target.getBoundingClientRect();
   const viewportWidth = window.innerWidth || 0;
   const viewportHeight = window.innerHeight || 0;
-  const longestLine = Math.max(...content.text.split('\n').map((line) => line.length), 0);
-  const estimatedWidth = Math.min(320, Math.max(content.title || content.detail ? 180 : 56, longestLine * 6.6 + 30));
+  const estimatedWidth = estimateTooltipWidth(content, viewportWidth);
   if (content.placement === 'left') {
     return {
       ...content,
       left: Math.round(clamp(rect.left - 8, estimatedWidth + 8, viewportWidth - 8)),
       top: Math.round(clamp(rect.top + rect.height / 2, 12, viewportHeight - 12)),
+      width: estimatedWidth,
       placement: 'left',
     };
   }
@@ -227,8 +278,16 @@ function positionTooltip(target: HTMLElement, content: TooltipContent): TooltipS
     ...content,
     left,
     top: Math.round(showBelow ? rect.bottom + 8 : rect.top - 8),
+    width: estimatedWidth,
     placement: showBelow ? 'below' : 'above',
   };
+}
+
+function estimateTooltipWidth(content: TooltipContent, viewportWidth: number): number {
+  const longestLine = Math.max(...content.text.split('\n').map((line) => line.length), 0);
+  const minimumWidth = content.title || content.detail ? 180 : 56;
+  const desiredWidth = Math.min(320, Math.max(minimumWidth, longestLine * 6.6 + 30));
+  return Math.ceil(Math.min(Math.max(48, viewportWidth - 16), desiredWidth));
 }
 
 function clamp(value: number, min: number, max: number): number {

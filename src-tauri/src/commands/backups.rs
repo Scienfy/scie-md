@@ -72,24 +72,37 @@ fn ensure_gitignore(backup_dir: &Path) -> Result<(), String> {
 }
 
 fn backup_id(path: &Path) -> String {
-    path.file_name()
+    let label = path
+        .file_name()
         .and_then(|value| value.to_str())
         .map(sanitize_label)
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "document-md".to_string())
+        .unwrap_or_else(|| "document-md".to_string());
+    let stable_path = path.canonicalize().unwrap_or_else(|_| {
+        if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .map(|cwd| cwd.join(path))
+                .unwrap_or_else(|_| path.to_path_buf())
+        }
+    });
+    let hash = blake3::hash(stable_path.to_string_lossy().as_bytes());
+    format!("{label}-{}", &hash.to_hex()[..8])
 }
 
 fn sanitize_label(label: &str) -> String {
-    let sanitized: String = label
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || character == '-' {
-                character
-            } else {
-                '-'
-            }
-        })
-        .collect();
+    let mut sanitized = String::new();
+    let mut previous_was_separator = false;
+    for character in label.chars() {
+        if character.is_ascii_alphanumeric() {
+            sanitized.push(character);
+            previous_was_separator = false;
+        } else if !previous_was_separator {
+            sanitized.push('-');
+            previous_was_separator = true;
+        }
+    }
     sanitized.trim_matches('-').to_string()
 }
 
@@ -107,8 +120,6 @@ fn create_unique_backup_file(
     label: &str,
     extension: &str,
 ) -> Result<PathBuf, String> {
-    let mut source_file =
-        fs::File::open(source).map_err(|error| format!("Could not open source file: {error}"))?;
     for attempt in 0..1000 {
         let suffix = if attempt == 0 {
             String::new()
@@ -127,10 +138,16 @@ fn create_unique_backup_file(
             .open(&temp_path)
         {
             Ok(mut target) => {
-                io::copy(&mut source_file, &mut target)
+                let mut source_file = fs::File::open(source)
+                    .map_err(|error| format!("Could not open source file: {error}"))?;
+                if let Err(error) = io::copy(&mut source_file, &mut target)
                     .and_then(|_| target.flush())
                     .and_then(|_| target.sync_all())
-                    .map_err(|error| format!("Could not create backup snapshot: {error}"))?;
+                {
+                    drop(target);
+                    let _ = fs::remove_file(&temp_path);
+                    return Err(format!("Could not create backup snapshot: {error}"));
+                }
                 drop(target);
                 fs::rename(&temp_path, &backup_path).map_err(|error| {
                     let _ = fs::remove_file(&temp_path);
@@ -183,7 +200,9 @@ fn prune_backups(backup_dir: &Path, backup_id: &str) -> Result<(), String> {
     let mut kept_bytes = 0_u64;
     let mut pruned = false;
     for (index, (path, modified)) in backups.into_iter().enumerate() {
-        let size = fs::metadata(&path).map(|metadata| metadata.len()).unwrap_or(0);
+        let size = fs::metadata(&path)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
         let too_many = index >= BACKUP_LIMIT;
         let too_old = now
             .duration_since(modified)
@@ -220,6 +239,7 @@ fn write_text_atomically(path: &Path, text: &str, label: &str) -> Result<(), Str
         .write_all(text.as_bytes())
         .and_then(|_| file.sync_all())
     {
+        drop(file);
         let _ = fs::remove_file(&temp_path);
         return Err(format!("Could not flush {label}: {error}"));
     }
@@ -246,8 +266,8 @@ fn sync_parent_dir(_parent: &Path) -> Result<(), String> {
 
 #[cfg(not(windows))]
 fn sync_parent_dir(parent: &Path) -> Result<(), String> {
-    let directory = fs::File::open(parent)
-        .map_err(|error| format!("open directory failed: {error}"))?;
+    let directory =
+        fs::File::open(parent).map_err(|error| format!("open directory failed: {error}"))?;
     directory
         .sync_all()
         .map_err(|error| format!("sync directory failed: {error}"))
@@ -257,6 +277,7 @@ fn sync_parent_dir(parent: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::commands::path_grants::{grant_file_and_parent, isolate_test_path_grants};
+    use filetime::{set_file_mtime, FileTime};
     use std::{env, fs};
 
     #[test]
@@ -313,10 +334,24 @@ mod tests {
 
         assert_eq!(document_backups.len(), 1);
         assert_eq!(similar_backups.len(), 1);
-        assert!(document_backups[0].contains("paper-md."));
-        assert!(similar_backups[0].contains("paper-notes-md."));
+        assert!(document_backups[0].contains("paper-md-"));
+        assert!(similar_backups[0].contains("paper-notes-md-"));
 
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn backup_ids_include_path_hash_to_avoid_sanitized_name_collisions() {
+        let dir = env::temp_dir().join(format!("scie-md-backup-id-{}", timestamp_ms()));
+        let hyphen = dir.join("my-paper.md");
+        let underscore = dir.join("my_paper.md");
+
+        let hyphen_id = backup_id(&hyphen);
+        let underscore_id = backup_id(&underscore);
+
+        assert_ne!(hyphen_id, underscore_id);
+        assert!(hyphen_id.starts_with("my-paper-md-"));
+        assert!(underscore_id.starts_with("my-paper-md-"));
     }
 
     #[test]
@@ -346,5 +381,89 @@ mod tests {
         assert_eq!(temp_count, 0);
 
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn backup_snapshot_sanitizes_label_and_stays_inside_backup_dir() {
+        let _grants = isolate_test_path_grants();
+        let dir = env::temp_dir().join(format!("scie-md-backup-label-{}", timestamp_ms()));
+        fs::create_dir_all(&dir).unwrap();
+        let document = dir.join("paper.md");
+        fs::write(&document, "# Paper\n").unwrap();
+        grant_file_and_parent(&document).unwrap();
+
+        let backup = create_backup_snapshot(
+            document.to_string_lossy().to_string(),
+            "manual: before/after * ?".to_string(),
+        )
+        .unwrap()
+        .unwrap();
+        let backup_path = PathBuf::from(backup);
+        let backup_dir = dir.join(".scienfy-backups");
+
+        assert_eq!(backup_path.parent(), Some(backup_dir.as_path()));
+        assert!(backup_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|name| name.contains(".manual-before-after-")));
+        assert_eq!(fs::read_to_string(&backup_path).unwrap(), "# Paper\n");
+        assert_eq!(
+            fs::read_to_string(backup_dir.join(".gitignore")).unwrap(),
+            "*\n"
+        );
+        assert_eq!(
+            fs::read_dir(&backup_dir)
+                .unwrap()
+                .flatten()
+                .filter(|entry| entry
+                    .path()
+                    .extension()
+                    .is_some_and(|extension| extension == "tmp"))
+                .count(),
+            0
+        );
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn backup_pruning_removes_old_and_over_budget_snapshots() {
+        let dir = env::temp_dir().join(format!("scie-md-backup-prune-policy-{}", timestamp_ms()));
+        let backup_dir = dir.join(".scienfy-backups");
+        fs::create_dir_all(&backup_dir).unwrap();
+        let backup_id = "paper-md-test";
+        let newest = backup_dir.join(format!("{backup_id}.newest.md"));
+        let too_large = backup_dir.join(format!("{backup_id}.large.md"));
+        let too_old = backup_dir.join(format!("{backup_id}.old.md"));
+        let sibling = backup_dir.join("other-paper-md-test.old.md");
+        fs::write(&newest, b"newest").unwrap();
+        create_sparse_file(&too_large, BACKUP_MAX_TOTAL_BYTES).unwrap();
+        fs::write(&too_old, b"old").unwrap();
+        fs::write(&sibling, b"sibling").unwrap();
+
+        let now = SystemTime::now();
+        set_file_mtime(&newest, FileTime::from_system_time(now)).unwrap();
+        set_file_mtime(
+            &too_large,
+            FileTime::from_system_time(now - Duration::from_secs(60)),
+        )
+        .unwrap();
+        let old_time = now - BACKUP_MAX_AGE - Duration::from_secs(60);
+        set_file_mtime(&too_old, FileTime::from_system_time(old_time)).unwrap();
+        set_file_mtime(&sibling, FileTime::from_system_time(old_time)).unwrap();
+
+        prune_backups(&backup_dir, backup_id).unwrap();
+
+        assert!(newest.exists());
+        assert!(!too_large.exists());
+        assert!(!too_old.exists());
+        assert!(sibling.exists());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    fn create_sparse_file(path: &Path, size_bytes: u64) -> std::io::Result<()> {
+        let file = OpenOptions::new().write(true).create_new(true).open(path)?;
+        file.set_len(size_bytes)
     }
 }

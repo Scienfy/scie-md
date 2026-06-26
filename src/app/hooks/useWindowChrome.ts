@@ -5,37 +5,49 @@ import { isTauriRuntime } from '../runtime';
 
 interface WindowChromeParams {
   dirty: boolean;
+  onDirtyCloseRequested?: () => void;
   setCloseDialogOpen: (open: boolean) => void;
   closeWindow: () => Promise<void>;
 }
 
-export function useWindowChrome({ dirty, setCloseDialogOpen, closeWindow }: WindowChromeParams) {
+export function useWindowChrome({ dirty, onDirtyCloseRequested, setCloseDialogOpen, closeWindow }: WindowChromeParams) {
   const handleWindowMinimize = useCallback(() => {
     if (!isTauriRuntime()) return;
-    void getCurrentWindow().minimize();
+    void getCurrentWindow().minimize().catch((error) => {
+      console.warn('Window minimize failed.', error);
+    });
   }, []);
 
   const handleWindowMaximize = useCallback(() => {
     if (!isTauriRuntime()) return;
-    void getCurrentWindow().toggleMaximize();
+    void getCurrentWindow().toggleMaximize().catch((error) => {
+      console.warn('Window maximize failed.', error);
+    });
   }, []);
 
   const handleWindowClose = useCallback(() => {
     if (dirty) {
+      onDirtyCloseRequested?.();
       setCloseDialogOpen(true);
       return;
     }
-    void closeWindow();
-  }, [closeWindow, dirty, setCloseDialogOpen]);
+    void closeWindow().catch((error) => {
+      console.warn('Window close failed.', error);
+    });
+  }, [closeWindow, dirty, onDirtyCloseRequested, setCloseDialogOpen]);
 
   const handleTitlebarMouseDown = useCallback((event: ReactMouseEvent<HTMLElement>) => {
     if (event.button !== 0 || !isTauriRuntime() || isInteractiveTitlebarTarget(event.target)) return;
-    void getCurrentWindow().startDragging();
+    void getCurrentWindow().startDragging().catch((error) => {
+      console.warn('Window drag failed.', error);
+    });
   }, []);
 
   const handleTitlebarDoubleClick = useCallback((event: ReactMouseEvent<HTMLElement>) => {
     if (event.button !== 0 || !isTauriRuntime() || isInteractiveTitlebarTarget(event.target)) return;
-    void getCurrentWindow().toggleMaximize();
+    void getCurrentWindow().toggleMaximize().catch((error) => {
+      console.warn('Window maximize failed.', error);
+    });
   }, []);
 
   return {

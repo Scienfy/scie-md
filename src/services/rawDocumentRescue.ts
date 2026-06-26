@@ -1,4 +1,4 @@
-export const PLAIN_SOURCE_MODE_EVENT = 'scie-md:plain-source-mode';
+import { readNativeRecoverySnapshot, writeNativeRecoverySnapshot } from './nativeRecoveryService';
 
 interface RawDocumentRescueSnapshot {
   markdown: string;
@@ -7,9 +7,13 @@ interface RawDocumentRescueSnapshot {
 }
 
 const RESCUE_SNAPSHOT_KEY = 'scie-md:raw-document-rescue';
-const PLAIN_SOURCE_REQUEST_KEY = 'scie-md:plain-source-requested';
+const NATIVE_SNAPSHOT_WRITE_INTERVAL_MS = 2_000;
 
 let currentSnapshot: RawDocumentRescueSnapshot | null = null;
+let pendingNativeSnapshot: RawDocumentRescueSnapshot | null = null;
+let nativeSnapshotTimer: number | undefined;
+let nativeSnapshotWriteInFlight = false;
+let lastNativeSnapshotWriteAt = 0;
 
 export function updateRawDocumentRescue(markdown: string, filePath: string | null): void {
   currentSnapshot = { markdown, filePath, updatedAt: Date.now() };
@@ -18,6 +22,7 @@ export function updateRawDocumentRescue(markdown: string, filePath: string | nul
   } catch {
     // The in-memory snapshot still covers same-session error recovery.
   }
+  scheduleNativeSnapshotWrite(currentSnapshot);
 }
 
 export function getRawDocumentRescueSnapshot(): RawDocumentRescueSnapshot | null {
@@ -42,42 +47,77 @@ export function hasRawDocumentRescueMarkdown(): boolean {
   return Boolean(getRawDocumentRescueSnapshot()?.markdown.length);
 }
 
-export function exportRawDocumentRescueMarkdown(): boolean {
-  const snapshot = getRawDocumentRescueSnapshot();
+export async function exportRawDocumentRescueMarkdown(): Promise<boolean> {
+  const snapshot = getRawDocumentRescueSnapshot() ?? await getNativeRawDocumentRescueSnapshot();
   if (!snapshot) return false;
   try {
-    const blob = new Blob([snapshot.markdown], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = rescueFileName(snapshot.filePath);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    downloadMarkdown(snapshot.markdown, rescueFileName(snapshot.filePath));
     return true;
   } catch {
     return false;
   }
 }
 
-export function requestPlainSourceMode(): void {
-  try {
-    window.sessionStorage.setItem(PLAIN_SOURCE_REQUEST_KEY, '1');
-  } catch {
-    // The custom event still reaches a mounted app instance.
+export async function flushRawDocumentRescueSnapshotForTests(): Promise<void> {
+  if (nativeSnapshotTimer !== undefined) {
+    window.clearTimeout(nativeSnapshotTimer);
+    nativeSnapshotTimer = undefined;
   }
-  window.dispatchEvent(new CustomEvent(PLAIN_SOURCE_MODE_EVENT));
+  await drainNativeSnapshotWrite();
 }
 
-export function consumePlainSourceModeRequest(): boolean {
+function scheduleNativeSnapshotWrite(snapshot: RawDocumentRescueSnapshot): void {
+  pendingNativeSnapshot = snapshot;
+  if (nativeSnapshotTimer !== undefined) return;
+  const elapsed = Date.now() - lastNativeSnapshotWriteAt;
+  const delay = Math.max(0, NATIVE_SNAPSHOT_WRITE_INTERVAL_MS - elapsed);
+  nativeSnapshotTimer = window.setTimeout(() => {
+    nativeSnapshotTimer = undefined;
+    void drainNativeSnapshotWrite();
+  }, delay);
+}
+
+async function drainNativeSnapshotWrite(): Promise<void> {
+  if (nativeSnapshotWriteInFlight) return;
+  const snapshot = pendingNativeSnapshot;
+  if (!snapshot) return;
+  pendingNativeSnapshot = null;
+  nativeSnapshotWriteInFlight = true;
+  lastNativeSnapshotWriteAt = Date.now();
   try {
-    const requested = window.sessionStorage.getItem(PLAIN_SOURCE_REQUEST_KEY) === '1';
-    if (requested) window.sessionStorage.removeItem(PLAIN_SOURCE_REQUEST_KEY);
-    return requested;
-  } catch {
-    return false;
+    await writeNativeRecoverySnapshot({
+      markdown: snapshot.markdown,
+      filePath: snapshot.filePath,
+      updatedAtMs: snapshot.updatedAt,
+    });
+  } finally {
+    nativeSnapshotWriteInFlight = false;
+    if (pendingNativeSnapshot && nativeSnapshotTimer === undefined) {
+      scheduleNativeSnapshotWrite(pendingNativeSnapshot);
+    }
   }
+}
+
+async function getNativeRawDocumentRescueSnapshot(): Promise<RawDocumentRescueSnapshot | null> {
+  const snapshot = await readNativeRecoverySnapshot();
+  if (!snapshot?.markdown) return null;
+  return {
+    markdown: snapshot.markdown,
+    filePath: snapshot.filePath,
+    updatedAt: snapshot.updatedAtMs,
+  };
+}
+
+function downloadMarkdown(markdown: string, fileName: string): void {
+  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function rescueFileName(filePath: string | null): string {

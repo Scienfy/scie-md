@@ -1,25 +1,44 @@
 mod commands;
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::VecDeque,
+    ffi::OsString,
+    path::{Path, PathBuf},
+    sync::{Mutex, OnceLock},
+};
+
+static PENDING_MARKDOWN_OPEN: OnceLock<Mutex<VecDeque<PathBuf>>> = OnceLock::new();
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     use tauri::{Emitter, Manager};
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
                 let _ = window.set_focus();
                 if let Some(path) = markdown_path_from_args(&argv, &cwd) {
-                    let _ = commands::path_grants::grant_file_and_parent(&path);
-                    let _ = window.emit("single-instance-open", path.to_string_lossy().to_string());
+                    queue_markdown_open(&path);
+                    let _ = window.emit(
+                        "single-instance-open",
+                        commands::path_utils::external_safe_path_string(&path),
+                    );
                 }
             }
         }))
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|_app| {
+            if let Some(path) = startup_markdown_path_from_env() {
+                queue_markdown_open(&path);
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             initial_markdown_path,
+            peek_pending_markdown_open,
+            take_pending_markdown_open,
+            clear_pending_markdown_open,
             commands::dialogs::pick_markdown_file,
             commands::dialogs::pick_image_file,
             commands::dialogs::pick_citation_style_file,
@@ -27,6 +46,12 @@ pub fn run() {
             commands::dialogs::pick_save_path,
             commands::dialogs::pick_html_save_path,
             commands::dialogs::pick_pandoc_export_save_path,
+            commands::diagnostics::append_diagnostics_event,
+            commands::diagnostics::clear_recovery_snapshot,
+            commands::diagnostics::mark_renderer_clean_shutdown,
+            commands::diagnostics::read_recovery_snapshot,
+            commands::diagnostics::record_renderer_heartbeat,
+            commands::diagnostics::write_recovery_snapshot,
             commands::path_grants::grant_external_path,
             commands::file_io::read_text_file,
             commands::file_io::read_text_file_preview,
@@ -61,24 +86,210 @@ pub fn run() {
 
 #[tauri::command]
 fn initial_markdown_path() -> Option<String> {
-    let args: Vec<String> = std::env::args().collect();
-    let cwd = std::env::current_dir().ok()?;
-    let path = markdown_path_from_args(&args, &cwd.to_string_lossy())?;
+    let path = peek_pending_markdown_open_path().or_else(startup_markdown_path_from_env)?;
     let _ = commands::path_grants::grant_file_and_parent(&path);
-    Some(path.to_string_lossy().to_string())
+    Some(commands::path_utils::external_safe_path_string(&path))
+}
+
+#[tauri::command]
+fn peek_pending_markdown_open() -> Option<String> {
+    let path = peek_pending_markdown_open_path()?;
+    let _ = commands::path_grants::grant_file_and_parent(&path);
+    Some(commands::path_utils::external_safe_path_string(&path))
+}
+
+#[tauri::command]
+fn take_pending_markdown_open() -> Option<String> {
+    let path = take_pending_markdown_open_path()?;
+    let _ = commands::path_grants::grant_file_and_parent(&path);
+    Some(commands::path_utils::external_safe_path_string(&path))
+}
+
+#[tauri::command]
+fn clear_pending_markdown_open(path: String) {
+    let requested = commands::path_utils::external_safe_path_string(&PathBuf::from(path));
+    let Ok(mut pending) = pending_markdown_open_slot().lock() else {
+        return;
+    };
+    pending.retain(|value| commands::path_utils::external_safe_path_string(value) != requested);
 }
 
 fn markdown_path_from_args(argv: &[String], cwd: &str) -> Option<PathBuf> {
+    let cwd = Path::new(cwd);
     argv.iter()
-        .filter_map(|arg| {
-            let path = PathBuf::from(arg);
-            if is_supported_markdown_path(&path) {
-                Some(if path.is_absolute() { path } else { Path::new(cwd).join(path) })
-            } else {
-                None
-            }
-        })
+        .flat_map(|arg| candidate_paths_from_launch_arg(arg))
+        .filter_map(|path| resolve_supported_markdown_launch_path(path, cwd))
         .find(|path| path.is_file())
+        .or_else(|| markdown_path_from_joined_args(argv, cwd))
+}
+
+fn startup_markdown_path_from_env() -> Option<PathBuf> {
+    let args: Vec<OsString> = std::env::args_os().collect();
+    let cwd = std::env::current_dir().ok()?;
+    markdown_path_from_os_args(&args, &cwd)
+}
+
+fn markdown_path_from_os_args(argv: &[OsString], cwd: &Path) -> Option<PathBuf> {
+    argv.iter()
+        .flat_map(candidate_paths_from_launch_os_arg)
+        .filter_map(|path| resolve_supported_markdown_launch_path(path, cwd))
+        .find(|path| path.is_file())
+        .or_else(|| {
+            let argv: Vec<String> = argv
+                .iter()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect();
+            markdown_path_from_joined_args(&argv, cwd)
+        })
+}
+
+fn markdown_path_from_joined_args(argv: &[String], cwd: &Path) -> Option<PathBuf> {
+    if argv.len() < 3 {
+        return None;
+    }
+    for start in 1..argv.len() {
+        for end in (start + 1)..=argv.len() {
+            let joined = argv[start..end].join(" ");
+            if let Some(path) = candidate_paths_from_launch_arg(&joined)
+                .into_iter()
+                .filter_map(|path| resolve_supported_markdown_launch_path(path, cwd))
+                .find(|path| path.is_file())
+            {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+fn candidate_paths_from_launch_os_arg(arg: &OsString) -> Vec<PathBuf> {
+    let raw = arg.to_string_lossy();
+    let mut candidates = if raw.trim().starts_with("file://") {
+        candidate_paths_from_launch_arg(raw.as_ref())
+    } else {
+        vec![PathBuf::from(arg)]
+    };
+    for candidate in candidate_paths_from_launch_arg(raw.as_ref()) {
+        if !candidates.iter().any(|existing| existing == &candidate) {
+            candidates.push(candidate);
+        }
+    }
+    candidates
+}
+
+fn resolve_supported_markdown_launch_path(path: PathBuf, cwd: &Path) -> Option<PathBuf> {
+    if !is_supported_markdown_path(&path) {
+        return None;
+    }
+    Some(if path.is_absolute() {
+        path
+    } else {
+        cwd.join(path)
+    })
+}
+
+fn candidate_paths_from_launch_arg(arg: &str) -> Vec<PathBuf> {
+    let trimmed = arg.trim();
+    let mut candidates = vec![path_from_launch_arg(trimmed)];
+    for token in split_launch_arg_tokens(trimmed) {
+        if token != trimmed {
+            candidates.push(path_from_launch_arg(&token));
+        }
+    }
+    candidates
+}
+
+fn path_from_launch_arg(arg: &str) -> PathBuf {
+    let trimmed = arg.trim().trim_matches('"').trim_matches('\'');
+    if let Some(file_url) = trimmed.strip_prefix("file://") {
+        return PathBuf::from(decode_file_url_path(file_url));
+    }
+    PathBuf::from(trimmed)
+}
+
+fn split_launch_arg_tokens(value: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut quote: Option<char> = None;
+
+    for character in value.chars() {
+        if quote == Some(character) {
+            quote = None;
+            continue;
+        }
+        if quote.is_none() && (character == '"' || character == '\'') {
+            quote = Some(character);
+            continue;
+        }
+        if quote.is_none() && character.is_whitespace() {
+            if !current.is_empty() {
+                tokens.push(std::mem::take(&mut current));
+            }
+            continue;
+        }
+        current.push(character);
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens
+}
+
+fn decode_file_url_path(value: &str) -> String {
+    let decoded = decode_percent_escapes(value);
+    if !cfg!(windows) {
+        return decoded;
+    }
+
+    let without_windows_drive_slash =
+        if decoded.len() >= 3 && decoded.as_bytes()[0] == b'/' && decoded.as_bytes()[2] == b':' {
+            decoded[1..].replace('/', "\\")
+        } else if decoded.to_ascii_lowercase().starts_with("localhost/") {
+            decoded["localhost/".len()..].replace('/', "\\")
+        } else if decoded.starts_with("//") {
+            decoded.replace('/', "\\")
+        } else if !is_windows_drive_url_path(&decoded)
+            && !decoded.starts_with('/')
+            && decoded.split('/').count() >= 2
+        {
+            format!("\\\\{}", decoded.replace('/', "\\"))
+        } else {
+            decoded.replace('/', "\\")
+        };
+    without_windows_drive_slash
+}
+
+fn is_windows_drive_url_path(value: &str) -> bool {
+    value.len() >= 2 && value.as_bytes()[1] == b':' && value.as_bytes()[0].is_ascii_alphabetic()
+}
+
+fn decode_percent_escapes(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' && index + 2 < bytes.len() {
+            if let (Some(high), Some(low)) =
+                (hex_value(bytes[index + 1]), hex_value(bytes[index + 2]))
+            {
+                decoded.push((high << 4) | low);
+                index += 3;
+                continue;
+            }
+        }
+        decoded.push(bytes[index]);
+        index += 1;
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
+}
+
+fn hex_value(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        b'A'..=b'F' => Some(value - b'A' + 10),
+        _ => None,
+    }
 }
 
 fn is_supported_markdown_path(path: &Path) -> bool {
@@ -88,15 +299,46 @@ fn is_supported_markdown_path(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+fn pending_markdown_open_slot() -> &'static Mutex<VecDeque<PathBuf>> {
+    PENDING_MARKDOWN_OPEN.get_or_init(|| Mutex::new(VecDeque::new()))
+}
+
+fn queue_markdown_open(path: &Path) {
+    let _ = commands::path_grants::grant_file_and_parent(path);
+    set_pending_markdown_open(path);
+}
+
+fn set_pending_markdown_open(path: &Path) {
+    if let Ok(mut pending) = pending_markdown_open_slot().lock() {
+        let next = commands::path_utils::external_safe_path_string(path);
+        pending.retain(|value| commands::path_utils::external_safe_path_string(value) != next);
+        pending.push_back(path.to_path_buf());
+    }
+}
+
+fn peek_pending_markdown_open_path() -> Option<PathBuf> {
+    pending_markdown_open_slot().lock().ok()?.front().cloned()
+}
+
+fn take_pending_markdown_open_path() -> Option<PathBuf> {
+    pending_markdown_open_slot().lock().ok()?.pop_front()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::markdown_path_from_args;
+    use super::{
+        markdown_path_from_args, markdown_path_from_os_args, path_from_launch_arg,
+        split_launch_arg_tokens,
+    };
+    use std::ffi::OsString;
     use std::fs;
 
     #[test]
     fn finds_markdown_file_from_second_instance_args() {
-        let directory =
-            std::env::temp_dir().join(format!("scie-md-single-instance-test-{}", std::process::id()));
+        let directory = std::env::temp_dir().join(format!(
+            "scie-md-single-instance-test-{}",
+            std::process::id()
+        ));
         fs::create_dir_all(&directory).unwrap();
         let file = directory.join("paper.md");
         fs::write(&file, "# Paper\n").unwrap();
@@ -143,5 +385,155 @@ mod tests {
 
         assert_eq!(found, Some(file));
         let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn finds_markdown_file_from_os_startup_args() {
+        let directory = std::env::temp_dir().join(format!(
+            "scie-md-os-startup-instance-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let file = directory.join("startup paper.md");
+        fs::write(&file, "# OS Startup Paper\n").unwrap();
+
+        let found = markdown_path_from_os_args(
+            &[OsString::from("sciemd"), file.clone().into_os_string()],
+            &std::env::temp_dir(),
+        );
+
+        assert_eq!(found, Some(file));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn reconstructs_unquoted_split_markdown_path_from_startup_args() {
+        let directory = std::env::temp_dir().join(format!(
+            "scie md split startup instance test {}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let file = directory.join("startup paper.md");
+        fs::write(&file, "# Split Startup Paper\n").unwrap();
+
+        let mut argv = vec!["sciemd".to_string()];
+        argv.extend(file.to_string_lossy().split_whitespace().map(str::to_string));
+        let found = markdown_path_from_args(&argv, std::env::temp_dir().to_string_lossy().as_ref());
+
+        assert_eq!(found, Some(file));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn reconstructs_unquoted_split_markdown_path_from_os_startup_args() {
+        let directory = std::env::temp_dir().join(format!(
+            "scie md split os startup instance test {}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let file = directory.join("startup paper.md");
+        fs::write(&file, "# Split OS Startup Paper\n").unwrap();
+
+        let mut argv = vec![OsString::from("sciemd")];
+        argv.extend(file.to_string_lossy().split_whitespace().map(OsString::from));
+        let found = markdown_path_from_os_args(&argv, &std::env::temp_dir());
+
+        assert_eq!(found, Some(file));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn finds_quoted_markdown_file_from_launch_args() {
+        let directory =
+            std::env::temp_dir().join(format!("scie-md-quoted-launch-test-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let file = directory.join("quoted paper.md");
+        fs::write(&file, "# Quoted Paper\n").unwrap();
+
+        let cwd = std::env::temp_dir();
+        let found = markdown_path_from_args(
+            &["sciemd".into(), format!("\"{}\"", file.to_string_lossy())],
+            cwd.to_string_lossy().as_ref(),
+        );
+
+        assert_eq!(found, Some(file));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn finds_file_url_markdown_file_from_launch_args() {
+        let directory = std::env::temp_dir().join(format!(
+            "scie-md-file-url-launch-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let file = directory.join("url paper.md");
+        fs::write(&file, "# URL Paper\n").unwrap();
+
+        let cwd = std::env::temp_dir();
+        let file_url = format!(
+            "file://{}",
+            file.to_string_lossy()
+                .replace('\\', "/")
+                .replace(' ', "%20")
+        );
+        let found =
+            markdown_path_from_args(&["sciemd".into(), file_url], cwd.to_string_lossy().as_ref());
+
+        assert_eq!(found, Some(file));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn finds_markdown_file_embedded_in_quoted_command_line_blob() {
+        let directory = std::env::temp_dir().join(format!(
+            "scie-md-command-line-blob-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let file = directory.join("command line paper.md");
+        fs::write(&file, "# Command Line Paper\n").unwrap();
+
+        let cwd = std::env::temp_dir();
+        let command_line = format!(
+            "\"C:\\Program Files\\ScieMD\\ScieMD.exe\" \"{}\"",
+            file.to_string_lossy()
+        );
+        let found = markdown_path_from_args(
+            &["sciemd".into(), command_line],
+            cwd.to_string_lossy().as_ref(),
+        );
+
+        assert_eq!(found, Some(file));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn split_launch_arg_tokens_preserves_spaces_inside_quotes() {
+        assert_eq!(
+            split_launch_arg_tokens(
+                "\"C:\\Program Files\\ScieMD\\ScieMD.exe\" \"C:\\Lab Notes\\paper.md\""
+            ),
+            vec![
+                "C:\\Program Files\\ScieMD\\ScieMD.exe".to_string(),
+                "C:\\Lab Notes\\paper.md".to_string(),
+            ]
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn decodes_unc_file_url_launch_args() {
+        let path = path_from_launch_arg("file://server/share/url%20paper.md");
+
+        assert_eq!(path.to_string_lossy(), r"\\server\share\url paper.md");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn decodes_localhost_file_url_launch_args_as_local_paths() {
+        let path = path_from_launch_arg("file://localhost/C:/Lab/url%20paper.md");
+
+        assert_eq!(path.to_string_lossy(), r"C:\Lab\url paper.md");
     }
 }

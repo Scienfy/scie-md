@@ -3,7 +3,9 @@ import * as path from 'node:path';
 import { createScieMDLlmSkill } from '../shared/markdown/llm';
 import type { WebviewToExtensionMessage } from '../shared/webviewProtocol';
 import { createDocumentReplacementPlan } from './documentMerge';
-import { getWebviewHtml } from './webviewHtml';
+import { documentParentUri, getWebviewHtml } from './webviewHtml';
+
+export type ReplaceDocumentTextResult = 'applied' | 'noop' | 'skipped' | 'failed' | 'readonly';
 
 export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvider {
   static readonly viewType = 'scieMd.visualMarkdown';
@@ -30,11 +32,9 @@ export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvid
 
     webviewPanel.webview.options = {
       enableScripts: true,
-      localResourceRoots: [
-        vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview'),
-      ],
+      localResourceRoots: webviewLocalResourceRoots(this.context.extensionUri, document),
     };
-    webviewPanel.webview.html = getWebviewHtml(webviewPanel.webview, this.context.extensionUri);
+    webviewPanel.webview.html = getWebviewHtml(webviewPanel.webview, this.context.extensionUri, document.uri);
     this.log(`webview HTML assigned for ${documentKey}`);
 
     const subscriptions: vscode.Disposable[] = [];
@@ -96,7 +96,8 @@ export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvid
       case 'save':
         if (!(await this.ensureDocumentWritable(document))) return;
         if (message.pendingText !== undefined && message.editId) {
-          await this.replaceDocumentText(document, message.pendingText, message.editId, message.baseText, message.baseVersion, message.rejectedHunkIds);
+          const result = await this.replaceDocumentText(document, message.pendingText, message.editId, message.baseText, message.baseVersion, message.rejectedHunkIds);
+          if (!canSaveAfterPendingEdit(result)) return;
         }
         await document.save();
         return;
@@ -136,15 +137,15 @@ export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvid
     baseText?: string,
     baseVersion?: number,
     rejectedHunkIds: string[] = [],
-  ): Promise<void> {
-    if (!(await this.ensureDocumentWritable(document))) return;
+  ): Promise<ReplaceDocumentTextResult> {
+    if (!(await this.ensureDocumentWritable(document))) return 'readonly';
     const documentKey = document.uri.toString();
     const planCurrentVersion = document.version;
     const currentText = document.getText();
     if (baseVersion !== undefined && baseVersion !== document.version && baseText === undefined) {
       this.showCoalescedWarning(documentKey, 'stale-skip', 'ScieMD skipped a stale webview edit because the document changed before the edit arrived.');
       this.postDocumentUpdate(document, 'changed');
-      return;
+      return 'skipped';
     }
     const plan = createDocumentReplacementPlan({
       currentText,
@@ -156,11 +157,11 @@ export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvid
       rejectedHunkIds: new Set(rejectedHunkIds),
     });
     const { replacement } = plan;
-    if (!replacement) return;
+    if (!replacement) return 'noop';
     if (document.version !== planCurrentVersion || document.getText() !== currentText) {
       this.showCoalescedWarning(documentKey, 'stale-retry', 'ScieMD skipped an edit because the VS Code document changed during merge planning. The webview was refreshed with the latest Markdown.');
       this.postDocumentUpdate(document, 'changed');
-      return;
+      return 'skipped';
     }
 
     const edit = new vscode.WorkspaceEdit();
@@ -174,19 +175,20 @@ export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvid
     if (!applied) {
       this.removePendingEditId(documentKey, editId);
       vscode.window.showErrorMessage('ScieMD could not apply the document edit.');
-      return;
+      return 'failed';
     }
     if (document.getText() !== plan.text) {
       this.removePendingEditId(documentKey, editId);
       this.showCoalescedWarning(documentKey, 'post-apply-mismatch', 'ScieMD applied an edit, but VS Code reported different Markdown afterward. The webview was refreshed to avoid overwriting newer content.');
       this.postDocumentUpdate(document, 'changed');
-      return;
+      return 'failed';
     }
 
     this.lastAppliedWebviewTextByDocument.set(documentKey, plan.text);
     if (plan.mergedStaleBase) {
       this.showCoalescedWarning(documentKey, 'stale-merge', 'ScieMD merged webview edits with newer Markdown already present in VS Code.');
     }
+    return 'applied';
   }
 
   private createDocumentFileWatcher(document: vscode.TextDocument): vscode.Disposable | null {
@@ -339,6 +341,10 @@ export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvid
   }
 }
 
+export function canSaveAfterPendingEdit(result: ReplaceDocumentTextResult): boolean {
+  return result === 'applied' || result === 'noop';
+}
+
 export async function openWithScieMDVisualEditor(uri?: vscode.Uri): Promise<void> {
   const target = uri ?? vscode.window.activeTextEditor?.document.uri;
   if (!target) {
@@ -367,11 +373,12 @@ async function generateSkillFileBesideDocument(documentUri: vscode.Uri): Promise
     vscode.window.showWarningMessage('Save the Markdown document before generating ScieMD_LLM_skill.md beside it.');
     return;
   }
-  if (documentUri.scheme !== 'file') {
-    vscode.window.showWarningMessage(`ScieMD can only generate sibling skill files for file-backed Markdown documents. This document uses the ${documentUri.scheme} scheme.`);
+  const parent = documentParentUri(documentUri);
+  if (!parent) {
+    vscode.window.showWarningMessage('ScieMD could not resolve the parent folder for this Markdown document.');
     return;
   }
-  const target = vscode.Uri.file(path.join(path.dirname(documentUri.fsPath), 'ScieMD_LLM_skill.md'));
+  const target = vscode.Uri.joinPath(parent, 'ScieMD_LLM_skill.md');
   const content = Buffer.from(createScieMDLlmSkill(), 'utf8');
   try {
     await vscode.workspace.fs.stat(target);
@@ -401,4 +408,25 @@ function showMessage(severity: 'info' | 'warning' | 'error', message: string): v
   } else {
     vscode.window.showInformationMessage(message);
   }
+}
+
+function webviewLocalResourceRoots(extensionUri: vscode.Uri, document: vscode.TextDocument): vscode.Uri[] {
+  const roots = [
+    vscode.Uri.joinPath(extensionUri, 'dist', 'webview'),
+  ];
+  const parent = documentParentUri(document.uri);
+  if (parent) roots.push(parent);
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+  if (workspaceFolder) roots.push(workspaceFolder.uri);
+  return uniqueUris(roots);
+}
+
+function uniqueUris(uris: vscode.Uri[]): vscode.Uri[] {
+  const seen = new Set<string>();
+  return uris.filter((uri) => {
+    const key = uri.toString();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }

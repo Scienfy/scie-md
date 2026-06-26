@@ -18,4 +18,20 @@ describe('extractHeadings', () => {
     expect(headingPathForLine(headings, 6).map((heading) => heading.text)).toEqual(['Intro', 'Methods', 'Spray coating']);
     expect(headingPathForLine(headings, 7).map((heading) => heading.text)).toEqual(['Intro', 'Results']);
   });
+
+  it('ignores headings in front matter and ScieMD comments', () => {
+    const headings = extractHeadings([
+      '---',
+      'title: "# Not outline"',
+      '---',
+      '',
+      '<!-- scie_md:comment audience="llm"',
+      '# Internal note',
+      '-->',
+      '',
+      '# Visible',
+    ].join('\n'));
+
+    expect(headings).toEqual([{ id: 'visible', level: 1, text: 'Visible', line: 9 }]);
+  });
 });

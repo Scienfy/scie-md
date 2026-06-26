@@ -10,33 +10,51 @@ interface UseWindowCloseGuardOptions {
 export function useWindowCloseGuard({ dirty, onCloseRequested }: UseWindowCloseGuardOptions) {
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const allowCloseRef = useRef(false);
+  const dirtyRef = useRef(dirty);
+  const onCloseRequestedRef = useRef(onCloseRequested);
+
+  useEffect(() => {
+    dirtyRef.current = dirty;
+  }, [dirty]);
+
+  useEffect(() => {
+    onCloseRequestedRef.current = onCloseRequested;
+  }, [onCloseRequested]);
 
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
-      if (!dirty) return;
+      if (!dirtyRef.current) return;
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [dirty]);
+  }, []);
 
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
+    let disposed = false;
     let unlisten: (() => void) | undefined;
     void getCurrentWindow().onCloseRequested((event) => {
-      if (allowCloseRef.current || !dirty) return;
+      if (allowCloseRef.current || !dirtyRef.current) return;
       event.preventDefault();
-      onCloseRequested();
+      onCloseRequestedRef.current();
       setCloseDialogOpen(true);
     }).then((dispose) => {
+      if (disposed) {
+        dispose();
+        return;
+      }
       unlisten = dispose;
+    }).catch((error) => {
+      console.warn('Window close guard listener could not be registered.', error);
     });
 
     return () => {
+      disposed = true;
       unlisten?.();
     };
-  }, [dirty, onCloseRequested]);
+  }, []);
 
   const closeWindow = useCallback(async () => {
     allowCloseRef.current = true;

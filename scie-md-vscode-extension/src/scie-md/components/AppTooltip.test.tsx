@@ -11,6 +11,7 @@ let root: Root;
 
 describe('AppTooltip', () => {
   beforeEach(() => {
+    setViewport(1024, 768);
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -34,6 +35,7 @@ describe('AppTooltip', () => {
     expect(document.body.querySelector('.app-tooltip')?.textContent).toBe('Save document');
     expect(button.hasAttribute('title')).toBe(false);
     expect(button.getAttribute('data-native-title')).toBe('Save document');
+    expect(button.getAttribute('aria-describedby')).toBe('scie-app-tooltip');
 
     act(() => {
       button.dispatchEvent(new MouseEvent('pointerout', { bubbles: true, relatedTarget: document.body }));
@@ -41,6 +43,55 @@ describe('AppTooltip', () => {
 
     expect(document.body.querySelector('.app-tooltip')).toBeNull();
     expect(button.getAttribute('title')).toBe('Save document');
+    expect(button.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  it('keeps title-only icon controls named while the native title is suppressed', () => {
+    renderTooltipHost(
+      <button type="button" title="Save document">
+        <svg aria-hidden="true" />
+      </button>,
+    );
+    const button = container.querySelector('button')!;
+    setRect(button, { left: 20, top: 20, width: 40, height: 28 });
+
+    act(() => {
+      button.dispatchEvent(new MouseEvent('focusin', { bubbles: true }));
+    });
+
+    expect(button.hasAttribute('title')).toBe(false);
+    expect(button.getAttribute('aria-label')).toBe('Save document');
+    expect(button.getAttribute('aria-describedby')).toBe('scie-app-tooltip');
+
+    act(() => {
+      button.dispatchEvent(new MouseEvent('focusout', { bubbles: true }));
+    });
+
+    expect(button.getAttribute('title')).toBe('Save document');
+    expect(button.hasAttribute('aria-label')).toBe(false);
+    expect(button.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  it('restores pre-existing aria-describedby after hiding a tooltip', () => {
+    renderTooltipHost(
+      <button type="button" title="Save document" aria-describedby="existing-help">
+        <svg aria-hidden="true" />
+      </button>,
+    );
+    const button = container.querySelector('button')!;
+    setRect(button, { left: 20, top: 20, width: 40, height: 28 });
+
+    act(() => {
+      button.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+    });
+
+    expect(button.getAttribute('aria-describedby')).toBe('existing-help scie-app-tooltip');
+
+    act(() => {
+      button.dispatchEvent(new MouseEvent('pointerout', { bubbles: true, relatedTarget: document.body }));
+    });
+
+    expect(button.getAttribute('aria-describedby')).toBe('existing-help');
   });
 
   it('uses aria-label for title-less controls', () => {
@@ -53,6 +104,22 @@ describe('AppTooltip', () => {
     });
 
     expect(document.body.querySelector('.app-tooltip')?.textContent).toBe('Open command palette');
+  });
+
+  it('keeps short edge tooltips from collapsing to the remaining viewport space', () => {
+    setViewport(980, 220);
+    renderTooltipHost(<button type="button" title="Close"><span>X</span></button>);
+    const button = container.querySelector('button')!;
+    setRect(button, { left: 926, top: 20, width: 40, height: 32 });
+
+    act(() => {
+      button.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+    });
+
+    const tooltip = document.body.querySelector<HTMLElement>('.app-tooltip')!;
+    expect(tooltip.textContent).toBe('Close');
+    expect(Number.parseFloat(tooltip.style.width)).toBeGreaterThanOrEqual(60);
+    expect(Number.parseFloat(tooltip.style.left)).toBeLessThanOrEqual(941);
   });
 
   it('renders structured typed marker tooltips', () => {
@@ -131,4 +198,9 @@ function setRect(element: HTMLElement, rect: { left: number; top: number; width:
     y: rect.top,
     toJSON: () => ({}),
   });
+}
+
+function setViewport(width: number, height: number) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: height });
 }

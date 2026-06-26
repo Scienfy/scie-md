@@ -126,4 +126,50 @@ describe('StatusBar', () => {
 
     expect(saveRequested).toBe(1);
   });
+
+  it('shows only the current heading in the compact status breadcrumb', () => {
+    let jumpedTo = '';
+    const headingPath = [
+      { id: 'root', level: 1, text: 'Very Long Root Document Title That Should Not Fill The Status Bar', line: 1 },
+      { id: 'phase', level: 2, text: 'Phase 2 Optional Depth Time Editor', line: 12 },
+      { id: 'active', level: 3, text: 'Constraint Editing', line: 45 },
+    ];
+
+    act(() => {
+      root.render(
+        <StatusBar
+          autosaveStatus="saved"
+          statusText="Saved"
+          headingPath={headingPath}
+          wordCount={1200}
+          manuscriptScore={73}
+          manuscriptStatus="needs-review"
+          errors={[]}
+          warnings={[]}
+          externalConflict={false}
+          filePath="C:\\paper.md"
+          onReviewConflict={noop}
+          onSaveAnyway={noop}
+          onReveal={noop}
+          onReload={noop}
+          onJumpToHeading={(heading) => { jumpedTo = heading.id; }}
+          onOpenReadiness={noop}
+          onOpenValidation={noop}
+          onSaveNow={noop}
+        />,
+      );
+    });
+
+    const breadcrumb = container.querySelector('.status-breadcrumb');
+    const button = breadcrumb?.querySelector<HTMLButtonElement>('button');
+    expect(button?.textContent).toBe('Constraint Editing');
+    expect(breadcrumb?.textContent).not.toContain('Very Long Root');
+    expect(button?.title).toContain('Very Long Root Document Title');
+
+    act(() => {
+      button?.click();
+    });
+
+    expect(jumpedTo).toBe('active');
+  });
 });

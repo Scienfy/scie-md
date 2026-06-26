@@ -1,5 +1,6 @@
 import { safeParseScienfyDocument } from './documentModel';
 import type { ParsedScienfyDocument, ParseScienfyDocumentOptions } from './documentModel';
+import { SOURCE_ONLY_FILE_BYTES } from '../../markdown/supportedMarkdown';
 
 interface ParseWorkerResponse {
   id: number;
@@ -19,11 +20,15 @@ const pendingParses = new Map<number, PendingParse>();
 
 export const PARSER_WORKER_TIMEOUT_MS = 8000;
 export const PARSER_WORKER_MAX_PENDING = 8;
+const TRANSIENT_WORKER_FAILURE_PATTERN = /timed out|superseded|queue limit|worker failed|empty response/i;
 
 export function parseScienfyDocumentAsync(
   markdown: string,
   options: ParseScienfyDocumentOptions = {},
 ): Promise<ParsedScienfyDocument> {
+  if (markdown.length > SOURCE_ONLY_FILE_BYTES && pendingParses.size > 0) {
+    rejectPendingParses(new Error('Document parser worker parse was superseded by a newer large-document request.'));
+  }
   const worker = getParserWorker();
   if (!worker) return Promise.resolve().then(() => safeParseScienfyDocument(markdown, options));
 
@@ -42,6 +47,11 @@ export function parseScienfyDocumentAsync(
       reject(error instanceof Error ? error : new Error(String(error)));
     }
   });
+}
+
+export function isTransientParserWorkerFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return TRANSIENT_WORKER_FAILURE_PATTERN.test(message);
 }
 
 function getParserWorker(): Worker | null {

@@ -40,6 +40,7 @@ const EXPORT_CLASS_CLEANUP = [
   'llm-note-target-block',
   'variant-active-block',
 ];
+const MAX_CONCURRENT_EXPORT_IMAGE_INLINES = 4;
 
 export interface CapturedEditorHtml {
   bodyHtml: string;
@@ -130,7 +131,7 @@ function resolveVisualFrame(root: HTMLElement | null): HTMLElement | null {
 
 async function inlineExportImages(root: HTMLElement, warnings: string[]): Promise<void> {
   const images = Array.from(root.querySelectorAll<HTMLImageElement>('img[src]'));
-  await Promise.all(images.map(async (image) => {
+  await runWithConcurrency(images, MAX_CONCURRENT_EXPORT_IMAGE_INLINES, async (image) => {
     const src = image.getAttribute('src') ?? '';
     if (!src || src.startsWith('data:')) return;
     image.removeAttribute('srcset');
@@ -144,7 +145,23 @@ async function inlineExportImages(root: HTMLElement, warnings: string[]): Promis
       }
       warnings.push(`Could not embed remote image "${shortSource(src)}"; the export will keep its URL.`);
     }
-  }));
+  });
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const item = items[nextIndex];
+      nextIndex += 1;
+      await worker(item);
+    }
+  });
+  await Promise.all(workers);
 }
 
 async function imageSourceToDataUri(src: string): Promise<string | null> {

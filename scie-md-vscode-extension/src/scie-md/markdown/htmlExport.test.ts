@@ -1,5 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createHtmlDocument, exportedDocumentTitle, extractLocalImageReferences, renderMarkdownHtmlDocument, renderMarkdownHtmlFragment } from './htmlExport';
+
+vi.mock('mermaid', () => {
+  return {
+    default: {
+      initialize: vi.fn(),
+      render: vi.fn().mockImplementation(async (id: string, code: string) => {
+        return { svg: `<svg id="${id}">mock-svg</svg>` };
+      }),
+    },
+  };
+});
+
 
 describe('htmlExport', () => {
   it('creates a complete html document', () => {
@@ -237,6 +249,13 @@ describe('htmlExport', () => {
     expect(html).not.toContain('id="&lt;figure');
     expect(html).not.toContain(':::figure');
     expect(html).not.toContain('```mermaid');
+  });
+
+  it('preserves literal dollar replacement tokens in rendered directive HTML', async () => {
+    const html = await renderMarkdownHtmlFragment(':::note\nLiteral $& marker stays text.\n:::\n', null);
+
+    expect(html).toContain('Literal $&amp; marker stays text.');
+    expect(html).not.toContain('SCIENFY_DIRECTIVE_');
   });
 
   it('renders svg fences as sanitized vector figures', async () => {

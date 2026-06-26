@@ -73,6 +73,53 @@ describe('ModalShell', () => {
     expect(event.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(lastRef.current);
   });
+
+  it('keeps body scroll locked until the last stacked modal closes', () => {
+    act(() => {
+      root.render(
+        <>
+          <ModalShell open titleId="first-title" onCancel={() => undefined}>
+            <h2 id="first-title">First dialog</h2>
+          </ModalShell>
+          <ModalShell open titleId="second-title" onCancel={() => undefined}>
+            <h2 id="second-title">Second dialog</h2>
+          </ModalShell>
+        </>,
+      );
+    });
+    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.body.classList.contains('modal-open')).toBe(true);
+
+    act(() => {
+      root.render(
+        <>
+          <ModalShell open={false} titleId="first-title" onCancel={() => undefined}>
+            <h2 id="first-title">First dialog</h2>
+          </ModalShell>
+          <ModalShell open titleId="second-title" onCancel={() => undefined}>
+            <h2 id="second-title">Second dialog</h2>
+          </ModalShell>
+        </>,
+      );
+    });
+    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.body.classList.contains('modal-open')).toBe(true);
+
+    act(() => {
+      root.render(
+        <>
+          <ModalShell open={false} titleId="first-title" onCancel={() => undefined}>
+            <h2 id="first-title">First dialog</h2>
+          </ModalShell>
+          <ModalShell open={false} titleId="second-title" onCancel={() => undefined}>
+            <h2 id="second-title">Second dialog</h2>
+          </ModalShell>
+        </>,
+      );
+    });
+    expect(document.body.style.overflow).toBe('');
+    expect(document.body.classList.contains('modal-open')).toBe(false);
+  });
 });
 
 function patchDialogMethods() {

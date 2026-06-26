@@ -66,7 +66,7 @@ try {
         recentFiles: [],
         themeMode: 'dark',
         fontScale: 1,
-        visualStyle: 'scienfy',
+        visualStyle: 'science',
         outlineOpen: true,
         sidebarView: 'outline',
         explorerRootPath: null,
@@ -77,7 +77,6 @@ try {
         onboardingComplete: true,
         inkscapePath: null
       }));
-      localStorage.setItem('scienfy.markdown.settings.scieSansDefaultMigrated', 'true');
     `,
   });
   await page.send('Emulation.setDeviceMetricsOverride', {

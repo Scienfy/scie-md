@@ -431,10 +431,10 @@ async function replaceSvgFencesForPandoc(markdown: string, filePath: string | nu
         outputPath = exported.outputPath;
         exportedBySource.set(cacheKey, outputPath);
       }
-      output = output.replace(block.raw, `![SVG figure](${relativeGeneratedAssetPath(filePath, outputPath)})`);
+      output = output.replace(block.raw, () => `![SVG figure](${relativeGeneratedAssetPath(filePath, outputPath)})`);
     } catch {
       skipped += 1;
-      output = output.replace(block.raw, `<!-- SVG conversion skipped because Inkscape was unavailable or failed. -->\n${block.raw}`);
+      output = output.replace(block.raw, () => `<!-- SVG conversion skipped because Inkscape was unavailable or failed. -->\n${block.raw}`);
     }
   }
   return { markdown: output, skipped };
@@ -470,7 +470,7 @@ async function prepareHtmlForPandocExport(
       const imagePath = relativeGeneratedAssetPath(filePath, outputPath);
       output = output.replace(
         figureHtml,
-        `<figure class="exported-vector-figure"><img src="${escapeHtmlAttribute(imagePath)}" alt="Exported vector figure"></figure>`,
+        () => `<figure class="exported-vector-figure"><img src="${escapeHtmlAttribute(imagePath)}" alt="Exported vector figure"></figure>`,
       );
     } catch {
       skipped += 1;

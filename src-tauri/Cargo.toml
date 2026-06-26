@@ -1,6 +1,6 @@
 [package]
 name = "sciemd"
-version = "1.0.0"
+version = "1.0.11"
 description = "ScieMD scientific Markdown desktop app"
 authors = ["Scienfy Inc."]
 license = "AGPL-3.0-or-later"
@@ -30,3 +30,6 @@ zip = { version = "8", default-features = false, features = ["deflate"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
+
+[dev-dependencies]
+filetime = "0.2"

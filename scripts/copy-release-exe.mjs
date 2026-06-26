@@ -48,6 +48,8 @@ for (const entry of readdirSync(bundleArtifactDir, { withFileTypes: true })) {
 const targets = [
   { path: join(artifactDir, 'ScieMD.exe'), required: true },
 ];
+const copiedReleaseFiles = [];
+let requiredCopyFailed = false;
 
 removeStaleRootExecutable();
 
@@ -72,15 +74,30 @@ for (const smokeName of ['ScieMD.next.exe', 'ScieMD.updated.exe']) {
 }
 
 for (const target of targets) {
-  copyReleaseFile(source, target.path, target.required, 'copy:exe', target.lockedMessage);
+  const copied = copyReleaseFile(source, target.path, target.required, 'copy:exe', target.lockedMessage);
+  if (copied) {
+    copiedReleaseFiles.push(target.path);
+  } else if (target.required) {
+    requiredCopyFailed = true;
+  }
 }
 
 for (const bundlePath of findBundleArtifacts(bundleDir)) {
   const target = join(bundleArtifactDir, basename(bundlePath));
-  copyReleaseFile(bundlePath, target, true, 'copy:bundle');
+  const copied = copyReleaseFile(bundlePath, target, true, 'copy:bundle');
+  if (copied) {
+    copiedReleaseFiles.push(target);
+  } else {
+    requiredCopyFailed = true;
+  }
 }
 
-writeReleaseChecksumManifest(root);
+if (requiredCopyFailed) {
+  console.error('[copy:exe] Required release artifact copy failed. Close any running ScieMD installers/executables and rerun the command.');
+  process.exit(1);
+}
+
+writeReleaseChecksumManifest(root, { releaseFiles: copiedReleaseFiles });
 
 function copyReleaseFile(sourcePath, targetPath, required, label, lockedMessage) {
   try {

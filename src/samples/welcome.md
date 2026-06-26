@@ -11,7 +11,7 @@ variables:
 scienfy:
   schema: 2
   documentType: "paper"
-  visualStyle: "scienfy"
+  visualStyle: "science"
 ---
 
 # ScieMD Quick Tour

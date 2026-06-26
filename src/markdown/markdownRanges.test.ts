@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fencedCodeRanges, inlineCodeRanges, isOffsetInsideRanges } from './markdownRanges';
+import { fencedCodeRanges, frontmatterRanges, inlineCodeRanges, isOffsetInsideRanges } from './markdownRanges';
 
 describe('markdownRanges', () => {
   it('tracks fenced code offsets without treating four-space indented fences as real fences', () => {
@@ -45,5 +45,12 @@ describe('markdownRanges', () => {
       '`one`',
       '``two ` ticks``',
     ]);
+  });
+
+  it('keeps frontmatter ranges aligned to CRLF source offsets', () => {
+    const markdown = '---\r\ntitle: CRLF\r\n---\r\n# Body\r\n';
+    const [range] = frontmatterRanges(markdown);
+
+    expect(range).toEqual({ start: 0, end: markdown.indexOf('# Body') });
   });
 });
