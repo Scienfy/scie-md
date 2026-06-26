@@ -2,16 +2,20 @@
 
 ## Current Target
 
-ScieMD `1.0.11` is the current public preview release target. Generated artifacts should be attached
+ScieMD `1.0.12` is the current public preview release target. Generated artifacts should be attached
 to GitHub Releases and should not be committed to the source repository. This gives users
 clear installer downloads without storing changing binaries in Git history. The intended
 Windows installer is:
 
 ```text
-artifacts/installers/ScieMD_1.0.11_x64-setup.exe
+artifacts/installers/ScieMD_1.0.12_x64-setup.exe
 ```
 
-The standalone `artifacts/ScieMD.exe` is a smoke-test/portable fallback. Do not distribute `ScieMD.next.exe` or `ScieMD.updated.exe`; those are gated local updater smoke-test copies only.
+The Linux installers are built on GitHub-hosted Ubuntu and attached to the release as
+`ScieMD_1.0.12_amd64.AppImage` and `ScieMD_1.0.12_amd64.deb`. The standalone
+`artifacts/ScieMD.exe` is a smoke-test/portable fallback. Do not distribute
+`ScieMD.next.exe` or `ScieMD.updated.exe`; those are gated local updater smoke-test
+copies only.
 
 ## Required Local Gate
 
@@ -27,19 +31,22 @@ Confirm these files exist:
 
 ```text
 artifacts/ScieMD.exe
-artifacts/installers/ScieMD_1.0.11_x64-setup.exe
-artifacts/installers/ScieMD_1.0.11_x64_en-US.msi
-artifacts/installers/sciemd-vscode-1.0.11.vsix
+artifacts/installers/ScieMD_1.0.12_x64-setup.exe
+artifacts/installers/ScieMD_1.0.12_x64_en-US.msi
+artifacts/installers/sciemd-vscode-1.0.12.vsix
 artifacts/SHA256SUMS.txt
 ```
+
+Linux `.deb` and `.AppImage` assets are generated in GitHub Actions rather than by
+the Windows local release command.
 
 ## GitHub Release Flow
 
 Push a version tag to create a release with installable assets:
 
 ```bash
-git tag v1.0.11
-git push origin v1.0.11
+git tag v1.0.12
+git push origin v1.0.12
 ```
 
 The release workflow builds and uploads:
@@ -48,6 +55,8 @@ The release workflow builds and uploads:
 - Windows MSI: `ScieMD_*_x64_en-US.msi`
 - Windows portable executable: `ScieMD.exe`
 - VS Code extension: `sciemd-vscode-*.vsix`
+- Linux AppImage: `ScieMD_*_amd64.AppImage`
+- Linux Debian package: `ScieMD_*_amd64.deb`
 - macOS disk image: `*.dmg`
 - SHA-256 checksum manifests
 

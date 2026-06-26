@@ -24,6 +24,8 @@ Open the release page, expand **Assets**, and choose the file for your system:
 
 - Windows: download `ScieMD_*_x64-setup.exe` for normal installation.
 - Windows MSI: download `ScieMD_*_x64_en-US.msi` only if your institution requires MSI installers.
+- Linux AppImage: download `ScieMD_*_amd64.AppImage` for a portable Linux build.
+- Linux Debian/Ubuntu: download `ScieMD_*_amd64.deb` for a package installer.
 - macOS Apple Silicon: download `ScieMD_*_aarch64.dmg`.
 - macOS Intel: download `ScieMD_*_x64.dmg` if available, or `ScieMD_*_universal.dmg`.
 - VS Code extension: download `sciemd-vscode-*.vsix`.
@@ -75,7 +77,7 @@ To install it:
 Command-line installation also works:
 
 ```bash
-code --install-extension sciemd-vscode-1.0.11.vsix
+code --install-extension sciemd-vscode-1.0.12.vsix
 ```
 
 ## Public Preview Status
@@ -87,6 +89,7 @@ Expected first-run warnings:
 
 - Windows may show Microsoft SmartScreen because the app is not code-signed yet. If
   you trust the download source, choose **More info** and then **Run anyway**.
+- Linux AppImage users may need to mark the file executable before launching it.
 - macOS may warn because the app is not notarized yet. You may need to right-click
   the app and choose **Open** the first time.
 - Pandoc-based exports require Pandoc to be installed separately on your machine.
