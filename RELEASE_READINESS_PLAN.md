@@ -2,13 +2,13 @@
 
 ## Current Target
 
-ScieMD `1.0.10` is the current public preview release target. Generated artifacts should be attached
+ScieMD `1.0.11` is the current public preview release target. Generated artifacts should be attached
 to GitHub Releases and should not be committed to the source repository. This gives users
 clear installer downloads without storing changing binaries in Git history. The intended
 Windows installer is:
 
 ```text
-artifacts/installers/ScieMD_1.0.10_x64-setup.exe
+artifacts/installers/ScieMD_1.0.11_x64-setup.exe
 ```
 
 The standalone `artifacts/ScieMD.exe` is a smoke-test/portable fallback. Do not distribute `ScieMD.next.exe` or `ScieMD.updated.exe`; those are gated local updater smoke-test copies only.
@@ -27,9 +27,9 @@ Confirm these files exist:
 
 ```text
 artifacts/ScieMD.exe
-artifacts/installers/ScieMD_1.0.10_x64-setup.exe
-artifacts/installers/ScieMD_1.0.10_x64_en-US.msi
-artifacts/installers/sciemd-vscode-1.0.10.vsix
+artifacts/installers/ScieMD_1.0.11_x64-setup.exe
+artifacts/installers/ScieMD_1.0.11_x64_en-US.msi
+artifacts/installers/sciemd-vscode-1.0.11.vsix
 artifacts/SHA256SUMS.txt
 ```
 
@@ -38,8 +38,8 @@ artifacts/SHA256SUMS.txt
 Push a version tag to create a release with installable assets:
 
 ```bash
-git tag v1.0.10
-git push origin v1.0.10
+git tag v1.0.11
+git push origin v1.0.11
 ```
 
 The release workflow builds and uploads:
