@@ -12,10 +12,10 @@ artifacts/installers/ScieMD_1.0.12_x64-setup.exe
 ```
 
 The Linux installers are built on GitHub-hosted Ubuntu and attached to the release as
-`ScieMD_1.0.12_amd64.AppImage` and `ScieMD_1.0.12_amd64.deb`. The standalone
-`artifacts/ScieMD.exe` is a smoke-test/portable fallback. Do not distribute
-`ScieMD.next.exe` or `ScieMD.updated.exe`; those are gated local updater smoke-test
-copies only.
+`ScieMD_1.0.12_amd64.AppImage` and `ScieMD_1.0.12_amd64.deb`. Do not attach a
+standalone `ScieMD.exe` portable build to public releases; Windows users should get
+the NSIS installer or MSI package only. Do not distribute `ScieMD.next.exe` or
+`ScieMD.updated.exe`; those are gated local updater smoke-test copies only.
 
 ## Required Local Gate
 
@@ -30,7 +30,6 @@ npm run copy:exe
 Confirm these files exist:
 
 ```text
-artifacts/ScieMD.exe
 artifacts/installers/ScieMD_1.0.12_x64-setup.exe
 artifacts/installers/ScieMD_1.0.12_x64_en-US.msi
 artifacts/installers/sciemd-vscode-1.0.12.vsix
@@ -53,7 +52,6 @@ The release workflow builds and uploads:
 
 - Windows NSIS installer: `ScieMD_*_x64-setup.exe`
 - Windows MSI: `ScieMD_*_x64_en-US.msi`
-- Windows portable executable: `ScieMD.exe`
 - VS Code extension: `sciemd-vscode-*.vsix`
 - Linux AppImage: `ScieMD_*_amd64.AppImage`
 - Linux Debian package: `ScieMD_*_amd64.deb`

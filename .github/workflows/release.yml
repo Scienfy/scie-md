@@ -54,7 +54,6 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force release-assets/windows | Out-Null
-          Copy-Item artifacts/ScieMD.exe release-assets/windows/
           Copy-Item artifacts/installers/*.exe release-assets/windows/
           Copy-Item artifacts/installers/*.msi release-assets/windows/
           Copy-Item artifacts/installers/*.vsix release-assets/windows/
@@ -213,7 +212,6 @@ jobs:
           Windows:
           - Use `ScieMD_*_x64-setup.exe` for normal installation.
           - Use the `.msi` only if your environment requires MSI installers.
-          - `ScieMD.exe` is a portable smoke-test build.
 
           Linux:
           - Use `ScieMD_*_amd64.AppImage` for a portable Linux build.

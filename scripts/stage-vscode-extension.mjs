@@ -27,8 +27,6 @@ writeReleaseChecksumManifest(root, { releaseFiles: currentReleaseFiles() });
 
 function currentReleaseFiles() {
   const files = [target];
-  const portableExe = resolve(root, 'artifacts', 'ScieMD.exe');
-  if (existsSync(portableExe)) files.push(portableExe);
   if (!existsSync(artifactInstallerDir)) return files;
   const windowsBundleExtensions = new Set(['.msi', '.exe', '.msix']);
   const bundlePrefix = `ScieMD_${packageVersion}_`;

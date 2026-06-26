@@ -16,9 +16,6 @@ export function writeReleaseChecksumManifest(root = process.cwd(), options = {})
       releaseFiles.push(resolve(root, filePath));
     }
   } else {
-    const portableExe = join(artifactDir, 'ScieMD.exe');
-    if (existsSync(portableExe)) releaseFiles.push(portableExe);
-
     if (existsSync(installerDir)) {
       for (const entry of readdirSync(installerDir, { withFileTypes: true })) {
         const filePath = join(installerDir, entry.name);

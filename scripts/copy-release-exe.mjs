@@ -45,13 +45,12 @@ for (const entry of readdirSync(bundleArtifactDir, { withFileTypes: true })) {
   }
 }
 
-const targets = [
-  { path: join(artifactDir, 'ScieMD.exe'), required: true },
-];
+const targets = [];
 const copiedReleaseFiles = [];
 let requiredCopyFailed = false;
 
 removeStaleRootExecutable();
+removeStaleArtifactExecutable();
 
 // Optional smoke-test copies are intentionally gated so they are not mistaken
 // for release/update artifacts when sharing builds with testers.
@@ -154,6 +153,22 @@ function findBundleArtifacts(directory) {
     }
   }
   return results.sort((left, right) => left.localeCompare(right));
+}
+
+function removeStaleArtifactExecutable() {
+  const portableExecutable = join(artifactDir, 'ScieMD.exe');
+  if (!existsSync(portableExecutable)) return;
+  try {
+    rmSync(portableExecutable);
+    console.log(`[copy:exe] Removed stale portable executable: ${portableExecutable}`);
+  } catch (error) {
+    if (isBusyError(error)) {
+      console.warn(`[copy:exe] Could not remove locked stale portable executable: ${portableExecutable}`);
+      console.warn('[copy:exe] Close ScieMD and rerun copy:exe, or remove the duplicate manually.');
+      return;
+    }
+    throw error;
+  }
 }
 
 function readBooleanEnv(name) {
