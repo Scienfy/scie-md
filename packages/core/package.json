@@ -3,6 +3,9 @@
   "version": "1.0.12",
   "private": true,
   "description": "Host-independent ScieMD markdown and domain utilities.",
+  "dependencies": {
+    "yaml": "^2.9.0"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./domain/blocks/directiveParser": "./src/domain/blocks/directiveParser.ts",
