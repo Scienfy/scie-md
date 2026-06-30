@@ -53,6 +53,11 @@ jobs:
           if (-not (Get-Command code -ErrorAction SilentlyContinue)) {
             choco install vscode -y --no-progress
           }
+          $codeBin = Join-Path $env:ProgramFiles 'Microsoft VS Code\bin'
+          if (Test-Path $codeBin) {
+            $codeBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+            $env:Path = "$codeBin;$env:Path"
+          }
           code --version
 
       - name: Build release artifacts
