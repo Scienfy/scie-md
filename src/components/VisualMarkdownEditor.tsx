@@ -10,12 +10,12 @@ import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react';
 import type { EditorView } from '@milkdown/prose/view';
 import { nord } from '@milkdown/theme-nord';
 import { fromVisualImagePaths, toVisualImagePaths } from '../markdown/imagePaths';
-import { quoteAnchorPrefix, quoteAnchorSuffix } from '../markdown/quoteAnchors';
+import { quoteAnchorPrefix, quoteAnchorSuffix } from '@sciemd/core';
 import { $prose, getMarkdown, insert, replaceAll } from '@milkdown/kit/utils';
 import type { EditorHistoryControls } from './editorControls';
 import type { EditorSelectionGetter } from './editorSelection';
 import { visualSourceLineForPosition } from './visualSourceMapping';
-import { parseFrontmatter } from '../domain/document/frontmatter';
+import { parseFrontmatter } from '@sciemd/core';
 import { mathPreviewPlugin } from './mathPreviewPlugin';
 import { createVariablePreviewPlugin } from './variablePreviewPlugin';
 import { createCitationHoverPlugin } from './citationHoverPlugin';
@@ -25,12 +25,13 @@ import { focusModePlugin } from './focusModePlugin';
 import { visualEditingBoundaryPlugin } from './visualEditingBoundaryPlugin';
 import { flushScieMetadataNodeViews, isScieMetadataNode, registerScieMetadataEditorContext, scieMetadataPlugins, unregisterScieMetadataEditorContext, updateScieMetadataEditorContext } from './milkdown/scieMetadataNodes';
 import { setVisualEditorStateReader } from './visualEditorStateSync';
+import type { EditorAdapter, EditorAdapterReady, EditorReadResult, EditorSelectionAnchor } from './editorAdapter';
 import '@milkdown/theme-nord/style.css';
 import 'katex/dist/katex.min.css';
-import { canonicalizeVariableTokens } from '../domain/variables/variableIndex';
-import type { VariableDefinition } from '../domain/variables/variableIndex';
-import type { BibtexEntry } from '../domain/citations/bibtex';
-import type { MarkdownHeading } from '../markdown/outline';
+import { canonicalizeVariableTokens } from '@sciemd/core';
+import type { VariableDefinition } from '@sciemd/core';
+import type { BibtexEntry } from '@sciemd/core';
+import type { MarkdownHeading } from '@sciemd/core';
 
 export type VisualMarkdownInsert = (markdown: string, options?: { filePath?: string | null }) => void;
 export interface VisualMarkdownJumpTarget {
@@ -54,6 +55,7 @@ interface VisualMarkdownEditorProps {
   onFindReady?: (find: VisualMarkdownFind | undefined) => void;
   onHistoryReady?: (history: EditorHistoryControls | undefined) => void;
   onSelectionTextReady?: (selection: VisualMarkdownSelection | undefined) => void;
+  onAdapterReady?: EditorAdapterReady;
   onCursorLineChange?: (line: number, column: number) => void;
   onViewportLineChange?: (line: number) => void;
   outlineHeadings?: MarkdownHeading[];
@@ -70,7 +72,7 @@ interface VisualMarkdownEditorProps {
   registerStateReader?: boolean;
 }
 
-function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsertReady, onJumpReady, onFindReady, onHistoryReady, onSelectionTextReady, onCursorLineChange, onViewportLineChange, outlineHeadings = [], onLockViolation, onToast, confirmText, citationKeys = [], citationEntries = [], variableDefinitions = [], highlightedVariableName = null, onEditCitation, onEditVariable, registerStateReader = true }: VisualMarkdownEditorProps) {
+function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsertReady, onJumpReady, onFindReady, onHistoryReady, onSelectionTextReady, onAdapterReady, onCursorLineChange, onViewportLineChange, outlineHeadings = [], onLockViolation, onToast, confirmText, citationKeys = [], citationEntries = [], variableDefinitions = [], highlightedVariableName = null, onEditCitation, onEditVariable, registerStateReader = true }: VisualMarkdownEditorProps) {
   const initialSplit = useRef(splitVisualMarkdown(markdown));
   const citationKeysRef = useRef(citationKeys);
   const citationEntriesRef = useRef(citationEntries);
@@ -238,6 +240,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
         onFindReady?.(undefined);
         onHistoryReady?.(undefined);
         onSelectionTextReady?.(undefined);
+        onAdapterReady?.(undefined);
       }
       return undefined;
     }
@@ -252,6 +255,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
       onFindReady?.(undefined);
       onHistoryReady?.(undefined);
       onSelectionTextReady?.(undefined);
+      onAdapterReady?.(undefined);
       return undefined;
     }
 
@@ -434,10 +438,78 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
         return null;
       }
     };
+    const flushPendingMetadataEditsForRead = (): boolean => {
+      if (applyingExternalUpdate.current) return false;
+      const pendingMetadataChanged = flushScieMetadataNodeViews();
+      if (pendingMetadataChanged) visualContentMutated.current = true;
+      return pendingMetadataChanged;
+    };
+    const readEditorState = (): EditorReadResult | null => {
+      return readVisualEditorStateSnapshot({
+        visualContentMutated: visualContentMutated.current,
+        sourceMarkdown: sourceMarkdownRef.current,
+        lastEmittedMarkdown: lastEmittedMarkdown.current,
+        flushPendingMetadataEdits: flushPendingMetadataEditsForRead,
+        readFullMarkdown: readFullMarkdownFromEditor,
+        markCommitted: (markdownValue) => {
+          lastEmittedMarkdown.current = markdownValue;
+        },
+      });
+    };
+    const replaceEditorState = (nextMarkdown: string): boolean => {
+      const currentEditor = editorRef.current;
+      if (!currentEditor) return false;
+      const split = splitVisualMarkdown(nextMarkdown);
+      visualContentMutated.current = false;
+      frontmatterPrefixRef.current = split.frontmatterPrefix;
+      const nextVisualPaths = toVisualImagePaths(split.visualMarkdown, filePathRef.current);
+      visualPaths.current = nextVisualPaths;
+      applyingExternalUpdate.current = true;
+      currentEditor.action(replaceAll(nextVisualPaths.markdown, true));
+      queueMicrotask(() => {
+        applyingExternalUpdate.current = false;
+        lastEmittedMarkdown.current = nextMarkdown;
+      });
+      return true;
+    };
+    const focusEditor = () => {
+      editorRef.current?.action((ctx) => ctx.get(editorViewCtx).focus());
+    };
+    const getSelectionAnchor = (): EditorSelectionAnchor | null => {
+      let anchor: EditorSelectionAnchor | null = null;
+      editorRef.current?.action((ctx) => {
+        const selection = ctx.get(editorViewCtx).state.selection;
+        anchor = { from: selection.from, to: selection.to };
+      });
+      return anchor;
+    };
+    const restoreSelectionAnchor = (anchor: EditorSelectionAnchor): boolean => {
+      let restored = false;
+      editorRef.current?.action((ctx) => {
+        const view = ctx.get(editorViewCtx);
+        const from = Math.max(0, Math.min(anchor.from, view.state.doc.content.size));
+        const to = Math.max(from, Math.min(anchor.to ?? anchor.from, view.state.doc.content.size));
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+        view.focus();
+        restored = true;
+      });
+      return restored;
+    };
+    const adapter: EditorAdapter = {
+      surface: 'visual',
+      read: readEditorState,
+      replace: replaceEditorState,
+      focus: focusEditor,
+      getSelectionAnchor,
+      restoreSelectionAnchor,
+      flushPendingEdits: readEditorState,
+    };
+    onAdapterReady?.(adapter);
     const synchronizeEditorState = (force = false) => {
       idleSyncHandle = null;
       timeoutSyncHandle = null;
       if (!force && (document.visibilityState === 'hidden' || !document.hasFocus())) return;
+      flushPendingMetadataEditsForRead();
       if (!visualContentMutated.current) return;
       const fullMarkdown = readFullMarkdownFromEditor();
       if (fullMarkdown === null || equivalentVisualMarkdown(fullMarkdown, lastEmittedMarkdown.current)) return;
@@ -449,16 +521,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
         console.warn('Could not validate visual editor state synchronization.', error);
       }
     };
-    const disposeStateReader = registerStateReader ? setVisualEditorStateReader(() => {
-      if (!visualContentMutated.current) return sourceMarkdownRef.current;
-      const fullMarkdown = readFullMarkdownFromEditor();
-      if (fullMarkdown === null) return null;
-      if (!equivalentVisualMarkdown(fullMarkdown, lastEmittedMarkdown.current)) {
-        lastEmittedMarkdown.current = fullMarkdown;
-        onChangeRef.current(fullMarkdown);
-      }
-      return fullMarkdown;
-    }) : () => undefined;
+    const disposeStateReader = registerStateReader ? setVisualEditorStateReader(readEditorState) : () => undefined;
     const scheduleStateSynchronization = () => {
       if (idleSyncHandle !== null || timeoutSyncHandle !== null || document.visibilityState === 'hidden' || !document.hasFocus()) return;
       if ('requestIdleCallback' in window) {
@@ -489,12 +552,13 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
         onFindReady?.(undefined);
         onHistoryReady?.(undefined);
         onSelectionTextReady?.(undefined);
+        onAdapterReady?.(undefined);
         disposeCursorListeners?.();
         disposeViewportListeners?.();
         disposeMutationListeners?.();
       }
     };
-  }, [loading, onEditorReady, onInsertReady, onJumpReady, onFindReady, onHistoryReady, onSelectionTextReady, registerStateReader]);
+  }, [loading, onEditorReady, onInsertReady, onJumpReady, onFindReady, onHistoryReady, onSelectionTextReady, onAdapterReady, registerStateReader]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -578,6 +642,43 @@ function splitVisualMarkdown(markdown: string): { visualMarkdown: string; frontm
 
 export function equivalentVisualMarkdown(left: string, right: string): boolean {
   return normalizeVisualMarkdownEmission(left) === normalizeVisualMarkdownEmission(right);
+}
+
+export function readVisualEditorStateSnapshot({
+  visualContentMutated,
+  sourceMarkdown,
+  lastEmittedMarkdown,
+  flushPendingMetadataEdits,
+  readFullMarkdown,
+  markCommitted,
+}: {
+  visualContentMutated: boolean;
+  sourceMarkdown: string;
+  lastEmittedMarkdown: string;
+  flushPendingMetadataEdits: () => boolean;
+  readFullMarkdown: () => string | null;
+  markCommitted: (markdown: string) => void;
+}): EditorReadResult | null {
+  const pendingMetadataChanged = flushPendingMetadataEdits();
+  if (!visualContentMutated && !pendingMetadataChanged) {
+    return {
+      surface: 'visual',
+      markdown: sourceMarkdown,
+      changed: false,
+    };
+  }
+
+  const fullMarkdown = readFullMarkdown();
+  if (fullMarkdown === null) return null;
+  const changed = !equivalentVisualMarkdown(fullMarkdown, lastEmittedMarkdown);
+  return {
+    surface: 'visual',
+    markdown: fullMarkdown,
+    changed,
+    markCommitted: changed
+      ? () => markCommitted(fullMarkdown)
+      : undefined,
+  };
 }
 
 function normalizeVisualMarkdownEmission(value: string): string {

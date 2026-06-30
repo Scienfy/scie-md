@@ -1,0 +1,304 @@
+/*
+ * ScieMD app styles: inline variable, citation, and source decoration previews.
+ * Import order is owned by app.css and mirrored by appCssBundle.ts for HTML export.
+ */
+.variable-source-hidden {
+  display: inline-block;
+  width: 0;
+  max-width: 0;
+  overflow: hidden;
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
+  user-select: none;
+}
+
+.variable-source-selected {
+  background: color-mix(in srgb, var(--accent), transparent 72%);
+}
+
+.variable-preview {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  border-radius: 5px;
+  padding: 0 0.08em;
+  background: transparent;
+  color: var(--text-strong);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 760;
+  line-height: inherit;
+  vertical-align: baseline;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent), transparent 55%);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+}
+
+.variable-preview:hover,
+.variable-preview:focus-within {
+  z-index: 120;
+}
+
+.variable-preview.source-missing {
+  color: var(--error);
+  text-decoration-color: var(--error);
+}
+
+.variable-preview.selected-variable {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent), transparent 78%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent), transparent 58%);
+  color: var(--text-strong);
+  text-decoration-color: var(--accent);
+}
+
+.variable-preview-card {
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: 0;
+  z-index: 121;
+  display: grid;
+  gap: 4px;
+  width: max-content;
+  min-width: 230px;
+  max-width: min(360px, 70vw);
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 42%);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--surface), transparent 2%);
+  box-shadow:
+    0 18px 48px color-mix(in srgb, var(--shadow), transparent 12%),
+    0 0 0 1px color-mix(in srgb, var(--surface), white 12%);
+  color: var(--text);
+  font-family: var(--ui-font);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px) scale(0.985);
+  transform-origin: bottom left;
+  transition:
+    opacity 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 140ms cubic-bezier(0.22, 1, 0.36, 1);
+  backdrop-filter: blur(12px);
+}
+
+.variable-preview-card strong {
+  color: var(--text-strong);
+  font-size: 12px;
+}
+
+.variable-preview:hover .variable-preview-card,
+.variable-preview:focus-within .variable-preview-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.source-variable {
+  border-radius: 4px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.source-variable-defined {
+  background: color-mix(in srgb, var(--accent), transparent 84%);
+  color: var(--text-strong);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent), transparent 25%);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.source-variable-missing {
+  background: color-mix(in srgb, var(--error), transparent 86%);
+  color: var(--error);
+  text-decoration: underline wavy var(--error);
+  text-underline-offset: 3px;
+}
+
+.source-variable-selected {
+  background: color-mix(in srgb, var(--accent), transparent 70%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent), transparent 58%);
+  color: var(--text-strong);
+}
+
+.source-citation {
+  border-radius: 4px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.source-citation-verified {
+  background: color-mix(in srgb, var(--accent), transparent 88%);
+  color: var(--text-strong);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent), transparent 24%);
+}
+
+.source-citation-unverified {
+  background: color-mix(in srgb, var(--warning), transparent 88%);
+  color: var(--warning);
+  text-decoration: underline dotted var(--warning);
+}
+
+.source-citation-missing {
+  background: color-mix(in srgb, var(--error), transparent 86%);
+  color: var(--error);
+  text-decoration: underline wavy var(--error);
+}
+
+.visual-citation-token {
+  position: relative;
+  border-radius: 4px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  cursor: help;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.visual-citation-clickable {
+  cursor: pointer;
+}
+
+.visual-citation-verified {
+  background: color-mix(in srgb, var(--accent), transparent 88%);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent), transparent 24%);
+}
+
+.visual-citation-unverified {
+  background: color-mix(in srgb, var(--warning), transparent 88%);
+  color: var(--warning);
+  text-decoration: underline dotted var(--warning);
+}
+
+.visual-citation-missing {
+  background: color-mix(in srgb, var(--error), transparent 86%);
+  color: var(--error);
+  text-decoration: underline wavy var(--error);
+}
+
+.visual-citation-token::after {
+  content: attr(data-citation-tooltip);
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: 0;
+  z-index: 62;
+  width: max-content;
+  min-width: 260px;
+  max-width: min(410px, 72vw);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--surface), transparent 4%);
+  box-shadow: 0 18px 48px color-mix(in srgb, var(--shadow), transparent 18%);
+  color: var(--text);
+  font-family: var(--ui-font);
+  font-size: 12px;
+  font-weight: 520;
+  line-height: 1.35;
+  white-space: pre-line;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px) scale(0.985);
+  transform-origin: bottom left;
+  transition:
+    opacity 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 140ms cubic-bezier(0.22, 1, 0.36, 1);
+  backdrop-filter: blur(12px);
+}
+
+.visual-citation-token:hover::after {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.source-citation-tooltip {
+  display: grid;
+  gap: 4px;
+  max-width: 360px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 14px 34px var(--shadow);
+  font-family: var(--ui-font);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.source-citation-tooltip strong {
+  color: var(--text-strong);
+  font-size: 12px;
+}
+
+.source-citation-tooltip.source-citation-missing {
+  border-color: color-mix(in srgb, var(--error), var(--border) 34%);
+}
+
+.source-citation-tooltip.source-citation-unverified {
+  border-color: color-mix(in srgb, var(--warning), var(--border) 34%);
+}
+
+.source-validation-ticks {
+  position: absolute;
+  top: 10px;
+  right: 5px;
+  bottom: 10px;
+  z-index: 5;
+  width: 8px;
+  pointer-events: none;
+}
+
+.source-validation-tick {
+  position: absolute;
+  right: 0;
+  width: 8px;
+  height: 3px;
+  border-radius: 999px;
+  transform: translateY(-50%);
+  opacity: 0.92;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--surface), transparent 20%);
+}
+
+.source-validation-tick.error {
+  background: var(--error);
+}
+
+.source-validation-tick.warning {
+  background: var(--warning);
+}
+
+.source-validation-tick.locked {
+  height: 4px;
+  background: var(--accent);
+  opacity: 0.72;
+}
+
+.math-preview-inline {
+  display: inline-flex;
+  align-items: baseline;
+  margin: 0 0.08em;
+  vertical-align: baseline;
+}
+
+.math-preview-block {
+  display: block;
+  overflow-x: auto;
+  margin: 1.1em 0;
+  padding: 0.4em 0;
+  text-align: center;
+}

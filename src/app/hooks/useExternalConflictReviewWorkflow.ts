@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { FileMetadata } from '../documentState';
 import { metadataChanged } from '../documentState';
-import { readTextFile } from '../../services/fileService';
+import type { DocumentHost } from '../host/documentHost';
 import { createAcceptedHunkAuthorshipMarks } from '../../markdown/authorship';
 import type { AuthorshipMark } from '../../markdown/authorship';
-import { applyThreeWayDiffDecisions, createDiffHunks } from '../../markdown/diffReview';
-import type { DiffHunk } from '../../markdown/diffReview';
-import { detectProtectedChanges } from '../../markdown/protectedBlocks';
+import { applyThreeWayDiffDecisions, createDiffHunks } from '@sciemd/core';
+import type { DiffHunk } from '@sciemd/core';
+import { detectProtectedChanges } from '@sciemd/core';
 
 interface ExternalConflictReviewState {
   filePath: string;
@@ -26,6 +26,7 @@ interface ExternalConflictReviewWorkflowParams {
   adoptReviewedDiskMerge: (content: string, diskContent: string, diskMetadata: FileMetadata) => void;
   setAuthorshipMarks: Dispatch<SetStateAction<AuthorshipMark[]>>;
   pushToast: (text: string, tone?: 'info' | 'success' | 'warning' | 'error') => void;
+  host: DocumentHost;
 }
 
 export function useExternalConflictReviewWorkflow({
@@ -36,6 +37,7 @@ export function useExternalConflictReviewWorkflow({
   adoptReviewedDiskMerge,
   setAuthorshipMarks,
   pushToast,
+  host,
 }: ExternalConflictReviewWorkflowParams) {
   const [externalConflictReview, setExternalConflictReview] = useState<ExternalConflictReviewState | null>(null);
   useEffect(() => {
@@ -55,7 +57,7 @@ export function useExternalConflictReviewWorkflow({
   const openExternalConflictReview = useCallback(async () => {
     if (!filePath) return;
     try {
-      const response = await readTextFile(filePath);
+      const response = await host.file.readTextFile(filePath);
       setExternalConflictReview({
         filePath,
         documentEpoch: documentEpochRef.current,
@@ -67,7 +69,7 @@ export function useExternalConflictReviewWorkflow({
     } catch (error) {
       pushToast(error instanceof Error ? error.message : 'Could not load disk version for review.', 'error');
     }
-  }, [documentEpochRef, filePath, lastSavedMarkdown, pushToast]);
+  }, [documentEpochRef, filePath, host.file, lastSavedMarkdown, pushToast]);
 
   const closeExternalConflictReview = useCallback(() => {
     setExternalConflictReview(null);
@@ -82,7 +84,7 @@ export function useExternalConflictReviewWorkflow({
     }
     let latestDisk;
     try {
-      latestDisk = await readTextFile(externalConflictReview.filePath);
+      latestDisk = await host.file.readTextFile(externalConflictReview.filePath);
     } catch (error) {
       pushToast(error instanceof Error ? error.message : 'Could not refresh disk version before applying review.', 'error');
       return;
@@ -121,7 +123,7 @@ export function useExternalConflictReviewWorkflow({
     adoptReviewedDiskMerge(merged, externalConflictReview.diskMarkdown, externalConflictReview.diskMetadata);
     setExternalConflictReview(null);
     pushToast(successMessage, 'success');
-  }, [adoptReviewedDiskMerge, documentEpochRef, externalConflictReview, filePath, lastSavedMarkdown, markdown, pushToast, setAuthorshipMarks]);
+  }, [adoptReviewedDiskMerge, documentEpochRef, externalConflictReview, filePath, host.file, lastSavedMarkdown, markdown, pushToast, setAuthorshipMarks]);
 
   const reloadReviewedDiskVersion = useCallback(() => {
     void applyReviewedMerge(new Set(), 'Applied disk changes and preserved non-conflicting local edits');

@@ -67,4 +67,51 @@ describe('getWebviewHtml', () => {
       'window.__SCIE_MD_VSCODE_DOCUMENT_RESOURCE_BASE__ = "webview:vscode-remote://ssh-remote+lab/home/amin/project"',
     );
   });
+
+  it('uses a nonce-only script policy while keeping explicit webview resource allowances', () => {
+    const webview = {
+      cspSource: 'vscode-resource:',
+      asWebviewUri: (uri: { toString: () => string }) => ({
+        toString: () => `webview:${uri.toString()}`,
+      }),
+    };
+
+    const html = getWebviewHtml(
+      webview as never,
+      { toString: () => 'file:///extension' } as never,
+      {
+        scheme: 'file',
+        fsPath: 'C:\\docs\\paper.md',
+      } as never,
+    );
+
+    expect(html).toContain("default-src 'none'");
+    expect(html).toContain('img-src vscode-resource: https: data:');
+    expect(html).toContain('font-src vscode-resource: data:');
+    expect(html).toContain("style-src vscode-resource: 'unsafe-inline'");
+    expect(html).toContain('worker-src vscode-resource: blob:');
+    expect(html).toMatch(/script-src 'nonce-[^']+' vscode-resource:/);
+    expect(html).not.toContain("script-src 'unsafe-inline'");
+  });
+
+  it('does not grant document-relative resource access for untitled documents', () => {
+    const webview = {
+      cspSource: 'vscode-resource:',
+      asWebviewUri: (uri: { toString: () => string }) => ({
+        toString: () => `webview:${uri.toString()}`,
+      }),
+    };
+
+    const html = getWebviewHtml(
+      webview as never,
+      { toString: () => 'file:///extension' } as never,
+      {
+        scheme: 'untitled',
+        fsPath: 'Untitled-1',
+      } as never,
+    );
+
+    expect(documentParentUri({ scheme: 'untitled' } as never)).toBeNull();
+    expect(html).toContain('window.__SCIE_MD_VSCODE_DOCUMENT_RESOURCE_BASE__ = ""');
+  });
 });

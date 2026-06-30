@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { createScieMDLlmSkill } from '../src/shared/markdown/llm';
-import { insertEditorNote, parseEditorComments } from '../src/shared/markdown/editorComments';
-import { createProtectedBlockSnippet, parseProtectedBlocks } from '../src/shared/markdown/protectedBlocks';
-import { applyReviewPlanDecisions, createReviewPlan } from '../src/shared/markdown/reviewPlan';
-import { parseVariantGroups } from '../src/shared/markdown/variants';
+import {
+  applyReviewPlanDecisions,
+  createProtectedBlockSnippet,
+  createReviewPlan,
+  insertEditorNote,
+  parseEditorComments,
+  parseProtectedBlocks,
+  parseVariantGroups,
+  createLlmClipboardPayload,
+  createLlmStyleGuide,
+  createScieMDLlmSkill,
+} from '@sciemd/core';
 
 describe('copied ScieMD core', () => {
   it('creates and parses Note to LLM markers', () => {
@@ -50,5 +57,32 @@ describe('copied ScieMD core', () => {
     expect(skill).toContain('ScieMD LLM Skill');
     expect(skill).toContain('Note to LLM');
     expect(skill).toContain('Text Versions');
+  });
+
+  it('generates LLM helper output from the shared package boundary', () => {
+    const markdown = [
+      '---',
+      'title: Trial',
+      'variables:',
+      '  cohort_n: 128',
+      '---',
+      '',
+      '# Trial',
+      '',
+      '<!-- scie_md:lock:start reason="approved" -->',
+      'Approved wording.',
+      '<!-- scie_md:lock:end -->',
+      '',
+      '<!-- scie_md:note id="llm-1" kind="llm" target="quote" quote="Target sentence.": Tighten this. -->',
+      'Target sentence.',
+    ].join('\n');
+    const options = { selection: 'Target sentence.' };
+    const payload = createLlmClipboardPayload(markdown, 'trial.md', 'expand', options);
+
+    expect(payload).toContain('Scope: selected text only');
+    expect(payload).toContain('Protected sections: Locked section');
+    expect(payload).toContain('Notes to LLM: id llm-1');
+    expect(createLlmStyleGuide()).toContain('ScieMD Markdown Style Guide');
+    expect(createScieMDLlmSkill()).toContain('ScieMD LLM Skill');
   });
 });

@@ -14,8 +14,12 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "paths": {
+      "@sciemd/core": ["./packages/core/src/index.ts"],
+      "@sciemd/core/*": ["./packages/core/src/*"]
+    }
   },
-  "include": ["src", "vite.config.ts", "scripts/**/*.mjs"],
+  "include": ["src", "packages/core/src", "vite.config.ts", "scripts/**/*.mjs"],
   "references": []
 }

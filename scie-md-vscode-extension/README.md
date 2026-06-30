@@ -6,7 +6,7 @@ LaTeX math, and Mermaid diagrams.
 
 Markdown is the source of truth. Humans can write and read in visual mode, while
 external LLMs can work with the same plain `.md` file in source mode, including
-Note to LLM comments, variables, and text-version markers.
+document notes, variables, and text-version markers.
 
 ## Screenshots
 
@@ -77,7 +77,7 @@ clean, explicit instructions for an external LLM while keeping control in your h
 
 Useful commands:
 
-- **Insert Note to LLM** inside the editor to leave a direct instruction beside the
+- **Insert note** inside the editor to leave a direct instruction beside the
   paragraph, section, or selected sentence that needs revision.
 - **Copy ScieMD LLM Skill** to copy guidance that teaches an LLM how to preserve
   ScieMD Markdown markers.
@@ -87,7 +87,7 @@ Useful commands:
 A practical workflow:
 
 1. Write normally in Markdown or visual mode.
-2. Add **Note to LLM** comments where you want help, for example "tighten this
+2. Add notes where you want help, for example "tighten this
    abstract", "keep the claim cautious", or "suggest two shorter title versions".
 3. Copy the relevant Markdown and the ScieMD LLM skill into your preferred LLM.
 4. Paste the revised Markdown back into VS Code.
@@ -132,26 +132,29 @@ Use text versions for:
 
 ## How To Use The Extension
 
-After installing the extension, open a Markdown file with ScieMD in any of these
-ways.
+After installing the extension, opening a `.md`, `.markdown`, `.scie.md`, or
+`.sciemd.md` file in VS Code opens it in the ScieMD visual editor by default.
 
-Recommended right-click workflow:
+If you previously changed your VS Code editor association for Markdown files, or
+if another extension has already claimed Markdown as its default editor, use one
+of these fallback workflows.
 
-1. In the VS Code Explorer, find your `.md`, `.scie.md`, or `.sciemd.md` file.
+Explorer fallback:
+
+1. In the VS Code Explorer, find your `.md`, `.markdown`, `.scie.md`, or `.sciemd.md` file.
 2. Right-click the file.
-3. Select **Open With ScieMD Markdown Editor**.
-4. The document opens in the ScieMD visual editor.
+3. Select **Open With ScieMD**.
 
-If the Markdown file is already open:
+If the Markdown file is already open in another editor:
 
 1. Right-click in the editor title area or use the editor context menu.
-2. Select **Open With ScieMD Markdown Editor**.
+2. Select **Open With ScieMD**.
 
 Command Palette workflow:
 
 1. Open a Markdown file.
 2. Press `Ctrl+Shift+P` on Windows/Linux or `Cmd+Shift+P` on macOS.
-3. Search for **Open With ScieMD Markdown Editor**.
+3. Search for **Open With ScieMD**.
 4. Run the command.
 
 VS Code's built-in **Reopen Editor With...** command may also show **ScieMD
@@ -163,10 +166,11 @@ Once the file is open in ScieMD:
 2. Switch to source mode when you want direct Markdown control.
 3. Use the style selector to move between scientific, journal, lab notebook, and
    other visual modes.
-4. Add Note to LLM comments when a specific passage needs external LLM help.
-5. Create text versions when you want to compare alternate titles, abstracts, or
+4. Add notes when a specific passage needs external LLM help.
+5. Open the Data panel when you want to inspect variables or insert a new variable.
+6. Create text versions when you want to compare alternate titles, abstracts, or
    paragraph revisions.
-6. Save normally with VS Code.
+7. Save normally with VS Code.
 
 The Markdown file remains the source of truth. Edits made in the ScieMD webview are
 written back to the VS Code text document, so normal save, dirty state, undo/redo,
@@ -197,13 +201,12 @@ If you downloaded a `.vsix` file manually:
 2. Go to **Extensions**.
 3. Choose **Install from VSIX...** from the Extensions menu.
 4. Select `sciemd-vscode-*.vsix`.
-5. Right-click a Markdown file in the Explorer and select **Open With ScieMD
-   Markdown Editor**.
+5. Open a Markdown file. VS Code opens it with ScieMD by default.
 
 Command-line installation:
 
 ```bash
-code --install-extension sciemd-vscode-1.0.8.vsix --force
+code --install-extension sciemd-vscode-1.0.12.vsix --force
 ```
 
 ## Who This Is For
@@ -229,9 +232,9 @@ Implemented in this VS Code extension:
 - Source mode using CodeMirror.
 - Visual style selector.
 - VS Code-aware light and dark theme handling, with manual theme overrides.
-- Variable expansion and variable insertion.
-- Note to LLM and Note to Human insertion.
-- Text Version insertion.
+- Variable expansion, with variable insertion available from the Data panel.
+- Note insertion for external LLM review.
+- Text version insertion.
 - Save and writeback through VS Code documents.
 - External document change detection with a review path.
 
@@ -278,4 +281,4 @@ npm run build
 npm run package
 ```
 
-The package command creates `sciemd-vscode-1.0.8.vsix` in this folder.
+The package command creates `sciemd-vscode-1.0.12.vsix` in this folder.

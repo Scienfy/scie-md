@@ -1,14 +1,14 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import type { KeyboardEvent, MouseEvent, PointerEvent as ReactPointerEvent } from 'react';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { AlertTriangle, BookOpen, CheckCircle2, Database, FileText, Folder, FolderOpen, ListTree, PanelLeftClose, Text } from 'lucide-react';
-import type { ParsedScienfyDocument } from '../domain/document/documentModel';
-import type { BibtexEntry } from '../domain/citations/bibtex';
-import type { VariableDefinition } from '../domain/variables/variableIndex';
-import type { MarkdownHeading } from '../markdown/outline';
+import type { ParsedScienfyDocument } from '@sciemd/core';
+import type { BibtexEntry } from '@sciemd/core';
+import type { VariableDefinition } from '@sciemd/core';
+import type { MarkdownHeading } from '@sciemd/core';
 import type { FileExplorerEntry } from '../services/fileService';
 import { SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN } from '../services/settingsService';
 import type { SidebarView } from '../services/settingsService';
+import { localImageDisplayUrl } from '../markdown/imagePaths';
 
 const sidebarViews: SidebarView[] = ['files', 'outline', 'data', 'references'];
 
@@ -27,6 +27,7 @@ interface NavigationSidebarProps {
     selectedImage: string | null;
     loading: boolean;
     error: string | null;
+    watcherMessage?: string | null;
     onChooseFolder: () => void;
     onOpenPath: (path: string) => void;
     onOpenEntry: (entry: FileExplorerEntry) => void;
@@ -221,6 +222,7 @@ export const NavigationSidebar = memo(function NavigationSidebar({
             explorerSelectedImage={explorer.selectedImage}
             explorerLoading={explorer.loading}
             explorerError={explorer.error}
+            explorerWatcherMessage={explorer.watcherMessage}
             onChooseFolder={explorer.onChooseFolder}
             onOpenExplorerPath={explorer.onOpenPath}
             onOpenExplorerEntry={explorer.onOpenEntry}
@@ -309,6 +311,7 @@ function ExplorerPanel({
   explorerSelectedImage,
   explorerLoading,
   explorerError,
+  explorerWatcherMessage,
   onChooseFolder,
   onOpenExplorerPath,
   onOpenExplorerEntry,
@@ -318,6 +321,7 @@ function ExplorerPanel({
   explorerSelectedImage: string | null;
   explorerLoading: boolean;
   explorerError: string | null;
+  explorerWatcherMessage?: string | null;
   onChooseFolder: () => void;
   onOpenExplorerPath: (path: string) => void;
   onOpenExplorerEntry: (entry: FileExplorerEntry) => void;
@@ -333,6 +337,7 @@ function ExplorerPanel({
       <div className="explorer-path" title={explorerPath ?? ''}>
         {explorerPath ?? 'Choose a folder to browse Markdown documents.'}
       </div>
+      {explorerWatcherMessage && <p className="explorer-error explorer-status">{explorerWatcherMessage}</p>}
       {explorerError && <p className="explorer-error">{explorerError}</p>}
       {explorerLoading ? (
         <p className="outline-empty">Loading...</p>
@@ -356,7 +361,7 @@ function ExplorerPanel({
       )}
       {explorerSelectedImage && (
         <div className="explorer-image-preview">
-          <img src={convertFileSrc(explorerSelectedImage)} alt={fileName(explorerSelectedImage)} />
+          <img src={localImageDisplayUrl(explorerSelectedImage)} alt={fileName(explorerSelectedImage)} />
           <span>{fileName(explorerSelectedImage)}</span>
         </div>
       )}
@@ -737,4 +742,3 @@ function parentDirectory(path: string): string | null {
 function fileName(path: string): string {
   return path.replace(/\\/g, '/').split('/').at(-1) ?? path;
 }
-

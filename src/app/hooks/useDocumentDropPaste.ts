@@ -1,17 +1,14 @@
 import { useCallback, useEffect } from 'react';
 import type { ClipboardEvent as ReactClipboardEvent, Dispatch, DragEvent as ReactDragEvent, MutableRefObject, SetStateAction } from 'react';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { EditorMode, FileMetadata } from '../documentState';
 import { DEFAULT_METADATA } from '../documentState';
-import { isImagePath } from '../../services/assetService';
 import { createInsertionAuthorshipMark } from '../../markdown/authorship';
 import type { AuthorshipMark } from '../../markdown/authorship';
-import { createDiffHunks } from '../../markdown/diffReview';
-import type { DiffHunk } from '../../markdown/diffReview';
-import { createReviewPlan } from '../../markdown/reviewPlan';
-import type { ReviewPlan } from '../../markdown/reviewPlan';
+import { createDiffHunks, createReviewPlan } from '@sciemd/core';
+import type { DiffHunk, ReviewPlan } from '@sciemd/core';
 import { isMarkdownPath } from '../../markdown/supportedMarkdown';
-import { isTauriRuntime } from '../runtime';
+import { desktopPlatformHost } from '../host/desktopPlatformHost';
+import type { DesktopPlatformHost } from '../host/platformHost';
 
 export const PASTE_REVIEW_THRESHOLD_CHARS = 1500;
 export const PASTE_REVIEW_MAX_UNITS = 300;
@@ -44,6 +41,7 @@ interface DocumentDropPasteParams {
   setAuthorshipMarks: Dispatch<SetStateAction<AuthorshipMark[]>>;
   setPasteReview: Dispatch<SetStateAction<PasteReviewState | null>>;
   pushToast: (text: string, tone?: 'info' | 'success' | 'warning' | 'error') => void;
+  platformHost?: DesktopPlatformHost;
 }
 
 export function useDocumentDropPaste({
@@ -58,6 +56,7 @@ export function useDocumentDropPaste({
   setAuthorshipMarks,
   setPasteReview,
   pushToast,
+  platformHost = desktopPlatformHost,
 }: DocumentDropPasteParams) {
   const handleDroppedPaths = useCallback(async (paths: string[]) => {
     const markdownPath = paths.find(isMarkdownPath);
@@ -66,22 +65,19 @@ export function useDocumentDropPaste({
       return;
     }
 
-    for (const imagePath of paths.filter(isImagePath)) {
+    for (const imagePath of paths.filter(platformHost.assets.isImagePath)) {
       await insertImageFromPath(imagePath, false);
     }
-  }, [insertImageFromPath, openDocumentPath]);
+  }, [insertImageFromPath, openDocumentPath, platformHost]);
 
   useEffect(() => {
-    if (!isTauriRuntime()) return undefined;
     let disposed = false;
     let unlisten: (() => void) | undefined;
-    void getCurrentWindow().onDragDropEvent((event) => {
-      if (event.payload.type === 'drop') {
-        void handleDroppedPaths(event.payload.paths).catch((error) => {
-          console.warn('Dropped document paths could not be handled.', error);
-          pushToast(error instanceof Error ? error.message : 'Could not handle dropped files.', 'error');
-        });
-      }
+    void platformHost.dragDrop.listenDroppedPaths((paths) => {
+      void handleDroppedPaths(paths).catch((error) => {
+        console.warn('Dropped document paths could not be handled.', error);
+        pushToast(error instanceof Error ? error.message : 'Could not handle dropped files.', 'error');
+      });
     }).then((dispose) => {
       if (disposed) {
         dispose();
@@ -96,7 +92,7 @@ export function useDocumentDropPaste({
       disposed = true;
       unlisten?.();
     };
-  }, [handleDroppedPaths, pushToast]);
+  }, [handleDroppedPaths, platformHost, pushToast]);
 
   const handlePasteCapture = useCallback((event: ReactClipboardEvent<HTMLElement>) => {
     const imageItem = Array.from(event.clipboardData.items).find((item) => item.type.startsWith('image/'));
@@ -160,7 +156,7 @@ export function useDocumentDropPaste({
       return;
     }
 
-    const imageFiles = files.filter((file) => file.type.startsWith('image/') || isImagePath(file.name));
+    const imageFiles = files.filter((file) => file.type.startsWith('image/') || platformHost.assets.isImagePath(file.name));
     if (imageFiles.length > 0) {
       event.preventDefault();
       void Promise.all(imageFiles.map((file) => insertImageBlob(file, file.name))).catch((error) => {
@@ -168,7 +164,7 @@ export function useDocumentDropPaste({
         pushToast(error instanceof Error ? error.message : 'Could not insert dropped images.', 'error');
       });
     }
-  }, [commitOpenedDocument, insertImageBlob, pushToast, settleDirtyDocumentBeforeReplace, validateNow]);
+  }, [commitOpenedDocument, insertImageBlob, platformHost, pushToast, settleDirtyDocumentBeforeReplace, validateNow]);
 
   return {
     handlePasteCapture,

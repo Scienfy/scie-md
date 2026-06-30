@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
-import { createScieMDLlmSkill } from '../shared/markdown/llm';
+import { createScieMDLlmSkill } from '@sciemd/core';
 import type { WebviewToExtensionMessage } from '../shared/webviewProtocol';
+import type { OperationResultKind } from '../shared/webviewProtocol';
+import { validateWebviewToExtensionMessage } from '../shared/webviewProtocol';
 import { createDocumentReplacementPlan } from './documentMerge';
 import { documentParentUri, getWebviewHtml } from './webviewHtml';
 
@@ -11,6 +13,7 @@ export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvid
   static readonly viewType = 'scieMd.visualMarkdown';
 
   private readonly panelsByDocument = new Map<string, Set<vscode.WebviewPanel>>();
+  private readonly panelIdByPanel = new WeakMap<vscode.WebviewPanel, string>();
   private readonly pendingEditEchoByDocument = new Map<string, Array<{ id: string; text: string }>>();
   private readonly lastAppliedWebviewTextByDocument = new Map<string, string>();
   private readonly readonlyReasonByDocument = new Map<string, string>();
@@ -28,7 +31,7 @@ export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvid
   ): Promise<void> {
     const documentKey = document.uri.toString();
     this.log(`resolveCustomTextEditor: ${documentKey}`);
-    this.trackPanel(documentKey, webviewPanel);
+    const panelId = this.trackPanel(documentKey, webviewPanel);
 
     webviewPanel.webview.options = {
       enableScripts: true,
@@ -64,8 +67,8 @@ export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvid
     const fileWatcher = this.createDocumentFileWatcher(document);
     if (fileWatcher) subscriptions.push(fileWatcher);
 
-    subscriptions.push(webviewPanel.webview.onDidReceiveMessage((message: WebviewToExtensionMessage) => {
-      this.log(`webview message from ${documentKey}: ${message.type}`);
+    subscriptions.push(webviewPanel.webview.onDidReceiveMessage((message: unknown) => {
+      this.log(`webview message from ${documentKey} panel=${panelId}: ${webviewMessageTypeLabel(message)}`);
       void this.handleMessage(document, webviewPanel, message);
     }));
 
@@ -83,33 +86,66 @@ export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvid
   private async handleMessage(
     document: vscode.TextDocument,
     webviewPanel: vscode.WebviewPanel,
-    message: WebviewToExtensionMessage,
+    rawMessage: unknown,
   ): Promise<void> {
+    const validation = validateWebviewToExtensionMessage(rawMessage);
+    if (!validation.ok) {
+      this.log(`invalid webview message from ${document.uri.toString()}: ${validation.invalid.reason}`);
+      this.postMalformedWebviewMessageResult(webviewPanel, validation.invalid);
+      return;
+    }
+
+    const message: WebviewToExtensionMessage = validation.message;
     switch (message.type) {
       case 'ready':
         this.log(`webview ready: ${document.uri.toString()}`);
         this.postToPanel(webviewPanel, document, 'initial');
         return;
       case 'replaceDocument':
-        await this.replaceDocumentText(document, message.text, message.editId, message.baseText, message.baseVersion, message.rejectedHunkIds);
+        if (!this.acceptsPanelMessage(webviewPanel, message)) return;
+        this.postEditOperationResult(
+          webviewPanel,
+          message.editId,
+          await this.replaceDocumentText(document, message.text, message.editId, message.baseText, message.baseVersion, message.rejectedHunkIds),
+          message.editChainId,
+        );
         return;
       case 'save':
-        if (!(await this.ensureDocumentWritable(document))) return;
+        if (!this.acceptsPanelMessage(webviewPanel, message)) return;
+        if (!(await this.ensureDocumentWritable(document))) {
+          if (message.editId) this.postEditOperationResult(webviewPanel, message.editId, 'readonly', message.editChainId);
+          return;
+        }
         if (message.pendingText !== undefined && message.editId) {
           const result = await this.replaceDocumentText(document, message.pendingText, message.editId, message.baseText, message.baseVersion, message.rejectedHunkIds);
+          this.postEditOperationResult(webviewPanel, message.editId, result, message.editChainId);
           if (!canSaveAfterPendingEdit(result)) return;
         }
         await document.save();
         return;
       case 'undo':
+        if (!this.acceptsPanelMessage(webviewPanel, message)) return;
+        if (!(await this.ensureDocumentWritable(document))) {
+          if (message.editId) this.postEditOperationResult(webviewPanel, message.editId, 'readonly', message.editChainId);
+          return;
+        }
         if (message.pendingText !== undefined && message.editId) {
-          await this.replaceDocumentText(document, message.pendingText, message.editId, message.baseText, message.baseVersion, message.rejectedHunkIds);
+          const result = await this.replaceDocumentText(document, message.pendingText, message.editId, message.baseText, message.baseVersion, message.rejectedHunkIds);
+          this.postEditOperationResult(webviewPanel, message.editId, result, message.editChainId);
+          if (!canSaveAfterPendingEdit(result)) return;
         }
         await vscode.commands.executeCommand('undo');
         return;
       case 'redo':
+        if (!this.acceptsPanelMessage(webviewPanel, message)) return;
+        if (!(await this.ensureDocumentWritable(document))) {
+          if (message.editId) this.postEditOperationResult(webviewPanel, message.editId, 'readonly', message.editChainId);
+          return;
+        }
         if (message.pendingText !== undefined && message.editId) {
-          await this.replaceDocumentText(document, message.pendingText, message.editId, message.baseText, message.baseVersion, message.rejectedHunkIds);
+          const result = await this.replaceDocumentText(document, message.pendingText, message.editId, message.baseText, message.baseVersion, message.rejectedHunkIds);
+          this.postEditOperationResult(webviewPanel, message.editId, result, message.editChainId);
+          if (!canSaveAfterPendingEdit(result)) return;
         }
         await vscode.commands.executeCommand('redo');
         return;
@@ -175,6 +211,7 @@ export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvid
     if (!applied) {
       this.removePendingEditId(documentKey, editId);
       vscode.window.showErrorMessage('ScieMD could not apply the document edit.');
+      this.postDocumentUpdate(document, 'changed');
       return 'failed';
     }
     if (document.getText() !== plan.text) {
@@ -248,13 +285,17 @@ export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvid
     }
   }
 
-  private trackPanel(documentKey: string, panel: vscode.WebviewPanel): void {
+  private trackPanel(documentKey: string, panel: vscode.WebviewPanel): string {
+    const panelId = `panel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    this.panelIdByPanel.set(panel, panelId);
     const panels = this.panelsByDocument.get(documentKey) ?? new Set<vscode.WebviewPanel>();
     panels.add(panel);
     this.panelsByDocument.set(documentKey, panels);
+    return panelId;
   }
 
   private untrackPanel(documentKey: string, panel: vscode.WebviewPanel): void {
+    this.panelIdByPanel.delete(panel);
     const panels = this.panelsByDocument.get(documentKey);
     if (!panels) return;
     panels.delete(panel);
@@ -287,8 +328,10 @@ export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvid
   ): void {
     const readonlyReason = this.readonlyReasonByDocument.get(document.uri.toString());
     const documentText = document.getText();
+    const panelId = this.panelIdByPanel.get(panel) ?? 'unknown-panel';
     const message = {
       type: 'documentUpdate',
+      panelId,
       reason,
       snapshot: {
         uri: document.uri.toString(),
@@ -310,6 +353,59 @@ export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvid
         const messageText = error instanceof Error ? error.message : String(error);
         this.log(`postMessage error: ${reason} ${document.uri.toString()} ${messageText}`);
       });
+  }
+
+  private acceptsPanelMessage(webviewPanel: vscode.WebviewPanel, message: { panelId?: string; editId?: string; editChainId?: string }): boolean {
+    const expectedPanelId = this.panelIdByPanel.get(webviewPanel);
+    if (!expectedPanelId || message.panelId === undefined || message.panelId === expectedPanelId) return true;
+    this.postOperationResult(webviewPanel, {
+      id: message.editId,
+      editChainId: message.editChainId,
+      ok: false,
+      result: 'skipped',
+      message: 'ScieMD ignored a stale edit from another webview panel.',
+    });
+    return false;
+  }
+
+  private postEditOperationResult(
+    panel: vscode.WebviewPanel,
+    id: string,
+    result: ReplaceDocumentTextResult,
+    editChainId?: string,
+  ): void {
+    this.postOperationResult(panel, {
+      id,
+      editChainId,
+      ok: canSaveAfterPendingEdit(result),
+      result,
+      message: operationResultMessage(result),
+    });
+  }
+
+  private postOperationResult(
+    panel: vscode.WebviewPanel,
+    result: { id?: string; editChainId?: string; ok: boolean; result: OperationResultKind; message: string },
+  ): void {
+    const panelId = this.panelIdByPanel.get(panel);
+    void Promise.resolve(panel.webview.postMessage({
+      type: 'operationResult',
+      panelId,
+      ...result,
+    }));
+  }
+
+  private postMalformedWebviewMessageResult(
+    panel: vscode.WebviewPanel,
+    invalid: { id?: string; editChainId?: string; reason: string },
+  ): void {
+    this.postOperationResult(panel, {
+      id: invalid.id,
+      editChainId: invalid.editChainId,
+      ok: false,
+      result: 'failed',
+      message: `ScieMD ignored a malformed webview message: ${invalid.reason}`,
+    });
   }
 
   private enqueuePendingEditId(documentKey: string, editId: string, expectedText: string): void {
@@ -343,6 +439,21 @@ export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvid
 
 export function canSaveAfterPendingEdit(result: ReplaceDocumentTextResult): boolean {
   return result === 'applied' || result === 'noop';
+}
+
+function operationResultMessage(result: ReplaceDocumentTextResult): string {
+  switch (result) {
+    case 'applied':
+      return 'ScieMD edit applied.';
+    case 'noop':
+      return 'ScieMD edit did not change the document.';
+    case 'skipped':
+      return 'ScieMD skipped a stale edit and refreshed the webview.';
+    case 'readonly':
+      return 'ScieMD could not edit this read-only document.';
+    case 'failed':
+      return 'ScieMD could not apply the document edit.';
+  }
 }
 
 export async function openWithScieMDVisualEditor(uri?: vscode.Uri): Promise<void> {
@@ -408,6 +519,12 @@ function showMessage(severity: 'info' | 'warning' | 'error', message: string): v
   } else {
     vscode.window.showInformationMessage(message);
   }
+}
+
+function webviewMessageTypeLabel(message: unknown): string {
+  if (typeof message !== 'object' || message === null || Array.isArray(message)) return '<malformed>';
+  const type = (message as { type?: unknown }).type;
+  return typeof type === 'string' && type.trim() !== '' ? type : '<malformed>';
 }
 
 function webviewLocalResourceRoots(extensionUri: vscode.Uri, document: vscode.TextDocument): vscode.Uri[] {

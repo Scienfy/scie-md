@@ -52,7 +52,7 @@ import { VISUAL_STYLE_OPTIONS } from '../services/visualStyleService';
 import type { VisualStyleId } from '../services/visualStyleService';
 import type { ExportFormat } from '../export/exportTypes';
 import type { RecentFilePreview } from '../markdown/documentIntelligence';
-import type { SemanticBlockType } from '../markdown/semanticBlocks';
+import type { SemanticBlockType } from '@sciemd/core';
 
 export type AppTopbarMenuId =
   | 'file'

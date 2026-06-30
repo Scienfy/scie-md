@@ -2,7 +2,7 @@ import { $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey } from '@milkdown/prose/state';
 import type { Node as ProseNode } from '@milkdown/prose/model';
 import { Decoration, DecorationSet } from '@milkdown/prose/view';
-import type { VariableDefinition } from '../domain/variables/variableIndex';
+import type { VariableDefinition } from '@sciemd/core';
 
 interface VariableRange {
   from: number;

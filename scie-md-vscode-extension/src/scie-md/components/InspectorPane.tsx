@@ -1,15 +1,15 @@
 import { memo, useEffect, useState, type ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronRight, FileCheck2, FileText, Sparkles, X } from 'lucide-react';
 import type { AutosaveStatus, EditorMode, FileMetadata } from '../app/documentState';
-import type { ParsedScienfyDocument } from '../domain/document/documentModel';
+import type { ParsedScienfyDocument } from '@sciemd/core';
 import type { AuthorshipMark } from '../markdown/authorship';
 import type { DocumentInsights, RecentFilePreview } from '../markdown/documentIntelligence';
 import type { ManuscriptReadiness } from '../markdown/manuscriptReadiness';
 import type { ValidationIssue } from '../markdown/markdownValidation';
-import type { EditorComment } from '../markdown/editorComments';
-import type { ProtectedBlock } from '../markdown/protectedBlocks';
-import type { TargetedInstruction } from '../markdown/targetedInstructions';
-import type { VariantGroup } from '../markdown/variants';
+import type { EditorComment } from '@sciemd/core';
+import type { ProtectedBlock } from '@sciemd/core';
+import type { TargetedInstruction } from '@sciemd/core';
+import type { VariantGroup } from '@sciemd/core';
 import type { DocumentType } from '../services/settingsService';
 import type { VisualStyleId } from '../services/visualStyleService';
 

@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { exportRawDocumentRescueMarkdown } from '../services/rawDocumentRescue';
-import { appendDiagnosticsEvent } from '../services/nativeRecoveryService';
+import { appendDiagnosticsEvent, exportDiagnosticsBundle } from '../services/nativeRecoveryService';
 
 interface AppErrorBoundaryProps {
   children: ReactNode;
@@ -84,6 +84,16 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     });
   };
 
+  private exportDiagnostics = () => {
+    void exportDiagnosticsBundle().then((bundle) => {
+      if (!bundle) {
+        window.alert('No diagnostics bundle could be created in this runtime.');
+        return;
+      }
+      window.alert(`Diagnostics bundle created at ${bundle.path}.`);
+    });
+  };
+
   render() {
     if (!this.state.error) return this.props.children;
     return (
@@ -97,6 +107,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
           <div className="app-error-actions">
             <button type="button" onClick={this.reset}>Return to visual editor</button>
             <button type="button" onClick={this.exportRawMarkdown}>Export raw markdown</button>
+            <button type="button" onClick={this.exportDiagnostics}>Export diagnostics</button>
             <button type="button" className="primary" onClick={() => window.location.reload()}>Reload app</button>
           </div>
         </section>

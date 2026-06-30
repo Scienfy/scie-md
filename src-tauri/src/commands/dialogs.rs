@@ -6,7 +6,9 @@ use std::{
 use tauri::{AppHandle, Runtime};
 use tauri_plugin_dialog::DialogExt;
 
-use super::path_grants::{grant_directory, grant_file, grant_file_and_parent};
+use super::path_grants::{
+    grant_directory, grant_file, grant_file_and_parent, grant_read_only_file,
+};
 
 const MARKDOWN_EXTENSIONS: &[&str] = &["md", "markdown"];
 const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff"];
@@ -31,7 +33,7 @@ pub async fn pick_image_file<R: Runtime>(app: AppHandle<R>) -> Result<Option<Str
         "Choose Image",
         "Images",
         IMAGE_EXTENSIONS,
-        GrantMode::File,
+        GrantMode::ReadOnlyFile,
     )
     .await
 }
@@ -144,6 +146,7 @@ async fn pick_file<R: Runtime>(
     let path = into_path(path)?;
     match grant_mode {
         GrantMode::File => grant_file(&path)?,
+        GrantMode::ReadOnlyFile => grant_read_only_file(&path)?,
         GrantMode::FileAndParent => grant_file_and_parent(&path)?,
     }
     Ok(Some(path.to_string_lossy().to_string()))
@@ -203,5 +206,6 @@ fn ensure_parent_exists(path: &Path) -> Result<(), String> {
 
 enum GrantMode {
     File,
+    ReadOnlyFile,
     FileAndParent,
 }

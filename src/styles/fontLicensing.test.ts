@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { appCssModuleOrder } from './appCssBundle';
 
 const productionFontFiles = [
   'src/styles/app.css',
+  ...appCssModuleOrder.map((fileName) => `src/styles/${fileName}`),
   'src/styles/scientific-document.css',
+  'src/styles/appCssBundle.ts',
   'src/markdown/htmlExport.ts',
   'src/app/App.tsx',
   'src/app/hooks/useSlashCommandMenu.ts',

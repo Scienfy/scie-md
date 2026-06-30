@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { AutosaveStatus } from '../documentState';
-import { AUTOSAVE_DELAY_MS, shouldScheduleAutosave } from '../../services/autosaveService';
+import { AUTOSAVE_DELAY_MS, AUTOSAVE_MAX_WAIT_MS, shouldScheduleAutosave } from '../../services/autosaveService';
 
 interface UseAutosaveTimerOptions {
   filePath: string | null;
@@ -25,6 +25,7 @@ export function useAutosaveTimer({
   const savingRef = useRef<Promise<string | false> | null>(null);
   const rerunAfterSaveRef = useRef(false);
   const latestStateRef = useRef({ filePath, dirty, externalConflict, autosaveBlocked });
+  const firstPendingAtRef = useRef<number | null>(null);
 
   latestStateRef.current = { filePath, dirty, externalConflict, autosaveBlocked };
 
@@ -33,6 +34,10 @@ export function useAutosaveTimer({
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
     }
+  }, []);
+
+  const resetPendingWindow = useCallback(() => {
+    firstPendingAtRef.current = null;
   }, []);
 
   const runAutosave = useCallback(async () => {
@@ -64,9 +69,10 @@ export function useAutosaveTimer({
     } finally {
       if (savingRef.current === saveTask) {
         savingRef.current = null;
+        resetPendingWindow();
       }
     }
-  }, [saveCurrent]);
+  }, [resetPendingWindow, saveCurrent]);
 
   const flushAutosave = useCallback(async () => {
     cancelAutosave();
@@ -74,32 +80,61 @@ export function useAutosaveTimer({
       return runAutosave();
     }
     if (filePath && dirty && autosaveBlocked) return false;
+    resetPendingWindow();
     return true;
-  }, [autosaveBlocked, cancelAutosave, dirty, filePath, runAutosave]);
+  }, [autosaveBlocked, cancelAutosave, dirty, filePath, resetPendingWindow, runAutosave]);
 
-  useEffect(() => {
+  const scheduleAutosave = useCallback(() => {
     cancelAutosave();
 
     if (!filePath) {
+      resetPendingWindow();
       setAutosaveStatus('idle');
-      return undefined;
+      return;
     }
 
-    if (!shouldScheduleAutosave({ filePath, dirty, conflictDetected: externalConflict })) return undefined;
+    if (!shouldScheduleAutosave({ filePath, dirty, conflictDetected: externalConflict })) {
+      resetPendingWindow();
+      return;
+    }
 
     setAutosaveStatus('pending');
-    if (autosaveBlocked) return undefined;
+    if (autosaveBlocked) return;
+
+    const now = Date.now();
+    firstPendingAtRef.current ??= now;
+    const elapsed = now - firstPendingAtRef.current;
+    const maxWaitRemaining = Math.max(0, AUTOSAVE_MAX_WAIT_MS - elapsed);
+    const delay = Math.min(AUTOSAVE_DELAY_MS, maxWaitRemaining);
 
     timerRef.current = window.setTimeout(() => {
       timerRef.current = null;
       void runAutosave().catch((error) => {
         console.warn('Autosave task failed before it could report status.', error);
+        resetPendingWindow();
         setAutosaveStatus('error');
       });
-    }, AUTOSAVE_DELAY_MS);
+    }, delay);
+  }, [
+    autosaveBlocked,
+    cancelAutosave,
+    dirty,
+    externalConflict,
+    filePath,
+    resetPendingWindow,
+    runAutosave,
+    setAutosaveStatus,
+  ]);
+
+  const resumeAutosave = useCallback(() => {
+    scheduleAutosave();
+  }, [scheduleAutosave]);
+
+  useEffect(() => {
+    scheduleAutosave();
 
     return cancelAutosave;
-  }, [autosaveBlocked, cancelAutosave, dirty, externalConflict, filePath, markdown, runAutosave, setAutosaveStatus]);
+  }, [cancelAutosave, markdown, scheduleAutosave]);
 
-  return { cancelAutosave, flushAutosave };
+  return { cancelAutosave, flushAutosave, resumeAutosave };
 }

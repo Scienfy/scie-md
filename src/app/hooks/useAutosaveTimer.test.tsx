@@ -1,7 +1,7 @@
 import { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AUTOSAVE_DELAY_MS } from '../../services/autosaveService';
+import { AUTOSAVE_DELAY_MS, AUTOSAVE_MAX_WAIT_MS } from '../../services/autosaveService';
 import { useAutosaveTimer } from './useAutosaveTimer';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -19,6 +19,7 @@ describe('useAutosaveTimer', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.setSystemTime(0);
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -124,6 +125,49 @@ describe('useAutosaveTimer', () => {
 
     expect(saveCurrent).toHaveBeenCalledTimes(2);
     expect(saveCurrent).toHaveBeenNthCalledWith(2, { autosave: true });
+  });
+
+  it('resumes autosave after the dirty close dialog is canceled', async () => {
+    renderAutosave({ markdown: 'draft one', dirty: true });
+
+    act(() => {
+      controls?.cancelAutosave();
+      vi.advanceTimersByTime(AUTOSAVE_DELAY_MS);
+    });
+    expect(saveCurrent).not.toHaveBeenCalled();
+
+    act(() => {
+      controls?.resumeAutosave();
+      vi.advanceTimersByTime(AUTOSAVE_DELAY_MS);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(saveCurrent).toHaveBeenCalledTimes(1);
+    expect(saveCurrent).toHaveBeenCalledWith({ autosave: true });
+  });
+
+  it('runs autosave at max-wait even when continuous typing keeps resetting the debounce timer', async () => {
+    renderAutosave({ markdown: 'draft 0', dirty: true });
+
+    for (let index = 1; index <= 6; index += 1) {
+      act(() => {
+        vi.advanceTimersByTime(AUTOSAVE_DELAY_MS - 1);
+      });
+      renderAutosave({ markdown: `draft ${index}`, dirty: true });
+      expect(saveCurrent).not.toHaveBeenCalled();
+    }
+
+    act(() => {
+      vi.advanceTimersByTime(AUTOSAVE_MAX_WAIT_MS - (AUTOSAVE_DELAY_MS - 1) * 6);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(saveCurrent).toHaveBeenCalledTimes(1);
+    expect(saveCurrent).toHaveBeenCalledWith({ autosave: true });
   });
 
   function renderAutosave(props: {

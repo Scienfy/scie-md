@@ -51,12 +51,21 @@
   "qna": "marketplace",
   "activationEvents": [
     "onCustomEditor:scieMd.visualMarkdown",
+    "onLanguage:markdown",
     "onCommand:scieMd.openWithVisualEditor",
     "onCommand:scieMd.copyLlmSkill",
     "onCommand:scieMd.generateLlmSkillFile"
   ],
   "main": "./dist/extension/extension.js",
   "contributes": {
+    "configurationDefaults": {
+      "workbench.editorAssociations": {
+        "*.md": "scieMd.visualMarkdown",
+        "*.markdown": "scieMd.visualMarkdown",
+        "*.scie.md": "scieMd.visualMarkdown",
+        "*.sciemd.md": "scieMd.visualMarkdown"
+      }
+    },
     "customEditors": [
       {
         "viewType": "scieMd.visualMarkdown",
@@ -66,20 +75,27 @@
             "filenamePattern": "*.md"
           },
           {
+            "filenamePattern": "*.markdown"
+          },
+          {
             "filenamePattern": "*.scie.md"
           },
           {
             "filenamePattern": "*.sciemd.md"
           }
         ],
-        "priority": "option"
+        "priority": "default"
       }
     ],
     "commands": [
       {
         "command": "scieMd.openWithVisualEditor",
-        "title": "Open With ScieMD Markdown Editor",
-        "category": "ScieMD"
+        "title": "Open With ScieMD",
+        "category": "ScieMD",
+        "icon": {
+          "light": "assets/sciemd-icon.svg",
+          "dark": "assets/sciemd-icon.svg"
+        }
       },
       {
         "command": "scieMd.copyLlmSkill",
@@ -107,27 +123,43 @@
       "editor/title/context": [
         {
           "command": "scieMd.openWithVisualEditor",
-          "when": "resourceLangId == markdown"
+          "when": "resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown",
+          "group": "navigation@1"
         },
         {
           "command": "scieMd.generateLlmSkillFile",
-          "when": "resourceLangId == markdown"
+          "when": "resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "scieMd.openWithVisualEditor",
+          "when": "resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown",
+          "group": "navigation@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "scieMd.openWithVisualEditor",
+          "when": "editorLangId == markdown",
+          "group": "navigation@1"
         }
       ],
       "explorer/context": [
         {
           "command": "scieMd.openWithVisualEditor",
-          "when": "resourceExtname == .md"
+          "when": "resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown",
+          "group": "navigation@1"
         },
         {
           "command": "scieMd.generateLlmSkillFile",
-          "when": "resourceExtname == .md"
+          "when": "resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown"
         }
       ]
     }
   },
   "scripts": {
-    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "clean": "node scripts/clean-dist.mjs",
     "typecheck:extension": "tsc -p tsconfig.extension.json --noEmit",
     "typecheck:webview": "tsc -p tsconfig.webview.json --noEmit",
     "typecheck": "npm run typecheck:extension && npm run typecheck:webview",
@@ -136,7 +168,9 @@
     "build:webview": "vite build",
     "build": "npm run clean && npm run verify:shared-core && npm run typecheck && npm run build:extension && npm run build:webview",
     "test": "vitest run",
-    "package": "npm run build && vsce package --no-dependencies"
+    "test:host-smoke": "vitest run test/extensionActivation.test.ts test/webviewHtml.test.ts",
+    "test:visual-smoke": "vitest run test/extensionActivation.test.ts test/webviewHtml.test.ts src/webview/VscodeVisualSmoke.test.tsx src/webview/styles.test.ts",
+    "package": "npm run build && node scripts/package-vsix.mjs"
   },
   "capabilities": {
     "virtualWorkspaces": {
@@ -160,6 +194,7 @@
     "@milkdown/react": "^7.21.2",
     "@milkdown/theme-nord": "^7.21.2",
     "@milkdown/utils": "^7.21.2",
+    "@sciemd/core": "file:../packages/core",
     "@tauri-apps/api": "^2.11.1",
     "katex": "^0.17.0",
     "lucide-react": "^1.21.0",

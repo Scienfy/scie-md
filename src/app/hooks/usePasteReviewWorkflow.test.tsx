@@ -2,8 +2,7 @@ import { act } from 'react';
 import { useState } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createDiffHunks } from '../../markdown/diffReview';
-import { createReviewPlan } from '../../markdown/reviewPlan';
+import { createDiffHunks, createReviewPlan } from '@sciemd/core';
 import { usePasteReviewWorkflow } from './usePasteReviewWorkflow';
 import type { PasteReviewState } from './useDocumentDropPaste';
 

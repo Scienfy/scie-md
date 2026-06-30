@@ -47,6 +47,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Ensure VS Code CLI
+        shell: pwsh
+        run: |
+          if (-not (Get-Command code -ErrorAction SilentlyContinue)) {
+            choco install vscode -y --no-progress
+          }
+          code --version
+
       - name: Build release artifacts
         run: npm run release:local
 

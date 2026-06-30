@@ -1,13 +1,20 @@
 import DOMPurify, { type Config } from 'dompurify';
+import {
+  HTML_SANITIZER_ALLOWED_DATA_ATTRIBUTES,
+  HTML_SANITIZER_ALLOWED_URI_REGEXP,
+  HTML_SANITIZER_FORBID_ATTR,
+  HTML_SANITIZER_FORBID_TAGS,
+} from '@sciemd/core';
 
 const sanitizerConfig: Config = {
   USE_PROFILES: { html: true, svg: true, svgFilters: true },
   ALLOW_DATA_ATTR: false,
-  FORBID_TAGS: ['script', 'foreignObject', 'iframe', 'object', 'embed', 'link', 'meta'],
-  FORBID_ATTR: ['srcdoc'],
+  ADD_ATTR: [...HTML_SANITIZER_ALLOWED_DATA_ATTRIBUTES],
+  FORBID_TAGS: [...HTML_SANITIZER_FORBID_TAGS],
+  FORBID_ATTR: [...HTML_SANITIZER_FORBID_ATTR],
   SANITIZE_DOM: true,
   SAFE_FOR_XML: true,
-  ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|blob|asset):|data:image\/(?:png|gif|jpe?g|webp|bmp|svg\+xml);|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+  ALLOWED_URI_REGEXP: HTML_SANITIZER_ALLOWED_URI_REGEXP,
 };
 
 export function sanitizeHtmlFragment(html: string): string {

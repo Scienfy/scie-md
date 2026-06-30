@@ -2,9 +2,9 @@ import { useCallback } from 'react';
 import type { EditorMode } from '../documentState';
 import type { SourceMarkdownInsert } from '../../components/SourceMarkdownEditor';
 import type { VisualMarkdownInsert } from '../../components/VisualMarkdownEditor';
-import { blobToByteArray, copyImageToAssets, defaultImageAlt, imageFileNameFromBlob, markdownImageSyntax, pickImageFile, saveImageBytesToAssets } from '../../services/assetService';
-import { grantExternalPath } from '../../services/fileService';
 import type { PromptState } from './useDialogs';
+import { desktopPlatformHost } from '../host/desktopPlatformHost';
+import type { DesktopPlatformHost } from '../host/platformHost';
 
 interface ImageInsertionParams {
   mode: EditorMode;
@@ -13,6 +13,7 @@ interface ImageInsertionParams {
   ensureDocumentPathForAssets: () => Promise<string | null>;
   promptText: (state: PromptState) => Promise<string | null>;
   pushToast: (text: string, tone?: 'info' | 'success' | 'warning' | 'error') => void;
+  platformHost?: DesktopPlatformHost;
 }
 
 export function useImageInsertion({
@@ -22,6 +23,7 @@ export function useImageInsertion({
   ensureDocumentPathForAssets,
   promptText,
   pushToast,
+  platformHost = desktopPlatformHost,
 }: ImageInsertionParams) {
   const editorCanInsertMarkdown = useCallback(() => (
     (mode === 'source' && Boolean(sourceInsertHandler))
@@ -42,8 +44,8 @@ export function useImageInsertion({
   }, [mode, pushToast, sourceInsertHandler, visualInsertHandler]);
 
   const insertCopiedImage = useCallback((image: { altText: string; markdownPath: string }, documentPath: string) => {
-    return insertMarkdown(`${markdownImageSyntax(image.altText, image.markdownPath)}\n`, { visualDocumentPath: documentPath });
-  }, [insertMarkdown]);
+    return insertMarkdown(`${platformHost.assets.markdownImageSyntax(image.altText, image.markdownPath)}\n`, { visualDocumentPath: documentPath });
+  }, [insertMarkdown, platformHost]);
 
   const insertImageFromPath = useCallback(async (imagePath: string, promptForAlt = false) => {
     try {
@@ -53,18 +55,18 @@ export function useImageInsertion({
         pushToast('The editor is still getting ready. Try the image insert again in a moment.', 'warning');
         return;
       }
-      const defaultAlt = defaultImageAlt(imagePath);
+      const defaultAlt = platformHost.assets.defaultImageAlt(imagePath);
       const requestedAlt = promptForAlt
         ? await promptText({ title: 'Insert image', label: 'Image alt text', defaultValue: defaultAlt })
         : defaultAlt;
       if (requestedAlt === null) return;
-      const grantedImagePath = await grantExternalPath(imagePath, 'image');
-      const image = await copyImageToAssets(documentPath, grantedImagePath, requestedAlt.trim() || defaultAlt);
+      const grantedImagePath = await platformHost.assets.grantExternalImagePath(imagePath);
+      const image = await platformHost.assets.copyImageToAssets(documentPath, grantedImagePath, requestedAlt.trim() || defaultAlt);
       if (insertCopiedImage(image, documentPath)) pushToast('Image inserted', 'success');
     } catch (error) {
       pushToast(error instanceof Error ? error.message : 'Image insertion failed.', 'error');
     }
-  }, [editorCanInsertMarkdown, ensureDocumentPathForAssets, insertCopiedImage, promptText, pushToast]);
+  }, [editorCanInsertMarkdown, ensureDocumentPathForAssets, insertCopiedImage, platformHost, promptText, pushToast]);
 
   const insertImageBlob = useCallback(async (blob: Blob, preferredName?: string) => {
     try {
@@ -74,25 +76,25 @@ export function useImageInsertion({
         pushToast('The editor is still getting ready. Try the paste again in a moment.', 'warning');
         return;
       }
-      const fileName = imageFileNameFromBlob(blob, preferredName);
-      const defaultAlt = defaultImageAlt(fileName);
-      const bytes = await blobToByteArray(blob);
-      const image = await saveImageBytesToAssets(documentPath, fileName, bytes, defaultAlt);
+      const fileName = platformHost.assets.imageFileNameFromBlob(blob, preferredName);
+      const defaultAlt = platformHost.assets.defaultImageAlt(fileName);
+      const bytes = await platformHost.assets.blobToByteArray(blob);
+      const image = await platformHost.assets.saveImageBytesToAssets(documentPath, fileName, bytes, defaultAlt);
       if (insertCopiedImage(image, documentPath)) pushToast('Image pasted', 'success');
     } catch (error) {
       pushToast(error instanceof Error ? error.message : 'Pasted image could not be saved.', 'error');
     }
-  }, [editorCanInsertMarkdown, ensureDocumentPathForAssets, insertCopiedImage, pushToast]);
+  }, [editorCanInsertMarkdown, ensureDocumentPathForAssets, insertCopiedImage, platformHost, pushToast]);
 
   const handleInsertImage = useCallback(async () => {
     try {
-      const imagePath = await pickImageFile();
+      const imagePath = await platformHost.assets.pickImageFile();
       if (!imagePath) return;
       await insertImageFromPath(imagePath, true);
     } catch (error) {
       pushToast(error instanceof Error ? error.message : 'Image picker failed.', 'error');
     }
-  }, [insertImageFromPath, pushToast]);
+  }, [insertImageFromPath, platformHost, pushToast]);
 
   return {
     insertMarkdown,

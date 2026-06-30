@@ -1,9 +1,9 @@
 import { LARGE_FILE_WARNING_BYTES, SOURCE_ONLY_FILE_BYTES } from './supportedMarkdown';
-import { safeParseScienfyDocument } from '../domain/document/documentModel';
-import type { ParsedScienfyDocument } from '../domain/document/documentModel';
+import { safeParseScienfyDocument } from '@sciemd/core';
+import type { ParsedScienfyDocument } from '@sciemd/core';
 import { extractVisualPlaceholderMarkers } from './visualMarkers';
 import { detectVisualRoundTripRisks } from './visualRoundTripSafety';
-import { frontmatterRanges } from './markdownRanges';
+import { frontmatterRanges } from '@sciemd/core';
 
 export type ValidationSeverity = 'warning' | 'error';
 
@@ -53,6 +53,14 @@ export function validateMarkdown(
       severity: 'error',
       code: 'internal-visual-marker',
       message: 'An internal Scienfy visual marker leaked into the document. Do not send or save this form for LLM editing.',
+    });
+  }
+
+  if (hasConflictMarkers(markdownWithoutFences)) {
+    issues.push({
+      severity: 'error',
+      code: 'conflict-marker',
+      message: 'Unresolved conflict markers are present. Resolve the conflict before continuing in visual mode.',
     });
   }
 
@@ -179,6 +187,12 @@ export function hasRawHtml(markdown: string): boolean {
     return true;
   }
   return false;
+}
+
+export function hasConflictMarkers(markdown: string): boolean {
+  return /^<<<<<<< .+$/m.test(markdown)
+    || /^=======$/m.test(markdown)
+    || /^>>>>>>> .+$/m.test(markdown);
 }
 
 function isVisualSafeHtml(value: string): boolean {

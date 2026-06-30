@@ -1,5 +1,5 @@
-import { safeParseScienfyDocument } from './documentModel';
-import type { ParsedScienfyDocument, ParseScienfyDocumentOptions } from './documentModel';
+import { safeParseScienfyDocument } from '@sciemd/core';
+import type { ParsedScienfyDocument, ParseScienfyDocumentOptions } from '@sciemd/core';
 import { SOURCE_ONLY_FILE_BYTES } from '../../markdown/supportedMarkdown';
 
 interface ParseWorkerResponse {

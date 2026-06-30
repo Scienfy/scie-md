@@ -1,0 +1,274 @@
+/*
+ * ScieMD app styles: variant inline rail, switcher, and editing controls.
+ * Import order is owned by app.css and mirrored by appCssBundle.ts for HTML export.
+ */
+.scie-md-variant-inline {
+  position: relative;
+  margin: 0.8em 0;
+  padding: 0.08rem 0 0.08rem 0;
+  color: inherit;
+  font: inherit;
+}
+
+.scie-md-variant-inline::before {
+  content: "";
+  position: absolute;
+  top: 0.08rem;
+  bottom: 0.08rem;
+  left: -2.35rem;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, #7c4dff, var(--accent) 18%),
+    color-mix(in srgb, #7c4dff, var(--border) 18%)
+  );
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.scie-md-variant-inline::after {
+  content: "";
+  position: absolute;
+  top: 0.78rem;
+  left: -2.35rem;
+  width: 1.15rem;
+  height: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #7c4dff, var(--accent) 18%);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.scie-md-variant-prose {
+  min-height: 1.45em;
+  border-radius: 5px;
+  padding: 0.12rem 0.35rem;
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, #7c4dff, transparent 93%),
+      color-mix(in srgb, #7c4dff, transparent 98%) 48%,
+      transparent 86%
+    );
+  color: inherit;
+  line-height: inherit;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.scie-md-variant-inline.editing .scie-md-variant-prose {
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, #7c4dff, transparent 88%),
+      color-mix(in srgb, #7c4dff, transparent 97%) 58%,
+      transparent 90%
+    );
+}
+
+.scie-md-variant-prose:focus {
+  outline: none;
+}
+
+.scie-md-variant-prose:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+}
+
+.scie-md-variant-prose > :first-child {
+  margin-top: 0;
+}
+
+.scie-md-variant-prose > :last-child {
+  margin-bottom: 0;
+}
+
+.scie-md-variant-rail {
+  position: absolute;
+  top: 0.2rem;
+  left: -3.15rem;
+  z-index: 24;
+  padding-right: 12px;
+  font-family: var(--ui-font);
+}
+
+.scie-md-variant-trigger {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  width: 1.72rem;
+  min-width: 1.72rem;
+  height: 1.72rem;
+  min-height: 1.72rem;
+  border: 1px solid color-mix(in srgb, #7c4dff, var(--border) 36%);
+  border-radius: 999px;
+  padding: 0;
+  background: color-mix(in srgb, var(--surface), transparent 3%);
+  color: color-mix(in srgb, #7c4dff, var(--accent) 18%);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--shadow), transparent 55%);
+  opacity: 0.86;
+  transition:
+    opacity 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.scie-md-variant-trigger span {
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.scie-md-variant-count {
+  position: absolute;
+  right: -0.34rem;
+  bottom: -0.32rem;
+  display: grid;
+  min-width: 0.98rem;
+  height: 0.98rem;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, #7c4dff, var(--surface) 30%);
+  border-radius: 999px;
+  background: color-mix(in srgb, #7c4dff, var(--surface) 25%);
+  color: #fff;
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.scie-md-variant-rail:hover .scie-md-variant-trigger,
+.scie-md-variant-rail.menu-open .scie-md-variant-trigger,
+.scie-md-variant-rail:focus-within .scie-md-variant-trigger {
+  border-color: color-mix(in srgb, #7c4dff, var(--border) 40%);
+  background: color-mix(in srgb, #7c4dff, var(--surface) 88%);
+  opacity: 1;
+  transform: translateX(-1px);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--shadow), transparent 46%);
+}
+
+.scie-md-variant-menu {
+  position: absolute;
+  top: -6px;
+  left: 34px;
+  width: min(285px, 72vw);
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, #7c4dff, var(--border) 42%);
+  border-radius: 12px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--surface), transparent 3%);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-8px) scale(0.98);
+  transform-origin: top left;
+  transition:
+    opacity 150ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.scie-md-variant-rail:hover .scie-md-variant-menu,
+.scie-md-variant-rail.menu-open .scie-md-variant-menu,
+.scie-md-variant-rail .scie-md-variant-menu:hover,
+.scie-md-variant-rail:focus-within .scie-md-variant-menu {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0) scale(1);
+}
+
+.scie-md-variant-menu-heading,
+.scie-md-variant-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scie-md-variant-menu-heading {
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.scie-md-variant-menu-heading strong {
+  color: color-mix(in srgb, #7c4dff, var(--text-strong) 32%);
+}
+
+.scie-md-variant-row {
+  margin: 3px 0;
+}
+
+.scie-md-variant-switch {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 9px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+
+.scie-md-variant-row.selected .scie-md-variant-switch {
+  border-color: color-mix(in srgb, #7c4dff, var(--accent) 28%);
+  background: color-mix(in srgb, #7c4dff, var(--surface) 88%);
+  color: var(--text-strong);
+}
+
+.scie-md-variant-code {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, #7c4dff, var(--accent) 25%);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.scie-md-variant-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.scie-md-variant-remove {
+  min-width: 56px;
+  min-height: 30px;
+  border: 1px solid color-mix(in srgb, var(--error), var(--border) 58%);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--error);
+  font-size: 11px;
+}
+
+.scie-md-variant-duplicate {
+  width: 100%;
+  min-height: 32px;
+  margin-top: 8px;
+  border: 1px dashed color-mix(in srgb, #7c4dff, var(--border) 45%);
+  border-radius: 8px;
+  background: color-mix(in srgb, #7c4dff, transparent 94%);
+  color: color-mix(in srgb, #7c4dff, var(--text-strong) 30%);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.scie-md-variant-hint {
+  margin: 8px 2px 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}

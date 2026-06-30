@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Eye,
   File,
+  FileDown,
   FilePlus2,
   FileText,
   FolderOpen,
@@ -53,7 +54,7 @@ import { VISUAL_STYLE_OPTIONS } from '../services/visualStyleService';
 import type { VisualStyleId } from '../services/visualStyleService';
 import type { ExportFormat } from '../export/exportTypes';
 import type { RecentFilePreview } from '../markdown/documentIntelligence';
-import type { SemanticBlockType } from '../markdown/semanticBlocks';
+import type { SemanticBlockType } from '@sciemd/core';
 
 export type AppTopbarMenuId =
   | 'file'
@@ -128,6 +129,7 @@ interface AppTopbarProps {
   onOpenTemplates: () => void;
   onCheckTools: () => void;
   onSetInkscapePath: () => void;
+  onExportDiagnosticsBundle: () => void;
   onOpenSettings: () => void;
   onShowAbout: () => void;
   onOpenGithub: () => void;
@@ -246,6 +248,7 @@ export function AppTopbar({
   onOpenTemplates,
   onCheckTools,
   onSetInkscapePath,
+  onExportDiagnosticsBundle,
   onOpenSettings,
   onShowAbout,
   onOpenGithub,
@@ -347,6 +350,7 @@ export function AppTopbar({
                     onOpenTemplates,
                     onCheckTools,
                     onSetInkscapePath,
+                    onExportDiagnosticsBundle,
                     onOpenSettings,
                     onShowAbout,
                     onOpenGithub,
@@ -754,6 +758,7 @@ function ToolsMenu(context: RenderMenuContext) {
       <MenuItem icon={<Wrench size={15} />} onSelect={() => context.runMenuAction(context.onCheckTools)}>Check External Tools</MenuItem>
       <MenuItem onSelect={() => context.runMenuAction(context.onSetInkscapePath)}>Set Inkscape Path...</MenuItem>
       <MenuItem onSelect={() => context.runMenuAction(context.onShowExportLog)}>Show Last Export Log</MenuItem>
+      <MenuItem icon={<FileDown size={15} />} onSelect={() => context.runMenuAction(context.onExportDiagnosticsBundle)}>Export Diagnostics Bundle</MenuItem>
     </>
   );
 }

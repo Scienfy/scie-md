@@ -41,8 +41,8 @@ note app, but less friction than a full typesetting system.
 
 - Write readable Markdown while seeing equations, citations, figures, tables, SVG
   figures, callouts, results, notes, and Mermaid diagrams rendered visually.
-- Add **Note to LLM** markers directly beside the paragraph, section, or selected
-  sentence that needs revision.
+- Add **Insert note** markers directly beside the paragraph, section, or selected
+  sentence that needs revision for external LLM review.
 - Generate a `ScieMD_LLM_skill.md` file so an external LLM can understand how to edit
   ScieMD Markdown without damaging figures, variables, comments, or text versions.
 - Keep multiple text versions for a sentence, abstract, title, or paragraph, then
@@ -59,7 +59,7 @@ note app, but less friction than a full typesetting system.
 
 ScieMD does not send your document to an LLM by itself. The intended workflow is that
 you decide when to copy or share Markdown with an external LLM, keep instructions in
-the document as Note to LLM markers, and review the returned Markdown before saving.
+the document as explicit notes, and review the returned Markdown before saving.
 
 ## VS Code Extension
 
@@ -157,11 +157,30 @@ Validate a release build before sharing it:
 npm run validate:release
 ```
 
+This includes release identity checks and the generated-output policy guard, so
+CI and local release validation reject leaked build artifacts before running the
+heavier build and test suite.
+
+Run the complete pre-merge/pre-release gate:
+
+```bash
+npm run validate:merge
+```
+
+This is the heavier local gate: it includes `validate:release`, the
+large-document/OOM stress gate, packaged desktop smoke testing, desktop and VSIX
+artifact staging, VSIX package-content and required installed-VSIX smoke checks,
+generated-output rechecks, and `git diff --check`.
+
 Build local desktop and VS Code release artifacts:
 
 ```bash
 npm run release:local
 ```
+
+Generated desktop bundles, VSIX files, checksums, `dist/`, `src-tauri/target/`,
+`artifacts/`, `output/`, and `tmp/` are intentionally ignored. Publish installers
+and extension packages through GitHub Releases rather than committing them.
 
 The VS Code extension source is in `scie-md-vscode-extension/`:
 

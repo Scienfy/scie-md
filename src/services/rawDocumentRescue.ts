@@ -8,6 +8,9 @@ interface RawDocumentRescueSnapshot {
 
 const RESCUE_SNAPSHOT_KEY = 'scie-md:raw-document-rescue';
 const NATIVE_SNAPSHOT_WRITE_INTERVAL_MS = 2_000;
+export const RAW_RESCUE_SESSION_STORAGE_MAX_BYTES = 512 * 1024;
+export const RAW_RESCUE_NATIVE_MAX_BYTES = 64 * 1024 * 1024;
+const RAW_RESCUE_TRUNCATED_SECTION_CHARS = 1024 * 1024;
 
 let currentSnapshot: RawDocumentRescueSnapshot | null = null;
 let pendingNativeSnapshot: RawDocumentRescueSnapshot | null = null;
@@ -17,12 +20,13 @@ let lastNativeSnapshotWriteAt = 0;
 
 export function updateRawDocumentRescue(markdown: string, filePath: string | null): void {
   currentSnapshot = { markdown, filePath, updatedAt: Date.now() };
+  const policy = rawDocumentRescuePolicy(markdown);
   try {
-    window.sessionStorage.setItem(RESCUE_SNAPSHOT_KEY, JSON.stringify(currentSnapshot));
+    window.sessionStorage.setItem(RESCUE_SNAPSHOT_KEY, JSON.stringify(sessionStorageSnapshot(currentSnapshot, policy)));
   } catch {
     // The in-memory snapshot still covers same-session error recovery.
   }
-  scheduleNativeSnapshotWrite(currentSnapshot);
+  scheduleNativeSnapshotWrite(currentSnapshot, policy.sessionStorage === 'skipped');
 }
 
 export function getRawDocumentRescueSnapshot(): RawDocumentRescueSnapshot | null {
@@ -30,8 +34,8 @@ export function getRawDocumentRescueSnapshot(): RawDocumentRescueSnapshot | null
   try {
     const raw = window.sessionStorage.getItem(RESCUE_SNAPSHOT_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<RawDocumentRescueSnapshot>;
-    if (typeof parsed.markdown !== 'string') return null;
+    const parsed = JSON.parse(raw) as Partial<RawDocumentRescueSnapshot> & { nativeFallbackOnly?: boolean };
+    if (typeof parsed.markdown !== 'string' || parsed.nativeFallbackOnly) return null;
     currentSnapshot = {
       markdown: parsed.markdown,
       filePath: typeof parsed.filePath === 'string' ? parsed.filePath : null,
@@ -66,8 +70,73 @@ export async function flushRawDocumentRescueSnapshotForTests(): Promise<void> {
   await drainNativeSnapshotWrite();
 }
 
-function scheduleNativeSnapshotWrite(snapshot: RawDocumentRescueSnapshot): void {
+export function rawDocumentRescuePolicy(markdown: string, nativeMaxBytes = RAW_RESCUE_NATIVE_MAX_BYTES): {
+  markdownBytes: number;
+  sessionStorage: 'full' | 'skipped';
+  nativeStorage: 'full' | 'truncated';
+} {
+  const markdownBytes = byteLength(markdown);
+  return {
+    markdownBytes,
+    sessionStorage: markdownBytes <= RAW_RESCUE_SESSION_STORAGE_MAX_BYTES ? 'full' : 'skipped',
+    nativeStorage: markdownBytes <= nativeMaxBytes ? 'full' : 'truncated',
+  };
+}
+
+export function nativeRescueMarkdown(markdown: string, nativeMaxBytes = RAW_RESCUE_NATIVE_MAX_BYTES): string {
+  const policy = rawDocumentRescuePolicy(markdown, nativeMaxBytes);
+  if (policy.nativeStorage === 'full') return markdown;
+  const head = markdown.slice(0, RAW_RESCUE_TRUNCATED_SECTION_CHARS);
+  const tail = markdown.slice(Math.max(head.length, markdown.length - RAW_RESCUE_TRUNCATED_SECTION_CHARS));
+  return [
+    '<!-- ScieMD rescue snapshot truncated.',
+    `Original markdown bytes: ${policy.markdownBytes}.`,
+    `Native rescue cap bytes: ${nativeMaxBytes}.`,
+    'The beginning and end of the document are preserved below; the middle was omitted to keep diagnostics storage bounded.',
+    '-->',
+    '',
+    head,
+    '',
+    '<!-- ScieMD rescue snapshot middle omitted. -->',
+    '',
+    tail,
+    '',
+    '<!-- End truncated ScieMD rescue snapshot. -->',
+  ].join('\n');
+}
+
+function sessionStorageSnapshot(
+  snapshot: RawDocumentRescueSnapshot,
+  policy: ReturnType<typeof rawDocumentRescuePolicy>,
+): RawDocumentRescueSnapshot | {
+  markdown: '';
+  filePath: string | null;
+  updatedAt: number;
+  markdownBytes: number;
+  nativeFallbackOnly: true;
+  reason: string;
+} {
+  if (policy.sessionStorage === 'full') return snapshot;
+  return {
+    markdown: '',
+    filePath: snapshot.filePath,
+    updatedAt: snapshot.updatedAt,
+    markdownBytes: policy.markdownBytes,
+    nativeFallbackOnly: true,
+    reason: `Raw Markdown exceeded the ${RAW_RESCUE_SESSION_STORAGE_MAX_BYTES} byte sessionStorage cap and was written to native recovery storage instead.`,
+  };
+}
+
+function scheduleNativeSnapshotWrite(snapshot: RawDocumentRescueSnapshot, immediate = false): void {
   pendingNativeSnapshot = snapshot;
+  if (immediate) {
+    if (nativeSnapshotTimer !== undefined) {
+      window.clearTimeout(nativeSnapshotTimer);
+      nativeSnapshotTimer = undefined;
+    }
+    void drainNativeSnapshotWrite();
+    return;
+  }
   if (nativeSnapshotTimer !== undefined) return;
   const elapsed = Date.now() - lastNativeSnapshotWriteAt;
   const delay = Math.max(0, NATIVE_SNAPSHOT_WRITE_INTERVAL_MS - elapsed);
@@ -86,7 +155,7 @@ async function drainNativeSnapshotWrite(): Promise<void> {
   lastNativeSnapshotWriteAt = Date.now();
   try {
     await writeNativeRecoverySnapshot({
-      markdown: snapshot.markdown,
+      markdown: nativeRescueMarkdown(snapshot.markdown),
       filePath: snapshot.filePath,
       updatedAtMs: snapshot.updatedAt,
     });
@@ -125,4 +194,9 @@ function rescueFileName(filePath: string | null): string {
   const baseName = filePath.split(/[\\/]/).filter(Boolean).at(-1) ?? 'document.md';
   const withoutExtension = baseName.replace(/\.(md|markdown|mdown|mkdn)$/i, '');
   return `${withoutExtension || 'document'}.rescue.md`;
+}
+
+function byteLength(value: string): number {
+  if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(value).byteLength;
+  return unescape(encodeURIComponent(value)).length;
 }

@@ -10,6 +10,7 @@ interface InitialExplorerPathParams {
   persistedExplorerRootPath: string | null;
   startupDocumentOpenPending: boolean;
   startupDocumentOpenFailed: boolean;
+  startupDocumentOpenFailurePath?: string | null;
   filePath: string | null;
 }
 
@@ -46,13 +47,12 @@ export function parentDirectoryForDocument(path: string | null): string | null {
 export function shouldShowAutomaticOnboardingDialog({
   onboardingComplete,
   startupDocumentOpenPending,
-  startupDocumentOpenFailed,
+  startupDocumentOpenFailed: _startupDocumentOpenFailed,
   filePath,
   markdown,
 }: AutomaticOnboardingDialogParams): boolean {
   return !onboardingComplete
     && !startupDocumentOpenPending
-    && !startupDocumentOpenFailed
     && !filePath
     && markdown.trim().length === 0;
 }
@@ -61,10 +61,36 @@ export function initialExplorerPathForLaunch({
   persistedExplorerRootPath,
   startupDocumentOpenPending,
   startupDocumentOpenFailed,
+  startupDocumentOpenFailurePath,
   filePath,
 }: InitialExplorerPathParams): string | null {
-  if (startupDocumentOpenPending || startupDocumentOpenFailed || filePath) return null;
-  return persistedExplorerRootPath?.trim() ? persistedExplorerRootPath : null;
+  if (startupDocumentOpenPending || filePath) return null;
+  if (startupDocumentOpenFailed) {
+    return parentDirectoryForDocument(startupDocumentOpenFailurePath ?? null)
+      ?? persistedExplorerPath(persistedExplorerRootPath);
+  }
+  return persistedExplorerPath(persistedExplorerRootPath);
+}
+
+export function initialExplorerFallbackPathForLaunch({
+  persistedExplorerRootPath,
+  startupDocumentOpenPending,
+  startupDocumentOpenFailed,
+  startupDocumentOpenFailurePath,
+  filePath,
+}: InitialExplorerPathParams): string | null {
+  if (startupDocumentOpenPending || filePath || !startupDocumentOpenFailed) return null;
+  const persistedPath = persistedExplorerPath(persistedExplorerRootPath);
+  const failedDocumentParent = parentDirectoryForDocument(startupDocumentOpenFailurePath ?? null);
+  if (!failedDocumentParent) return null;
+  if (!persistedPath || persistedPath === failedDocumentParent) return null;
+  return persistedPath;
+}
+
+function persistedExplorerPath(path: string | null): string | null {
+  const trimmed = path?.trim();
+  if (!trimmed) return null;
+  return trimmed;
 }
 
 export function initialDocumentMarkdownForLaunch({
@@ -79,13 +105,12 @@ export function initialDocumentMarkdownForLaunch({
 export function shouldCommitWelcomeAfterStartup({
   onboardingComplete,
   startupDocumentOpenPending,
-  startupDocumentOpenFailed,
+  startupDocumentOpenFailed: _startupDocumentOpenFailed,
   filePath,
   markdown,
 }: WelcomeFallbackParams): boolean {
   return onboardingComplete
     && !startupDocumentOpenPending
-    && !startupDocumentOpenFailed
     && !filePath
     && markdown.trim().length === 0;
 }

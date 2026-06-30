@@ -1,0 +1,718 @@
+/*
+ * ScieMD app styles: rendered directive card structure, media, references, and initial visual-style rules.
+ * Import order is owned by app.css and mirrored by appCssBundle.ts for HTML export.
+ */
+.directive-card.is-rendered {
+  position: relative;
+  gap: 0;
+  border-color: transparent;
+  border-left-color: transparent;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.directive-card.is-rendered:focus-within {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--surface), transparent 26%);
+}
+
+.directive-render {
+  display: grid;
+  position: relative;
+  gap: 0;
+  min-width: 0;
+}
+
+.directive-render-header {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  min-height: 0;
+  max-width: min(520px, calc(100% - 8px));
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 4px 3px 10px;
+  background: color-mix(in srgb, var(--surface), transparent 5%);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--shadow), transparent 42%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+  backdrop-filter: blur(8px);
+}
+
+.directive-card.is-rendered:focus-within .directive-render-header {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.directive-render-header strong {
+  color: var(--accent);
+  font-size: 0.74em;
+}
+
+.directive-render-header span {
+  flex: 1;
+}
+
+.directive-render-edit {
+  min-height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.directive-missing-image {
+  display: grid;
+  gap: 8px;
+  min-height: 52px;
+  align-items: center;
+  justify-items: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--surface-soft), transparent 12%);
+  color: var(--text-muted);
+  font: 13px/1.35 var(--ui-font);
+}
+
+.directive-missing-image-copy {
+  text-align: center;
+}
+
+.directive-missing-image-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.directive-missing-image-actions button {
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.render-error-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--error), var(--border) 42%);
+  border-radius: 10px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--error), transparent 92%);
+  color: var(--text);
+}
+
+.render-error-card figcaption {
+  display: grid;
+  gap: 2px;
+  color: var(--error);
+  font: 12px/1.35 var(--ui-font);
+}
+
+.render-error-card pre {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.directive-render-body {
+  min-width: 0;
+  color: var(--text);
+}
+
+.directive-render-body > :first-child {
+  margin-top: 0;
+}
+
+.directive-render-body > :last-child {
+  margin-bottom: 0;
+}
+
+.directive-render-body img,
+.directive-render-body svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.directive-render-body .svg-figure,
+.directive-figure-media .svg-figure {
+  display: grid;
+  width: 100%;
+  justify-items: center;
+}
+
+.directive-render-body .svg-figure svg,
+.directive-figure-media .svg-figure svg {
+  display: block;
+  width: min(100%, 900px);
+  max-width: 100%;
+  height: auto;
+}
+
+.directive-render-body .mermaid-figure,
+.directive-figure-media .mermaid-figure {
+  display: grid;
+  width: 100%;
+  justify-items: center;
+}
+
+.directive-render-body .mermaid-figure svg,
+.directive-figure-media .mermaid-figure svg {
+  width: clamp(720px, 74%, 1180px);
+  max-width: 100%;
+  height: auto;
+}
+
+.directive-render,
+.directive-editor,
+.mermaid-render,
+.mermaid-editor {
+  animation: block-mode-fade 130ms ease both;
+}
+
+.directive-card.is-rendered.directive-figure {
+  margin-top: 1.4em;
+  margin-bottom: 1.7em;
+}
+
+.directive-card.is-rendered.directive-figure .directive-render-body {
+  display: grid;
+  gap: 0.55em;
+}
+
+.directive-card.is-rendered.directive-figure .directive-render-body p {
+  margin: 0;
+}
+
+.directive-figure-content {
+  display: grid;
+  gap: 0.55em;
+  margin: 0;
+}
+
+.directive-figure-media {
+  display: grid;
+  justify-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface);
+}
+
+.directive-figure-media p {
+  margin: 0;
+}
+
+.directive-figure-media > .mermaid-figure,
+.directive-figure-media > .svg-figure {
+  margin: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.directive-figure-content figcaption {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  line-height: 1.45;
+}
+
+.directive-caption-prefix,
+.directive-table-caption strong {
+  color: var(--text-strong);
+  font-weight: 780;
+}
+
+.directive-table-caption {
+  margin: 0.4em 0 -0.15em;
+  color: var(--text-muted);
+  font-size: 0.88em;
+  line-height: 1.35;
+}
+
+.directive-card.is-rendered.directive-result,
+.directive-card.is-rendered.directive-callout,
+.directive-card.is-rendered.directive-note,
+.directive-card.is-rendered.directive-tip,
+.directive-card.is-rendered.directive-warning,
+.directive-card.is-rendered.directive-important,
+.directive-card.is-rendered.directive-references {
+  margin: 0.72em 0;
+  border: 1px solid var(--directive-border, var(--border));
+  border-left: var(--directive-left-width, 4px) solid var(--directive-accent, var(--accent));
+  border-radius: var(--directive-radius, 8px);
+  padding: var(--directive-pad-y, 0.55em) var(--directive-pad-x, 0.78em);
+  background: var(--directive-bg, color-mix(in srgb, var(--surface), var(--surface-soft) 34%));
+  box-shadow: var(--directive-shadow, none);
+  color: var(--directive-text, var(--text));
+}
+
+.directive-card.is-rendered:not(.directive-figure) .directive-render-body {
+  color: inherit;
+  font-size: var(--directive-body-size, 0.96em);
+  line-height: var(--directive-line-height, 1.42);
+}
+
+.directive-card.is-rendered:not(.directive-figure) .directive-render-body::before {
+  display: block;
+  margin-bottom: var(--directive-label-gap, 0.25em);
+  color: var(--directive-label, var(--directive-accent, var(--accent)));
+  font-family: var(--ui-font);
+  font-size: var(--directive-label-size, 0.68em);
+  font-weight: 780;
+  letter-spacing: var(--directive-label-spacing, 0.08em);
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.directive-card.is-rendered.directive-result .directive-render-body::before {
+  content: "Result";
+}
+
+.directive-card.is-rendered.directive-note .directive-render-body::before {
+  content: "Note";
+}
+
+.directive-card.is-rendered.directive-callout .directive-render-body::before {
+  content: "Callout";
+}
+
+.directive-card.is-rendered.directive-tip .directive-render-body::before {
+  content: "Tip";
+}
+
+.directive-card.is-rendered.directive-important .directive-render-body::before {
+  content: "Important";
+}
+
+.directive-card.is-rendered.directive-warning .directive-render-body::before {
+  content: "Warning";
+}
+
+.directive-card.is-rendered.directive-references .directive-render-body::before {
+  content: "References";
+}
+
+.directive-references-list {
+  margin: 0.45rem 0 0;
+  padding-left: 1.35rem;
+}
+
+.directive-references-list li {
+  margin: 0.35rem 0;
+}
+
+.directive-reference-missing {
+  color: var(--warning);
+}
+
+.visual-editor .ProseMirror {
+  counter-reset: scie-figure;
+}
+
+.visual-editor .ProseMirror > .scie-md-directive-atom[data-directive-name="figure"] {
+  counter-increment: scie-figure;
+}
+
+.visual-editor .ProseMirror > .scie-md-directive-atom[data-directive-name="figure"] .directive-caption-prefix {
+  font-size: 0;
+}
+
+.visual-editor .ProseMirror > .scie-md-directive-atom[data-directive-name="figure"] .directive-caption-prefix::before {
+  content: "Figure " counter(scie-figure) ":";
+  font-size: 0.9rem;
+}
+
+.margin-comment,
+.instruction-card {
+  float: right;
+  clear: right;
+  width: min(17rem, 24vw);
+  margin: 0.2rem -18.5rem 0.55rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  border-left: 3px solid var(--accent);
+  border-radius: 2px 8px 8px 2px;
+  padding: 0.48rem 0.62rem;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  color: var(--text);
+  font-family: var(--ui-font);
+  font-size: 0.78rem;
+  line-height: 1.36;
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--shadow), transparent 48%);
+}
+
+.comment-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.margin-comment strong,
+.instruction-card strong {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: var(--accent);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.margin-comment p,
+.instruction-card p {
+  margin: 0;
+}
+
+.margin-comment.audience-next-block,
+.margin-comment.audience-previous-block,
+.margin-comment.audience-section,
+.margin-comment.audience-selection,
+.instruction-card.audience-next-block,
+.instruction-card.audience-previous-block,
+.instruction-card.audience-section,
+.instruction-card.audience-selection {
+  border-color: color-mix(in srgb, #7c4dff 28%, var(--border));
+  border-left-color: #7c4dff;
+  background: color-mix(in srgb, #7c4dff 8%, var(--surface));
+}
+
+.margin-comment.audience-next-block strong,
+.margin-comment.audience-previous-block strong,
+.margin-comment.audience-section strong,
+.margin-comment.audience-selection strong,
+.instruction-card.audience-next-block strong,
+.instruction-card.audience-previous-block strong,
+.instruction-card.audience-section strong,
+.instruction-card.audience-selection strong {
+  color: #7c4dff;
+}
+
+.comment-card-edit {
+  min-height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 9px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.comment-card-edit:hover,
+.comment-card-edit:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.comment-card-body {
+  width: 100%;
+  min-height: 78px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.55rem 0.65rem;
+  resize: vertical;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.45;
+}
+
+.comment-card-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 0.45rem;
+}
+
+.comment-card-controls button {
+  min-height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.comment-card-status {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.variant-card {
+  border-left: 4px solid color-mix(in srgb, var(--accent), #7c4dff 35%);
+  background: color-mix(in srgb, var(--surface-soft), var(--surface) 40%);
+}
+
+.variant-card-header strong {
+  color: color-mix(in srgb, var(--accent), #7c4dff 26%);
+}
+
+.variant-card-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.variant-card-tabs button {
+  min-height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.variant-card-tabs button.selected {
+  border-color: color-mix(in srgb, var(--accent), #7c4dff 25%);
+  background: color-mix(in srgb, var(--accent), var(--surface) 78%);
+  color: var(--text-strong);
+  font-weight: 650;
+}
+
+.variant-card-content {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0.7rem 0.85rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.variant-card-content > :first-child {
+  margin-top: 0;
+}
+
+.variant-card-content > :last-child {
+  margin-bottom: 0;
+}
+
+.directive-card.is-rendered:not(.directive-figure) .directive-render-body > p {
+  margin: 0.12em 0;
+}
+
+.directive-card.is-rendered.directive-result .directive-render-body table {
+  margin: 0.7em 0;
+}
+
+.directive-card.is-rendered.directive-result .directive-render-body th {
+  background: color-mix(in srgb, var(--directive-accent, var(--accent)), var(--table-head-bg) 82%);
+  color: var(--table-head-text);
+}
+
+.directive-card.is-rendered.directive-result {
+  --directive-accent: #8b6f20;
+  --directive-bg: color-mix(in srgb, #8b6f20, var(--surface) 93%);
+}
+
+.directive-card.is-rendered.directive-note {
+  --directive-accent: #4f7c68;
+  --directive-bg: color-mix(in srgb, #4f7c68, var(--surface) 94%);
+}
+
+.directive-card.is-rendered.directive-callout {
+  --directive-accent: #42526e;
+  --directive-bg: linear-gradient(90deg, color-mix(in srgb, #42526e, transparent 90%), transparent 42%), var(--surface);
+}
+
+.directive-card.is-rendered.directive-tip {
+  --directive-accent: #23834f;
+  --directive-bg: color-mix(in srgb, #23834f, var(--surface) 94%);
+}
+
+.directive-card.is-rendered.directive-important {
+  --directive-accent: #9b2c6a;
+  --directive-bg: color-mix(in srgb, #9b2c6a, var(--surface) 93%);
+}
+
+.directive-card.is-rendered.directive-warning {
+  --directive-accent: #bd5a20;
+  --directive-bg: color-mix(in srgb, #bd5a20, var(--surface) 92%);
+}
+
+.directive-card.is-rendered.directive-result .directive-render-header strong,
+.directive-card.is-rendered.directive-note .directive-render-header strong,
+.directive-card.is-rendered.directive-callout .directive-render-header strong,
+.directive-card.is-rendered.directive-tip .directive-render-header strong,
+.directive-card.is-rendered.directive-important .directive-render-header strong,
+.directive-card.is-rendered.directive-warning .directive-render-header strong {
+  color: var(--directive-accent);
+}
+
+:root[data-theme="dark"] .directive-card.is-rendered.directive-result {
+  --directive-accent: #f0c85d;
+  --directive-bg: color-mix(in srgb, #8b6f20, var(--surface) 78%);
+}
+
+:root[data-theme="dark"] .directive-card.is-rendered.directive-note {
+  --directive-accent: #8ed8ba;
+  --directive-bg: color-mix(in srgb, #4f7c68, var(--surface) 78%);
+}
+
+:root[data-theme="dark"] .directive-card.is-rendered.directive-callout {
+  --directive-accent: #a7b8de;
+  --directive-bg: linear-gradient(90deg, color-mix(in srgb, #42526e, transparent 72%), transparent 42%), var(--surface);
+}
+
+:root[data-theme="dark"] .directive-card.is-rendered.directive-tip {
+  --directive-accent: #8fe2a9;
+  --directive-bg: color-mix(in srgb, #23834f, var(--surface) 78%);
+}
+
+:root[data-theme="dark"] .directive-card.is-rendered.directive-important {
+  --directive-accent: #f0a7d3;
+  --directive-bg: color-mix(in srgb, #9b2c6a, var(--surface) 78%);
+}
+
+:root[data-theme="dark"] .directive-card.is-rendered.directive-warning {
+  --directive-accent: #ffb276;
+  --directive-bg: color-mix(in srgb, #bd5a20, var(--surface) 78%);
+}
+
+:root[data-visual-style="scientific-draft"] .directive-card.is-rendered:not(.directive-figure) {
+  --directive-radius: 7px;
+  --directive-pad-y: 0.58em;
+  --directive-pad-x: 0.88em;
+  --directive-bg: color-mix(in srgb, var(--surface), var(--directive-accent) 5%);
+  --directive-line-height: 1.4;
+}
+
+:root[data-visual-style="journal-manuscript"] .directive-card.is-rendered:not(.directive-figure),
+:root[data-visual-style="nature"] .directive-card.is-rendered:not(.directive-figure) {
+  --directive-left-width: 0;
+  --directive-radius: 0;
+  --directive-pad-y: 0.5em;
+  --directive-pad-x: 0;
+  --directive-bg: transparent;
+  --directive-border: var(--border);
+  --directive-label-spacing: 0.01em;
+  border-right: 0;
+  border-left: 0;
+  border-top: 1px solid var(--directive-accent, var(--border-strong));
+  border-bottom: 1px solid var(--border);
+}
+
+:root[data-visual-style="journal-manuscript"] .directive-card.is-rendered.directive-result,
+:root[data-visual-style="nature"] .directive-card.is-rendered.directive-result {
+  --directive-pad-y: 0.65em;
+  --directive-pad-x: 0.85em;
+  --directive-bg: var(--surface-soft);
+  border: 0;
+  border-top: 3px solid var(--directive-accent);
+}
+
+:root[data-visual-style="lab-notebook"] .directive-card.is-rendered:not(.directive-figure) {
+  --directive-radius: 4px;
+  --directive-pad-y: 0.45em;
+  --directive-pad-x: 0.72em;
+  --directive-bg: linear-gradient(90deg, color-mix(in srgb, var(--directive-accent), transparent 88%), transparent 72%), var(--surface);
+  --directive-label-size: 0.64em;
+  border-style: dashed;
+}
+
+:root[data-visual-style="technical-code"] .directive-card.is-rendered:not(.directive-figure),
+:root[data-visual-style="codex"] .directive-card.is-rendered:not(.directive-figure) {
+  --directive-radius: 4px;
+  --directive-pad-y: 0.5em;
+  --directive-pad-x: 0.72em;
+  --directive-bg: color-mix(in srgb, var(--surface-soft), var(--directive-accent) 6%);
+  --directive-body-size: 0.93em;
+  --directive-line-height: 1.36;
+  --directive-label-size: 0.66em;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white, transparent 88%);
+}
+
+:root[data-visual-style="amin"] .directive-card.is-rendered:not(.directive-figure) {
+  --directive-left-width: 0;
+  --directive-radius: 4px;
+  --directive-pad-y: 0.58em;
+  --directive-pad-x: 0.95em;
+  --directive-bg: linear-gradient(90deg, color-mix(in srgb, var(--directive-accent), transparent 94%), color-mix(in srgb, var(--surface), transparent 4%) 78%);
+  --directive-label-spacing: 0.14em;
+  border-left: 0;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+:root[data-visual-style="amin"] .directive-card.is-rendered.directive-important {
+  --directive-bg: linear-gradient(90deg, color-mix(in srgb, #a94a50, transparent 93%), color-mix(in srgb, var(--surface), transparent 4%) 78%);
+  --directive-text: var(--text-strong);
+  --directive-label: #a94a50;
+  --directive-accent: #a94a50;
+  border-left: 0;
+  padding-top: 0.7em;
+  padding-bottom: 0.7em;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .directive-card.is-rendered.directive-important {
+  --directive-bg: linear-gradient(90deg, color-mix(in srgb, #d99a96, transparent 90%), color-mix(in srgb, var(--surface), transparent 4%) 78%);
+}
+
+:root[data-visual-style="science"] .directive-card.is-rendered:not(.directive-figure) {
+  --directive-radius: 0;
+  --directive-left-width: 0;
+  --directive-pad-y: 0.46em;
+  --directive-pad-x: 0;
+  --directive-bg: transparent;
+  --directive-label-size: 0.66em;
+  --directive-label-spacing: 0.05em;
+  border-left: 0;
+  border-right: 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+:root[data-visual-style="science"] .directive-card.is-rendered.directive-result {
+  --directive-pad-y: 0.78em;
+  --directive-pad-x: 0.95em;
+  --directive-bg: var(--surface-soft);
+  border: 0;
+  border-left: 4px solid var(--directive-accent);
+}
+
+:root[data-visual-style="science"] .directive-card.is-rendered.directive-warning,
+:root[data-visual-style="science"] .directive-card.is-rendered.directive-important {
+  --directive-accent: var(--accent);
+  --directive-label: var(--accent);
+  --directive-text: var(--accent);
+  --directive-bg: transparent;
+  border-top: 2px solid var(--accent);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent), transparent 55%);
+}
+
+:root[data-visual-style="science"] .directive-card.is-rendered.directive-warning .directive-render-body,
+:root[data-visual-style="science"] .directive-card.is-rendered.directive-important .directive-render-body {
+  font-family: var(--ui-font);
+  font-weight: 680;
+}
+
+:root[data-visual-style="nature"] .directive-card.is-rendered.directive-warning,
+:root[data-visual-style="nature"] .directive-card.is-rendered.directive-important {
+  --directive-text: var(--text-strong);
+  border-top-width: 3px;
+}
+
+:root[data-visual-style="nature"] .directive-card.is-rendered.directive-tip,
+:root[data-visual-style="nature"] .directive-card.is-rendered.directive-callout {
+  border-top-color: var(--link);
+}
+
+:root[data-visual-style="science"] .directive-figure-media,
+:root[data-visual-style="nature"] .directive-figure-media {
+  border-radius: 0;
+  background: var(--surface-soft);
+}
+
+:root[data-visual-style="amin"] .directive-figure-media {
+  border-radius: 0;
+  border-color: var(--accent-soft);
+  background: var(--surface);
+}
+
+/* Semantic directive rendering: use typography and rules before boxes. */

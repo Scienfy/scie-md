@@ -5,16 +5,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { FileMetadata } from '../documentState';
 import { useDocumentDropPaste, type PasteReviewState, PASTE_REVIEW_THRESHOLD_CHARS } from './useDocumentDropPaste';
 import type { AuthorshipMark } from '../../markdown/authorship';
-
-const tauriWindow = vi.hoisted(() => ({
-  onDragDropEvent: vi.fn(),
-}));
-
-vi.mock('@tauri-apps/api/window', () => ({
-  getCurrentWindow: () => ({
-    onDragDropEvent: tauriWindow.onDragDropEvent,
-  }),
-}));
+import type { DesktopPlatformHost } from '../host/platformHost';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -34,6 +25,7 @@ describe('useDocumentDropPaste', () => {
   let setAuthorshipMarks: MockedCallback<SetAuthorshipMarks>;
   let validateNow: MockedCallback<ValidateNow>;
   let pushToast: MockedCallback<PushToast>;
+  let platformHost: DesktopPlatformHost;
 
   beforeEach(() => {
     container = document.createElement('div');
@@ -46,8 +38,7 @@ describe('useDocumentDropPaste', () => {
     setAuthorshipMarks = vi.fn() as MockedCallback<SetAuthorshipMarks>;
     validateNow = vi.fn() as MockedCallback<ValidateNow>;
     pushToast = vi.fn() as MockedCallback<PushToast>;
-    tauriWindow.onDragDropEvent.mockReset();
-    delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    platformHost = createFakePlatformHost();
   });
 
   afterEach(() => {
@@ -55,7 +46,6 @@ describe('useDocumentDropPaste', () => {
     container.remove();
     document.body.innerHTML = '';
     vi.useRealTimers();
-    delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   });
 
   it('drops delayed paste reviews when the document epoch changes before diffing', () => {
@@ -101,11 +91,10 @@ describe('useDocumentDropPaste', () => {
     expect(pushToast).toHaveBeenCalledWith('Large paste detected. Review changes is available.', 'info');
   });
 
-  it('disposes a Tauri drag-drop listener if registration resolves after unmount', async () => {
-    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+  it('disposes a host drag-drop listener if registration resolves after unmount', async () => {
     const dispose = vi.fn();
     let resolveRegistration: ((dispose: () => void) => void) | null = null;
-    tauriWindow.onDragDropEvent.mockReturnValue(new Promise((resolve) => {
+    vi.mocked(platformHost.dragDrop.listenDroppedPaths).mockReturnValue(new Promise((resolve) => {
       resolveRegistration = resolve;
     }));
 
@@ -133,6 +122,7 @@ describe('useDocumentDropPaste', () => {
           setPasteReview={setPasteReview}
           validateNow={validateNow}
           pushToast={pushToast}
+          platformHost={platformHost}
           onHandlers={(handlers) => {
             latestHandlers = handlers;
           }}
@@ -149,6 +139,7 @@ function Harness({
   setPasteReview,
   validateNow,
   pushToast,
+  platformHost,
   onHandlers,
 }: {
   markdownRef: MutableRefObject<string>;
@@ -157,6 +148,7 @@ function Harness({
   setPasteReview: SetPasteReview;
   validateNow: ValidateNow;
   pushToast: PushToast;
+  platformHost: DesktopPlatformHost;
   onHandlers: (handlers: ReturnType<typeof useDocumentDropPaste>) => void;
 }) {
   const handlers = useDocumentDropPaste({
@@ -171,6 +163,7 @@ function Harness({
     setAuthorshipMarks,
     setPasteReview,
     pushToast,
+    platformHost,
   });
   onHandlers(handlers);
   return null;
@@ -184,4 +177,56 @@ function fakePasteEvent(text: string) {
     },
     preventDefault: vi.fn(),
   } as never;
+}
+
+function createFakePlatformHost(): DesktopPlatformHost {
+  return {
+    runtime: {
+      isDesktopRuntime: vi.fn(() => true),
+    },
+    assets: {
+      pickImageFile: vi.fn(),
+      grantExternalImagePath: vi.fn(),
+      copyImageToAssets: vi.fn(),
+      saveImageBytesToAssets: vi.fn(),
+      defaultImageAlt: vi.fn((path: string) => path),
+      markdownImageSyntax: vi.fn((alt: string, path: string) => `![${alt}](${path})`),
+      isImagePath: vi.fn((path: string) => /\.(png|jpe?g|gif|webp|svg)$/i.test(path)),
+      imageFileNameFromBlob: vi.fn(),
+      blobToByteArray: vi.fn(),
+    },
+    export: {
+      pickHtmlSavePath: vi.fn(),
+      pickExportSavePath: vi.fn(),
+      writeTextFileAtomic: vi.fn(),
+      defaultPandocExportPath: vi.fn(),
+      checkPandocAvailable: vi.fn(),
+      exportStyledHtmlToPdf: vi.fn(),
+      exportHtmlToDocxNative: vi.fn(),
+      exportHtmlWithPandoc: vi.fn(),
+      exportWithPandoc: vi.fn(),
+    },
+    inkscape: {
+      checkAvailable: vi.fn(),
+      exportSvg: vi.fn(),
+    },
+    fileBrowser: {
+      pickFolder: vi.fn(),
+      listReadableFiles: vi.fn(),
+    },
+    watcher: {
+      listenFileWatchChanges: vi.fn(async () => vi.fn()),
+      updateWatchedFiles: vi.fn(async () => true),
+      clearWatchedFiles: vi.fn(async () => true),
+    },
+    dragDrop: {
+      listenDroppedPaths: vi.fn(async () => vi.fn()),
+    },
+    reveal: {
+      revealInFileManager: vi.fn(),
+    },
+    maintenance: {
+      cleanupStaleTempFilesForPaths: vi.fn(),
+    },
+  };
 }

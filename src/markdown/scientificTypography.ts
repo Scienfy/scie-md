@@ -1,4 +1,4 @@
-import { fencedCodeRanges, inlineCodeRanges, mergeRanges, scieMdCommentRanges } from './markdownRanges';
+import { fencedCodeRanges, inlineCodeRanges, mergeRanges, scieMdCommentRanges } from '@sciemd/core';
 
 const NARROW_NO_BREAK_SPACE = '\u202f';
 const MINUS_SIGN = '\u2212';

@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { ModalShell } from './ModalShell';
 import { DialogActions } from './DialogActions';
+import { isTauriRuntime } from '../app/runtime';
 import packageJson from '../../package.json';
 
 interface AboutDialogProps {
@@ -21,6 +23,24 @@ const GITHUB_URL = 'https://github.com/scienfy/scie-md';
 const BUG_REPORT_URL = `${GITHUB_URL}/issues/new`;
 
 export function AboutDialog({ open, onClose }: AboutDialogProps) {
+  const [version, setVersion] = useState(packageJson.version);
+
+  useEffect(() => {
+    if (!open || !isTauriRuntime()) return undefined;
+    let cancelled = false;
+    void import('@tauri-apps/api/app')
+      .then(({ getVersion }) => getVersion())
+      .then((runtimeVersion) => {
+        if (!cancelled && runtimeVersion.trim()) {
+          setVersion(runtimeVersion);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   return (
     <ModalShell open={open} titleId="about-title" className="about-dialog" onCancel={onClose}>
         <div className="about-brand">
@@ -33,7 +53,7 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
         <dl className="about-facts">
           <div>
             <dt>Version</dt>
-            <dd>{packageJson.version}</dd>
+            <dd>{version}</dd>
           </div>
           <div>
             <dt>Privacy</dt>

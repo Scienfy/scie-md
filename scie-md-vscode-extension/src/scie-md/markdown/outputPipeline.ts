@@ -1,7 +1,7 @@
-import type { VariableDefinition } from '../domain/variables/variableIndex';
-import { substituteVariablesWithDefinitions } from '../domain/variables/variableIndex';
-import { fencedCodeRanges, isOffsetInsideRanges } from './markdownRanges';
-import { renderActiveVariants } from './variants';
+import type { VariableDefinition } from '@sciemd/core';
+import { substituteVariablesWithDefinitions } from '@sciemd/core';
+import { fencedCodeRanges, isOffsetInsideRanges } from '@sciemd/core';
+import { renderActiveVariants } from '@sciemd/core';
 
 export function compileMarkdownForOutput(markdown: string, variableDefinitions: VariableDefinition[] = []): string {
   return substituteVariablesWithDefinitions(renderActiveVariants(markdown), variableDefinitions, { escapeMarkdown: true });

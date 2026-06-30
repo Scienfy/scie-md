@@ -1,10 +1,10 @@
 import { useCallback, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { createBackupSnapshot, readTextFile, statFile, writeTextFileAtomic } from '../../services/fileService';
-import { countCitationKeyUsages, createBibtexEntrySource, deleteBibtexEntrySource, renameCitationKeyUsages, upsertBibtexEntrySource } from '../../domain/citations/bibtex';
-import type { BibtexEntryDraft } from '../../domain/citations/bibtex';
-import type { ParsedScienfyDocument } from '../../domain/document/documentModel';
-import { getStringArrayField, parseFrontmatter, serializeFrontmatter } from '../../domain/document/frontmatter';
+import { countCitationKeyUsages, createBibtexEntrySource, deleteBibtexEntrySource, renameCitationKeyUsages, upsertBibtexEntrySource } from '@sciemd/core';
+import type { BibtexEntryDraft } from '@sciemd/core';
+import type { ParsedScienfyDocument } from '@sciemd/core';
+import { getStringArrayField, parseFrontmatter, serializeFrontmatter } from '@sciemd/core';
 import { resolveRelativeMarkdownAsset } from '../../markdown/documentIntelligence';
 import { metadataChanged } from '../documentState';
 import type { FileMetadata } from '../documentState';

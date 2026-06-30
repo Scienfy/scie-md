@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Database, Plus, Save } from 'lucide-react';
 import { ModalShell } from './ModalShell';
 import { DialogActions } from './DialogActions';
-import type { VariableDefinition } from '../domain/variables/variableIndex';
-import { VARIABLE_NAME_PATTERN } from '../domain/variables/variableEditing';
+import type { VariableDefinition } from '@sciemd/core';
+import { VARIABLE_NAME_PATTERN } from '@sciemd/core';
 
 export type VariableDialogState =
   | { mode: 'insert' }

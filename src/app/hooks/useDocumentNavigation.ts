@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import type { EditorMode } from '../documentState';
 import type { SourceMarkdownFind, SourceMarkdownJump } from '../../components/SourceMarkdownEditor';
 import type { VisualMarkdownFind, VisualMarkdownJump, VisualMarkdownJumpTarget } from '../../components/VisualMarkdownEditor';
-import type { MarkdownHeading } from '../../markdown/outline';
+import type { MarkdownHeading } from '@sciemd/core';
 import { useEditorJumpCoordination } from './useEditorJumpCoordination';
 
 interface DocumentNavigationParams {

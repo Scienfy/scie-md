@@ -6,6 +6,7 @@ pub mod export;
 pub mod file_io;
 pub mod file_watcher;
 pub mod inkscape;
+pub mod local_image_protocol;
 pub mod path_grants;
 pub mod path_utils;
 pub mod process;

@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react';
 import type { EditorMode } from '../documentState';
 import type { SlashCommandItem } from '../../components/SlashCommandMenu';
-import { createSemanticBlockMarkdown } from '../../markdown/semanticBlocks';
+import { createSemanticBlockMarkdown } from '@sciemd/core';
 
 interface SlashMenuState {
   top: number;

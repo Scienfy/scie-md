@@ -3,6 +3,9 @@
   "version": "1.0.12",
   "description": "ScieMD scientific Markdown desktop editor",
   "type": "module",
+  "workspaces": [
+    "packages/core"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -17,14 +20,24 @@
     "validate:styles": "node scripts/validate-style-modes.mjs",
     "validate:ux": "node scripts/validate-ux-workflows.mjs",
     "validate:distribution": "node scripts/validate-distribution-config.mjs",
+    "validate:desktop-smoke": "node scripts/validate-desktop-smoke.mjs",
+    "validate:vscode-package": "node scripts/validate-vscode-package.mjs",
+    "validate:vscode-host-smoke": "npm --prefix scie-md-vscode-extension run test:host-smoke",
+    "validate:vscode-visual-smoke": "npm --prefix scie-md-vscode-extension run test:visual-smoke",
+    "validate:vscode-installed-smoke": "node scripts/validate-vscode-installed-smoke.mjs",
+    "validate:tauri-contract": "node scripts/validate-tauri-command-contract.mjs",
+    "validate:version-changelog": "node scripts/validate-version-changelog.mjs",
+    "validate:generated-outputs": "node scripts/validate-generated-outputs.mjs",
+    "validate:generated-outputs:self-test": "node scripts/validate-generated-outputs.mjs --self-test",
+    "validate:merge": "node scripts/validate-merge.mjs",
+    "validate:large-document-stress": "node scripts/validate-large-document-stress.mjs",
     "build:desktop": "tauri build",
     "build:desktop:linux": "tauri build --bundles deb,appimage",
     "copy:exe": "node scripts/copy-release-exe.mjs",
     "install:vscode": "npm --prefix scie-md-vscode-extension ci",
     "package:vscode": "npm --prefix scie-md-vscode-extension run package",
     "stage:vscode": "node scripts/stage-vscode-extension.mjs",
-    "i18n:extract": "node scripts/extract-i18n-keys.mjs",
-    "release:local": "npm run install:vscode && npm run validate:release && npm run build:desktop && npm run copy:exe && npm run package:vscode && npm run stage:vscode",
+    "release:local": "npm run install:vscode && npm run validate:release && npm run build:desktop && npm run validate:desktop-smoke -- --required && npm run copy:exe && npm run package:vscode && npm run validate:vscode-package && npm run validate:vscode-installed-smoke -- --required && npm run stage:vscode && npm run validate:generated-outputs",
     "fonts:scie-sans": "node scripts/run-python.mjs scripts/fonts/build-scie-sans.py",
     "fonts:verify": "node scripts/run-python.mjs scripts/fonts/verify-scie-sans.py",
     "spike:milkdown": "node scripts/milkdown-roundtrip.mjs",
@@ -43,6 +56,7 @@
     "url": "https://github.com/scienfy/scie-md/issues"
   },
   "dependencies": {
+    "@sciemd/core": "file:packages/core",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.10.3",
     "@codemirror/lang-markdown": "^6.5.0",
@@ -61,7 +75,6 @@
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "dompurify": "^3.4.7",
-    "i18next": "^26.3.1",
     "katex": "^0.17.0",
     "lucide-react": "^1.21.0",
     "markdown-it": "^14.1.1",
@@ -71,7 +84,6 @@
     "mermaid": "^11.15.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-i18next": "^17.0.8",
     "yaml": "^2.9.0"
   },
   "devDependencies": {

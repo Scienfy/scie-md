@@ -6,6 +6,11 @@ import {
   type RendererHeartbeatMetrics,
 } from '../../services/nativeRecoveryService';
 import { isTauriRuntime } from '../runtime';
+import {
+  EMPTY_BACKGROUND_JOB_SNAPSHOT,
+  summarizeBackgroundJobs,
+  type BackgroundJobSnapshot,
+} from '../backgroundJobs';
 
 const HEARTBEAT_INTERVAL_MS = 8_000;
 
@@ -16,7 +21,28 @@ interface UseRendererDiagnosticsOptions {
   warningCount: number;
   errorCount: number;
   visualAtomCount: number;
-  activeBackgroundJobCount: number;
+  backgroundJobs?: BackgroundJobSnapshot;
+  onPreviousSessionCrashDetected?: () => void;
+  createDocumentMetrics?: (markdown: string) => RendererDocumentMetrics;
+  heartbeatIntervalMs?: number;
+  now?: () => number;
+}
+
+export interface RendererDocumentMetrics {
+  markdownBytes: number;
+  lineCount: number;
+  imageCount: number;
+  mathCount: number;
+}
+
+interface RendererDiagnosticsSnapshot {
+  filePath: string | null;
+  mode: EditorMode;
+  warningCount: number;
+  errorCount: number;
+  visualAtomCount: number;
+  documentMetrics: RendererDocumentMetrics;
+  backgroundJobs: BackgroundJobSnapshot;
   onPreviousSessionCrashDetected?: () => void;
 }
 
@@ -27,53 +53,52 @@ export function useRendererDiagnostics({
   warningCount,
   errorCount,
   visualAtomCount,
-  activeBackgroundJobCount,
+  backgroundJobs = EMPTY_BACKGROUND_JOB_SNAPSHOT,
   onPreviousSessionCrashDetected,
+  createDocumentMetrics = summarizeMarkdownForDiagnostics,
+  heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS,
+  now = Date.now,
 }: UseRendererDiagnosticsOptions): void {
   const sessionId = useMemo(() => {
     const random = Math.random().toString(36).slice(2);
     return `${Date.now().toString(36)}-${random}`;
   }, []);
-  const latestRef = useRef<UseRendererDiagnosticsOptions>({
-    markdown,
+  const documentMetrics = useMemo(
+    () => createDocumentMetrics(markdown),
+    [createDocumentMetrics, markdown],
+  );
+  const latestSnapshot = useMemo<RendererDiagnosticsSnapshot>(() => ({
     filePath,
     mode,
     warningCount,
     errorCount,
     visualAtomCount,
-    activeBackgroundJobCount,
+    documentMetrics,
+    backgroundJobs,
     onPreviousSessionCrashDetected,
-  });
-  const reportedPreviousCrashRef = useRef(false);
-
-  useEffect(() => {
-    latestRef.current = {
-      markdown,
-      filePath,
-      mode,
-      warningCount,
-      errorCount,
-      visualAtomCount,
-      activeBackgroundJobCount,
-      onPreviousSessionCrashDetected,
-    };
-  }, [
-    activeBackgroundJobCount,
+  }), [
+    backgroundJobs,
+    documentMetrics,
     errorCount,
     filePath,
-    markdown,
     mode,
     onPreviousSessionCrashDetected,
     visualAtomCount,
     warningCount,
   ]);
+  const latestRef = useRef<RendererDiagnosticsSnapshot>(latestSnapshot);
+  const reportedPreviousCrashRef = useRef(false);
+
+  useEffect(() => {
+    latestRef.current = latestSnapshot;
+  }, [latestSnapshot]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
     let disposed = false;
     const sendHeartbeat = async () => {
       const snapshot = latestRef.current;
-      const status = await recordRendererHeartbeat(metricsForMarkdown(sessionId, snapshot));
+      const status = await recordRendererHeartbeat(metricsForSnapshot(sessionId, snapshot, now()));
       if (
         status?.previousSessionSuspectedCrash
         && !reportedPreviousCrashRef.current
@@ -88,7 +113,7 @@ export function useRendererDiagnostics({
     };
 
     void sendHeartbeat();
-    const timer = window.setInterval(() => void sendHeartbeat(), HEARTBEAT_INTERVAL_MS);
+    const timer = window.setInterval(() => void sendHeartbeat(), heartbeatIntervalMs);
     window.addEventListener('pagehide', markCleanShutdown);
     window.addEventListener('beforeunload', markCleanShutdown);
 
@@ -99,25 +124,40 @@ export function useRendererDiagnostics({
       window.removeEventListener('beforeunload', markCleanShutdown);
       markCleanShutdown();
     };
-  }, [sessionId]);
+  }, [heartbeatIntervalMs, now, sessionId]);
 }
 
-function metricsForMarkdown(
+function metricsForSnapshot(
   sessionId: string,
-  snapshot: UseRendererDiagnosticsOptions,
+  snapshot: RendererDiagnosticsSnapshot,
+  nowMs: number,
 ): RendererHeartbeatMetrics {
+  const backgroundJobSummary = summarizeBackgroundJobs(snapshot.backgroundJobs, nowMs);
   return {
     sessionId,
     documentPath: snapshot.filePath,
     mode: snapshot.mode,
-    markdownBytes: byteLength(snapshot.markdown),
-    lineCount: lineCount(snapshot.markdown),
-    imageCount: countMatches(snapshot.markdown, /!\[[^\]]*]\(/g) + countMatches(snapshot.markdown, /<img\b/gi),
-    mathCount: countMatches(snapshot.markdown, /\$\$?[^$\n]/g),
+    markdownBytes: snapshot.documentMetrics.markdownBytes,
+    lineCount: snapshot.documentMetrics.lineCount,
+    imageCount: snapshot.documentMetrics.imageCount,
+    mathCount: snapshot.documentMetrics.mathCount,
     visualAtomCount: snapshot.visualAtomCount,
     warningCount: snapshot.warningCount,
     errorCount: snapshot.errorCount,
-    activeBackgroundJobCount: snapshot.activeBackgroundJobCount,
+    activeBackgroundJobCount: backgroundJobSummary.activeCount,
+    stuckBackgroundJobCount: backgroundJobSummary.stuckCount,
+    oldestBackgroundJobMs: backgroundJobSummary.oldestBackgroundJobMs,
+    backgroundJobLabels: backgroundJobSummary.activeJobLabels,
+    stuckBackgroundJobLabels: backgroundJobSummary.stuckJobLabels,
+  };
+}
+
+export function summarizeMarkdownForDiagnostics(markdown: string): RendererDocumentMetrics {
+  return {
+    markdownBytes: byteLength(markdown),
+    lineCount: lineCount(markdown),
+    imageCount: countMatches(markdown, /!\[[^\]]*]\(/g) + countMatches(markdown, /<img\b/gi),
+    mathCount: countMatches(markdown, /\$\$?[^$\n]/g),
   };
 }
 

@@ -1,7 +1,7 @@
 import { act, type ComponentProps } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ParsedScienfyDocument } from '../domain/document/documentModel';
+import type { ParsedScienfyDocument } from '@sciemd/core';
 import { NavigationSidebar } from './NavigationSidebar';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

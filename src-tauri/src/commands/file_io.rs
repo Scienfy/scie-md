@@ -11,6 +11,15 @@ use std::{
 
 use super::path_grants::{
     assert_directory_read_allowed, assert_file_read_allowed, assert_file_write_allowed, grant_file,
+    grant_file_and_parent, sync_document_image_grants_for_markdown,
+};
+
+mod text_encoding;
+
+use text_encoding::{
+    content_hash, decode_text_bytes, decode_text_bytes_lossy, detect_line_endings,
+    markdown_to_bytes, metadata_mtime_ms, normalize_to_lf, readable_file_kind,
+    unix_timestamp_for_file_name,
 };
 
 static LAST_TEMP_CLEANUP_AT: OnceLock<Mutex<Option<SystemTime>>> = OnceLock::new();
@@ -40,6 +49,13 @@ pub struct ReadTextFileResponse {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GeneratedSiblingArtifactResponse {
+    pub path: String,
+    pub metadata: FileMetadata,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReadTextFilePreviewResponse {
     pub content: String,
     pub modified_ms: u64,
@@ -59,18 +75,30 @@ pub struct FileExplorerEntry {
 pub fn read_text_file(path: String) -> Result<ReadTextFileResponse, String> {
     let path = PathBuf::from(path);
     assert_file_read_allowed(&path)?;
+    read_text_file_checked(&path)
+}
+
+#[tauri::command]
+pub fn read_text_file_for_edit(path: String) -> Result<ReadTextFileResponse, String> {
+    let path = PathBuf::from(path);
+    assert_file_read_allowed(&path)?;
     grant_file(&path)?;
+    read_text_file_checked(&path)
+}
+
+fn read_text_file_checked(path: &Path) -> Result<ReadTextFileResponse, String> {
     let file_metadata =
-        fs::metadata(&path).map_err(|error| format!("Could not read file metadata: {error}"))?;
+        fs::metadata(path).map_err(|error| format!("Could not read file metadata: {error}"))?;
     if file_metadata.len() > MAX_TEXT_IPC_BYTES {
         return Err("Text file is too large to open safely in ScieMD.".to_string());
     }
-    let bytes = fs::read(&path).map_err(|error| format!("Could not read file: {error}"))?;
+    let bytes = fs::read(path).map_err(|error| format!("Could not read file: {error}"))?;
     let decoded = decode_text_bytes(&bytes)?;
     let line_endings = detect_line_endings(&decoded.raw);
     let content = normalize_to_lf(&decoded.raw);
+    sync_document_image_grants_for_markdown(path, &content)?;
     let metadata = metadata_from_file_metadata(
-        &path,
+        path,
         &file_metadata,
         line_endings.line_ending,
         decoded.encoding,
@@ -275,6 +303,7 @@ pub fn write_text_file_atomic(
 
     sync_file(&path)?;
     sync_parent_dir(parent)?;
+    sync_document_image_grants_for_markdown(&path, &markdown)?;
     metadata_from_path(&path, line_ending, encoding, has_bom, false, true)
 }
 
@@ -288,25 +317,97 @@ pub fn write_text_file_create_new(
 ) -> Result<FileMetadata, String> {
     let path = PathBuf::from(path);
     assert_file_write_allowed(&path)?;
+    let metadata = create_new_text_file(&path, &markdown, &line_ending, &encoding, has_bom)?;
+    sync_document_image_grants_for_markdown(&path, &markdown)?;
+    Ok(metadata)
+}
+
+#[tauri::command]
+pub fn create_generated_sibling_artifact(
+    document_path: String,
+    artifact_kind: String,
+    markdown: String,
+    line_ending: String,
+    encoding: String,
+    has_bom: bool,
+) -> Result<GeneratedSiblingArtifactResponse, String> {
+    let document_path = PathBuf::from(document_path);
+    assert_file_read_allowed(&document_path)?;
+    let document = document_path
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve document path: {error}"))?;
+    if !document.is_file() {
+        return Err("Expected a saved Markdown document.".to_string());
+    }
+    let parent = document
+        .parent()
+        .ok_or_else(|| "Markdown document has no parent directory.".to_string())?;
+    let file_name = generated_artifact_file_name(&artifact_kind)?;
+    let target = next_available_generated_sibling_path(parent, file_name);
+    let metadata = create_new_text_file(&target, &markdown, &line_ending, &encoding, has_bom)?;
+    grant_file_and_parent(&target)?;
+    Ok(GeneratedSiblingArtifactResponse {
+        path: target.to_string_lossy().to_string(),
+        metadata,
+    })
+}
+
+fn create_new_text_file(
+    path: &Path,
+    markdown: &str,
+    line_ending: &str,
+    encoding: &str,
+    has_bom: bool,
+) -> Result<FileMetadata, String> {
     let parent = path
         .parent()
         .ok_or_else(|| "Target file has no parent directory.".to_string())?;
     fs::create_dir_all(parent)
         .map_err(|error| format!("Could not create parent directory: {error}"))?;
 
-    let bytes = markdown_to_bytes(&markdown, &line_ending, &encoding, has_bom)?;
+    let bytes = markdown_to_bytes(markdown, line_ending, encoding, has_bom)?;
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(&path)
+        .open(path)
         .map_err(|error| format!("Could not create file without overwriting: {error}"))?;
     file.write_all(&bytes)
         .and_then(|_| file.sync_all())
         .map_err(|error| format!("Could not write file: {error}"))?;
     drop(file);
-    sync_file(&path)?;
+    sync_file(path)?;
     sync_parent_dir(parent)?;
-    metadata_from_path(&path, line_ending, encoding, has_bom, false, true)
+    metadata_from_path(
+        path,
+        line_ending.to_string(),
+        encoding.to_string(),
+        has_bom,
+        false,
+        true,
+    )
+}
+
+fn generated_artifact_file_name(artifact_kind: &str) -> Result<&'static str, String> {
+    match artifact_kind.trim() {
+        "llm-skill" => Ok("ScieMD_LLM_skill.md"),
+        "submission-readiness" => Ok("SCIENFY_SUBMISSION_READINESS.md"),
+        _ => Err("Unsupported generated artifact type.".to_string()),
+    }
+}
+
+fn next_available_generated_sibling_path(parent: &Path, file_name: &str) -> PathBuf {
+    let base = parent.join(file_name);
+    if !base.exists() {
+        return base;
+    }
+    let stem = file_name.strip_suffix(".md").unwrap_or(file_name);
+    for index in 2..1000 {
+        let candidate = parent.join(format!("{stem}-{index}.md"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    parent.join(format!("{stem}-{}.md", unix_timestamp_for_file_name()))
 }
 
 fn verify_expected_metadata(
@@ -471,277 +572,6 @@ fn classify_cloud_attributes(attributes: u32) -> &'static str {
     } else {
         "local"
     }
-}
-
-struct LineEndingDetection {
-    line_ending: String,
-    has_mixed_line_endings: bool,
-}
-
-fn detect_line_endings(content: &str) -> LineEndingDetection {
-    let crlf = content.matches("\r\n").count();
-    let lf = content.matches('\n').count().saturating_sub(crlf);
-    let cr = content.matches('\r').count().saturating_sub(crlf);
-    let styles = [crlf > 0, lf > 0, cr > 0]
-        .into_iter()
-        .filter(|style_present| *style_present)
-        .count();
-
-    LineEndingDetection {
-        line_ending: if crlf > lf + cr {
-            "crlf".to_string()
-        } else {
-            "lf".to_string()
-        },
-        has_mixed_line_endings: styles > 1,
-    }
-}
-
-fn normalize_to_lf(content: &str) -> String {
-    content.replace("\r\n", "\n").replace('\r', "\n")
-}
-
-fn readable_file_kind(path: &Path) -> Option<&'static str> {
-    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
-    match extension.as_str() {
-        "md" | "markdown" => Some("markdown"),
-        _ => None,
-    }
-}
-
-fn metadata_mtime_ms(metadata: &fs::Metadata) -> u64 {
-    metadata
-        .modified()
-        .unwrap_or(SystemTime::UNIX_EPOCH)
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-        .min(u128::from(u64::MAX)) as u64
-}
-
-struct DecodedText {
-    raw: String,
-    encoding: String,
-    has_bom: bool,
-}
-
-fn decode_text_bytes(bytes: &[u8]) -> Result<DecodedText, String> {
-    if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
-        let raw = String::from_utf8(bytes[3..].to_vec())
-            .map_err(|error| format!("File has a UTF-8 BOM but contains invalid UTF-8: {error}"))?;
-        return Ok(DecodedText {
-            raw,
-            encoding: "utf8".to_string(),
-            has_bom: true,
-        });
-    }
-    if bytes.starts_with(&[0xFF, 0xFE]) {
-        return Ok(DecodedText {
-            raw: decode_utf16(&bytes[2..], true),
-            encoding: "utf16le".to_string(),
-            has_bom: true,
-        });
-    }
-    if bytes.starts_with(&[0xFE, 0xFF]) {
-        return Ok(DecodedText {
-            raw: decode_utf16(&bytes[2..], false),
-            encoding: "utf16be".to_string(),
-            has_bom: true,
-        });
-    }
-    if let Ok(raw) = String::from_utf8(bytes.to_vec()) {
-        return Ok(DecodedText {
-            raw,
-            encoding: "utf8".to_string(),
-            has_bom: false,
-        });
-    }
-    if looks_like_utf16(bytes, true) {
-        return Ok(DecodedText {
-            raw: decode_utf16(bytes, true),
-            encoding: "utf16le".to_string(),
-            has_bom: false,
-        });
-    }
-    if looks_like_utf16(bytes, false) {
-        return Ok(DecodedText {
-            raw: decode_utf16(bytes, false),
-            encoding: "utf16be".to_string(),
-            has_bom: false,
-        });
-    }
-    Ok(DecodedText {
-        raw: decode_windows_1252(bytes),
-        encoding: "windows1252".to_string(),
-        has_bom: false,
-    })
-}
-
-fn decode_text_bytes_lossy(bytes: &[u8]) -> DecodedText {
-    decode_text_bytes(bytes).unwrap_or_else(|_| DecodedText {
-        raw: decode_windows_1252(bytes),
-        encoding: "windows1252".to_string(),
-        has_bom: false,
-    })
-}
-
-fn decode_utf16(bytes: &[u8], little_endian: bool) -> String {
-    let units = bytes.chunks_exact(2).map(|chunk| {
-        if little_endian {
-            u16::from_le_bytes([chunk[0], chunk[1]])
-        } else {
-            u16::from_be_bytes([chunk[0], chunk[1]])
-        }
-    });
-    std::char::decode_utf16(units)
-        .map(|result| result.unwrap_or(char::REPLACEMENT_CHARACTER))
-        .collect()
-}
-
-fn looks_like_utf16(bytes: &[u8], little_endian: bool) -> bool {
-    if bytes.len() < 8 || !bytes.len().is_multiple_of(2) {
-        return false;
-    }
-    let pairs = bytes.len() / 2;
-    let nul_position = if little_endian { 1 } else { 0 };
-    let nul_count = bytes
-        .chunks_exact(2)
-        .filter(|chunk| chunk[nul_position] == 0)
-        .count();
-    nul_count * 2 >= pairs
-}
-
-fn decode_windows_1252(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|byte| match *byte {
-            0x80 => '\u{20AC}',
-            0x82 => '\u{201A}',
-            0x83 => '\u{0192}',
-            0x84 => '\u{201E}',
-            0x85 => '\u{2026}',
-            0x86 => '\u{2020}',
-            0x87 => '\u{2021}',
-            0x88 => '\u{02C6}',
-            0x89 => '\u{2030}',
-            0x8A => '\u{0160}',
-            0x8B => '\u{2039}',
-            0x8C => '\u{0152}',
-            0x8E => '\u{017D}',
-            0x91 => '\u{2018}',
-            0x92 => '\u{2019}',
-            0x93 => '\u{201C}',
-            0x94 => '\u{201D}',
-            0x95 => '\u{2022}',
-            0x96 => '\u{2013}',
-            0x97 => '\u{2014}',
-            0x98 => '\u{02DC}',
-            0x99 => '\u{2122}',
-            0x9A => '\u{0161}',
-            0x9B => '\u{203A}',
-            0x9C => '\u{0153}',
-            0x9E => '\u{017E}',
-            0x9F => '\u{0178}',
-            value => char::from(value),
-        })
-        .collect()
-}
-
-fn markdown_to_bytes(
-    markdown: &str,
-    line_ending: &str,
-    encoding: &str,
-    has_bom: bool,
-) -> Result<Vec<u8>, String> {
-    let normalized = normalize_to_lf(markdown);
-    let output = if line_ending == "crlf" {
-        normalized.replace('\n', "\r\n")
-    } else {
-        normalized
-    };
-
-    match encoding {
-        "utf8" => {
-            let mut bytes = Vec::with_capacity(output.len() + if has_bom { 3 } else { 0 });
-            if has_bom {
-                bytes.extend_from_slice(&[0xEF, 0xBB, 0xBF]);
-            }
-            bytes.extend_from_slice(output.as_bytes());
-            Ok(bytes)
-        }
-        "utf16le" => Ok(encode_utf16_bytes(&output, true, has_bom)),
-        "utf16be" => Ok(encode_utf16_bytes(&output, false, has_bom)),
-        "windows1252" => encode_windows_1252(&output),
-        other => Err(format!("Unsupported text encoding: {other}")),
-    }
-}
-
-fn encode_utf16_bytes(content: &str, little_endian: bool, has_bom: bool) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(content.len() * 2 + if has_bom { 2 } else { 0 });
-    if has_bom {
-        bytes.extend_from_slice(if little_endian {
-            &[0xFF, 0xFE]
-        } else {
-            &[0xFE, 0xFF]
-        });
-    }
-    for unit in content.encode_utf16() {
-        let encoded = if little_endian {
-            unit.to_le_bytes()
-        } else {
-            unit.to_be_bytes()
-        };
-        bytes.extend_from_slice(&encoded);
-    }
-    bytes
-}
-
-fn encode_windows_1252(content: &str) -> Result<Vec<u8>, String> {
-    let mut bytes = Vec::with_capacity(content.len());
-    for character in content.chars() {
-        let encoded = match character {
-            '\u{20AC}' => 0x80,
-            '\u{201A}' => 0x82,
-            '\u{0192}' => 0x83,
-            '\u{201E}' => 0x84,
-            '\u{2026}' => 0x85,
-            '\u{2020}' => 0x86,
-            '\u{2021}' => 0x87,
-            '\u{02C6}' => 0x88,
-            '\u{2030}' => 0x89,
-            '\u{0160}' => 0x8A,
-            '\u{2039}' => 0x8B,
-            '\u{0152}' => 0x8C,
-            '\u{017D}' => 0x8E,
-            '\u{2018}' => 0x91,
-            '\u{2019}' => 0x92,
-            '\u{201C}' => 0x93,
-            '\u{201D}' => 0x94,
-            '\u{2022}' => 0x95,
-            '\u{2013}' => 0x96,
-            '\u{2014}' => 0x97,
-            '\u{02DC}' => 0x98,
-            '\u{2122}' => 0x99,
-            '\u{0161}' => 0x9A,
-            '\u{203A}' => 0x9B,
-            '\u{0153}' => 0x9C,
-            '\u{017E}' => 0x9E,
-            '\u{0178}' => 0x9F,
-            value if u32::from(value) <= 0xFF => value as u8,
-            value => {
-                return Err(format!(
-                    "Character U+{:04X} cannot be saved using Windows-1252 encoding.",
-                    u32::from(value)
-                ));
-            }
-        };
-        bytes.push(encoded);
-    }
-    Ok(bytes)
-}
-
-fn content_hash(bytes: &[u8]) -> String {
-    blake3::hash(bytes).to_hex().to_string()
 }
 
 fn temp_path_for(path: &Path) -> PathBuf {
@@ -969,7 +799,8 @@ fn sync_parent_dir(parent: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::commands::path_grants::{
-        grant_directory, grant_file, grant_file_and_parent, isolate_test_path_grants,
+        assert_file_read_allowed, assert_file_write_allowed, grant_directory, grant_file,
+        grant_file_and_parent, isolate_test_path_grants,
     };
     use filetime::{set_file_mtime, FileTime};
     use std::{env, fs};
@@ -1106,6 +937,66 @@ mod tests {
     }
 
     #[test]
+    fn generated_sibling_artifacts_are_allowlisted_and_create_new() {
+        let _grants = isolate_test_path_grants();
+        let dir = env::temp_dir().join(format!("scie-md-generated-sibling-{}", temp_suffix()));
+        fs::create_dir_all(&dir).unwrap();
+        let document = dir.join("paper.md");
+        fs::write(&document, b"# Paper").unwrap();
+        fs::write(dir.join("ScieMD_LLM_skill.md"), b"existing").unwrap();
+        grant_file(&document).unwrap();
+
+        let created = create_generated_sibling_artifact(
+            document.to_string_lossy().to_string(),
+            "llm-skill".to_string(),
+            "# Skill\n".to_string(),
+            "lf".to_string(),
+            "utf8".to_string(),
+            false,
+        )
+        .unwrap();
+        let created_path = PathBuf::from(&created.path);
+
+        assert_eq!(
+            created_path.file_name().and_then(|value| value.to_str()),
+            Some("ScieMD_LLM_skill-2.md")
+        );
+        assert_eq!(fs::read_to_string(&created_path).unwrap(), "# Skill\n");
+        assert!(assert_file_write_allowed(&created_path).is_ok());
+        assert!(assert_file_write_allowed(&dir.join("not-allowlisted.md")).is_err());
+
+        let report = create_generated_sibling_artifact(
+            document.to_string_lossy().to_string(),
+            "submission-readiness".to_string(),
+            "# Readiness\n".to_string(),
+            "lf".to_string(),
+            "utf8".to_string(),
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(
+            PathBuf::from(report.path)
+                .file_name()
+                .and_then(|value| value.to_str()),
+            Some("SCIENFY_SUBMISSION_READINESS.md")
+        );
+
+        let error = create_generated_sibling_artifact(
+            document.to_string_lossy().to_string(),
+            "arbitrary".to_string(),
+            "no".to_string(),
+            "lf".to_string(),
+            "utf8".to_string(),
+            false,
+        )
+        .unwrap_err();
+        assert!(error.contains("Unsupported generated artifact type"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn read_binary_file_base64_encodes_file_bytes() {
         let _grants = isolate_test_path_grants();
         let dir = env::temp_dir().join(format!("scie-md-binary-{}", temp_suffix()));
@@ -1133,6 +1024,109 @@ mod tests {
         let error = read_text_file(path.to_string_lossy().to_string()).unwrap_err();
 
         assert!(error.contains("File access denied"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn read_text_file_does_not_upgrade_directory_read_grants_to_file_write_grants() {
+        let _grants = isolate_test_path_grants();
+        let dir = env::temp_dir().join(format!("scie-md-read-only-{}", temp_suffix()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("paper.md");
+        fs::write(&path, b"# Paper").unwrap();
+        grant_directory(&dir).unwrap();
+
+        let read = read_text_file(path.to_string_lossy().to_string()).unwrap();
+
+        assert_eq!(read.content, "# Paper");
+        assert!(assert_file_write_allowed(&path).is_err());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn read_text_file_for_edit_grants_only_the_opened_file_for_writes() {
+        let _grants = isolate_test_path_grants();
+        let dir = env::temp_dir().join(format!("scie-md-edit-open-{}", temp_suffix()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("paper.md");
+        let sibling = dir.join("sibling.md");
+        fs::write(&path, b"# Paper").unwrap();
+        fs::write(&sibling, b"# Sibling").unwrap();
+        grant_directory(&dir).unwrap();
+
+        let read = read_text_file_for_edit(path.to_string_lossy().to_string()).unwrap();
+
+        assert_eq!(read.content, "# Paper");
+        assert!(assert_file_write_allowed(&path).is_ok());
+        assert!(assert_file_write_allowed(&sibling).is_err());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn read_text_file_for_edit_grants_referenced_images_exactly() {
+        let _grants = isolate_test_path_grants();
+        let dir = env::temp_dir().join(format!("scie-md-edit-images-{}", temp_suffix()));
+        let assets = dir.join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        let path = dir.join("paper.md");
+        let referenced = assets.join("figure.png");
+        let unreferenced = assets.join("private.png");
+        fs::write(&path, b"# Paper\n\n![Figure](assets/figure.png)\n").unwrap();
+        fs::write(
+            &referenced,
+            [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a],
+        )
+        .unwrap();
+        fs::write(
+            &unreferenced,
+            [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a],
+        )
+        .unwrap();
+        grant_file(&path).unwrap();
+
+        let read = read_text_file_for_edit(path.to_string_lossy().to_string()).unwrap();
+
+        assert!(read.content.contains("assets/figure.png"));
+        assert!(assert_file_read_allowed(&referenced).is_ok());
+        assert!(assert_file_read_allowed(&unreferenced).is_err());
+        assert!(assert_file_write_allowed(&referenced).is_err());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn atomic_write_replaces_document_image_grants() {
+        let _grants = isolate_test_path_grants();
+        let dir = env::temp_dir().join(format!("scie-md-write-images-{}", temp_suffix()));
+        let assets = dir.join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        let path = dir.join("paper.md");
+        let first = assets.join("first.png");
+        let second = assets.join("second.png");
+        fs::write(&path, b"# Paper\n\n![First](assets/first.png)\n").unwrap();
+        fs::write(&first, [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]).unwrap();
+        fs::write(&second, [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]).unwrap();
+        grant_file_and_parent(&path).unwrap();
+        let opened = read_text_file(path.to_string_lossy().to_string()).unwrap();
+        assert!(assert_file_read_allowed(&first).is_ok());
+
+        write_text_file_atomic(
+            path.to_string_lossy().to_string(),
+            "# Paper\n\n![Second](assets/second.png)\n".to_string(),
+            opened.metadata.line_ending.clone(),
+            opened.metadata.encoding.clone(),
+            opened.metadata.has_bom,
+            Some(opened.metadata.last_known_mtime_ms),
+            Some(opened.metadata.last_known_size_bytes),
+            opened.metadata.content_hash.clone(),
+        )
+        .unwrap();
+
+        assert!(assert_file_read_allowed(&first).is_err());
+        assert!(assert_file_read_allowed(&second).is_ok());
 
         let _ = fs::remove_dir_all(dir);
     }

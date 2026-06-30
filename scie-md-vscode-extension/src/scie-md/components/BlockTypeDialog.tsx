@@ -1,7 +1,7 @@
 import { AlertTriangle, FileText, Image as ImageIcon, Lightbulb, MessageSquareText, Star, TrendingUp } from 'lucide-react';
 import { ModalShell } from './ModalShell';
 import { DialogActions } from './DialogActions';
-import type { SemanticBlockType } from '../markdown/semanticBlocks';
+import type { SemanticBlockType } from '@sciemd/core';
 
 export type SelectionBlockType = SemanticBlockType;
 

@@ -2,8 +2,11 @@ import { Editor, defaultValueCtx, editorViewCtx, serializerCtx } from '@milkdown
 import { commonmark } from '@milkdown/kit/preset/commonmark';
 import { gfm } from '@milkdown/kit/preset/gfm';
 import { describe, expect, it } from 'vitest';
+import { roundTripGoldenCorpus } from '../../markdown/roundTripGoldenCorpus';
 import { validateMarkdown } from '../../markdown/markdownValidation';
-import { scieMetadataPlugins } from './scieMetadataNodes';
+import { parseFrontmatter } from '@sciemd/core';
+import { canonicalizeVariableTokens } from '@sciemd/core';
+import { flushScieMetadataNodeViews, scieMetadataPlugins } from './scieMetadataNodes';
 
 describe('scieMetadataPlugins round-trip', () => {
   it('preserves ScieMD metadata comments through Milkdown serialization', async () => {
@@ -275,6 +278,82 @@ describe('scieMetadataPlugins round-trip', () => {
     expect(validateMarkdown(serialized).sourceOnly).toBe(false);
   });
 
+  it('flushes pending note and instruction textarea edits before serialization', async () => {
+    const editor = await createMetadataEditor([
+      '<!-- scie_md:note id="llm-pending" kind="llm" target="cursor": Original note. -->',
+      '',
+      '<!-- scie_md:instruction target="next-block" prompt="Original instruction." -->',
+      'Target paragraph.',
+    ].join('\n'));
+    const view = editor.ctx.get(editorViewCtx);
+
+    const editButtons = Array.from(view.dom.querySelectorAll<HTMLButtonElement>('.scie-md-note-card button'))
+      .filter((button) => button.textContent === 'Edit');
+    expect(editButtons).toHaveLength(2);
+
+    editButtons[0]?.click();
+    await Promise.resolve();
+    const noteTextarea = view.dom.querySelector<HTMLTextAreaElement>('.scie-md-note-card textarea');
+    expect(noteTextarea).not.toBeNull();
+    if (noteTextarea) {
+      noteTextarea.value = 'Pending note edit.';
+      noteTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    expect(flushScieMetadataNodeViews()).toBe(true);
+
+    editButtons[1]?.click();
+    await Promise.resolve();
+    const instructionTextarea = Array.from(view.dom.querySelectorAll<HTMLTextAreaElement>('.scie-md-note-card textarea')).at(-1);
+    expect(instructionTextarea).not.toBeNull();
+    if (instructionTextarea) {
+      instructionTextarea.value = 'Pending instruction edit.';
+      instructionTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    expect(flushScieMetadataNodeViews()).toBe(true);
+
+    const serializer = editor.ctx.get(serializerCtx);
+    const serialized = serializer(view.state.doc);
+    await editor.destroy();
+
+    expect(serialized).toContain('Pending note edit.');
+    expect(serialized).toContain('prompt="Pending instruction edit."');
+    expect(serialized).not.toContain('Original note.');
+    expect(serialized).not.toContain('Original instruction.');
+  });
+
+  it('flushes pending rendered block textarea edits before serialization', async () => {
+    const editor = await createMetadataEditor([
+      ':::note',
+      'Original rendered body.',
+      ':::',
+    ].join('\n'));
+    const view = editor.ctx.get(editorViewCtx);
+
+    const edit = view.dom.querySelector<HTMLButtonElement>('.scie-md-visual-atom-edit');
+    expect(edit).not.toBeNull();
+    edit?.click();
+    await Promise.resolve();
+
+    const textarea = view.dom.querySelector<HTMLTextAreaElement>('.scie-md-visual-atom-editor textarea');
+    expect(textarea).not.toBeNull();
+    if (textarea) {
+      textarea.value = [
+        ':::note',
+        'Pending rendered body.',
+        ':::',
+      ].join('\n');
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    expect(flushScieMetadataNodeViews()).toBe(true);
+
+    const serializer = editor.ctx.get(serializerCtx);
+    const serialized = serializer(view.state.doc);
+    await editor.destroy();
+
+    expect(serialized).toContain('Pending rendered body.');
+    expect(serialized).not.toContain('Original rendered body.');
+  });
+
   it('parses Markdown-safe image paths as image nodes', async () => {
     const serialized = await serializeWithMetadata(
       '![ChatGPT Image](assets/ChatGPT%20Image%20May%2019%2C%202026%2C%2001_26_41%20AM-3.png)',
@@ -282,6 +361,24 @@ describe('scieMetadataPlugins round-trip', () => {
 
     expect(serialized).toContain('![ChatGPT Image](assets/ChatGPT%20Image%20May%2019%2C%202026%2C%2001_26_41%20AM-3.png)');
     expect(serialized).not.toContain('\\!\\[');
+  });
+
+  it('preserves the checked-in scientific golden corpus through visual serialization boundaries', async () => {
+    for (const fixture of roundTripGoldenCorpus) {
+      const serialized = await serializeWithVisualEditorEnvelope(fixture.markdown);
+      const canonicalSerialized = canonicalizeVariableTokens(serialized);
+      const validation = validateMarkdown(serialized);
+
+      for (const snippet of fixture.preservedSnippets) {
+        expect(canonicalSerialized, `${fixture.name} should preserve ${snippet}`).toContain(snippet);
+      }
+      for (const code of fixture.expectedValidationCodes ?? []) {
+        expect(
+          validation.issues.some((issue) => issue.code === code),
+          `${fixture.name} should report ${code}`,
+        ).toBe(true);
+      }
+    }
   });
 });
 
@@ -292,6 +389,22 @@ async function serializeWithMetadata(markdown: string): Promise<string> {
   const serialized = serializer(view.state.doc);
   await editor.destroy();
   return serialized;
+}
+
+async function serializeWithVisualEditorEnvelope(markdown: string): Promise<string> {
+  const split = splitVisualMarkdownForTest(markdown);
+  return `${split.frontmatterPrefix}${await serializeWithMetadata(split.visualMarkdown)}`;
+}
+
+function splitVisualMarkdownForTest(markdown: string): { visualMarkdown: string; frontmatterPrefix: string } {
+  const frontmatter = parseFrontmatter(markdown);
+  if (!frontmatter.hasFrontmatter || frontmatter.error) {
+    return { visualMarkdown: markdown, frontmatterPrefix: '' };
+  }
+  return {
+    visualMarkdown: frontmatter.body,
+    frontmatterPrefix: `${frontmatter.openingFence || '---'}\n${frontmatter.raw}\n${frontmatter.closingFence || '---'}\n`,
+  };
 }
 
 async function createMetadataEditor(markdown: string): Promise<Editor> {

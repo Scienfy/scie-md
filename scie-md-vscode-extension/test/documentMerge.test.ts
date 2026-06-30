@@ -59,6 +59,24 @@ describe('createDocumentReplacementPlan', () => {
     expect(output).toContain('A external');
   });
 
+  it('keeps bridged stale-base conflicts as one conflict replacement', () => {
+    const baseText = 'A\nB\nC\nD\nE\nF\nG\nH\n';
+    const currentText = 'A\nB external\nC external\nD\nE external\nF external\nG\nH\n';
+    const requestedText = 'A\nB local\nC\nD local\nE\nF local\nG\nH\n';
+    const plan = createDocumentReplacementPlan({
+      baseText,
+      currentText,
+      requestedText,
+    });
+
+    const output = applyPlan(currentText, plan);
+    expect(plan.mergedStaleBase).toBe(true);
+    expect(output.match(/<<<<<<< ScieMD local edits/g)).toHaveLength(1);
+    for (const expectedLine of ['B local', 'D local', 'F local', 'B external', 'C external', 'E external', 'F external']) {
+      expect(output.match(new RegExp(`^${expectedLine}$`, 'gm'))).toHaveLength(1);
+    }
+  });
+
   it('does not treat a previous ScieMD webview edit as an external stale-base change', () => {
     const currentText = 'A local\n';
     const plan = createDocumentReplacementPlan({

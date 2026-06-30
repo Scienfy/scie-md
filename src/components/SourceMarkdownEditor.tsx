@@ -8,16 +8,18 @@ import type { Extension } from '@codemirror/state';
 import { Decoration, EditorView, hoverTooltip, keymap, ViewPlugin } from '@codemirror/view';
 import type { DecorationSet, ViewUpdate } from '@codemirror/view';
 import type { AuthorshipMark } from '../markdown/authorship';
-import { fencedCodeRanges, inlineCodeRanges, isOffsetInsideRanges, mergeRanges, scieMdCommentRanges } from '../markdown/markdownRanges';
+import { fencedCodeRanges, inlineCodeRanges, isOffsetInsideRanges, mergeRanges, scieMdCommentRanges } from '@sciemd/core';
 import type { ValidationIssue } from '../markdown/markdownValidation';
-import { changeTouchesProtectedAnchor, changeTouchesProtectedBlockBody, parseProtectedAnchors, parseProtectedBlocks } from '../markdown/protectedBlocks';
-import type { ProtectedAnchor, ProtectedBlock } from '../markdown/protectedBlocks';
-import { quoteAnchorPrefix, quoteAnchorSuffix } from '../markdown/quoteAnchors';
+import { changeTouchesProtectedAnchor, changeTouchesProtectedBlockBody, parseProtectedAnchors, parseProtectedBlocks } from '@sciemd/core';
+import type { ProtectedAnchor, ProtectedBlock } from '@sciemd/core';
+import { quoteAnchorPrefix, quoteAnchorSuffix } from '@sciemd/core';
 import type { EditorHistoryControls } from './editorControls';
 import type { EditorSelectionGetter } from './editorSelection';
-import type { CrossReferenceLabel } from '../domain/references/crossReferenceIndex';
-import type { VariableDefinition } from '../domain/variables/variableIndex';
-import type { BibtexEntry } from '../domain/citations/bibtex';
+import type { EditorAdapter, EditorAdapterReady, EditorSelectionAnchor } from './editorAdapter';
+import type { CrossReferenceLabel } from '@sciemd/core';
+import type { VariableDefinition } from '@sciemd/core';
+import { extractCitationTokens } from '@sciemd/core';
+import type { BibtexEntry } from '@sciemd/core';
 
 export type SourceMarkdownInsert = (markdown: string) => void;
 export type SourceMarkdownJump = (line: number) => void;
@@ -32,6 +34,7 @@ interface SourceMarkdownEditorProps {
   onFindReady?: (find: SourceMarkdownFind | undefined) => void;
   onHistoryReady?: (history: EditorHistoryControls | undefined) => void;
   onSelectionTextReady?: (selection: SourceMarkdownSelection | undefined) => void;
+  onAdapterReady?: EditorAdapterReady;
   onCursorLineChange?: (line: number, column: number) => void;
   onViewportLineChange?: (line: number) => void;
   authorshipMarks?: AuthorshipMark[];
@@ -69,6 +72,7 @@ export function SourceMarkdownEditor({
   onFindReady,
   onHistoryReady,
   onSelectionTextReady,
+  onAdapterReady,
   onCursorLineChange,
   onViewportLineChange,
   authorshipMarks = [],
@@ -83,12 +87,14 @@ export function SourceMarkdownEditor({
 }: SourceMarkdownEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const markdownRef = useRef(markdown);
   const onChangeRef = useRef(onChange);
   const onInsertReadyRef = useRef(onInsertReady);
   const onJumpReadyRef = useRef(onJumpReady);
   const onFindReadyRef = useRef(onFindReady);
   const onHistoryReadyRef = useRef(onHistoryReady);
   const onSelectionTextReadyRef = useRef(onSelectionTextReady);
+  const onAdapterReadyRef = useRef(onAdapterReady);
   const onCursorLineChangeRef = useRef(onCursorLineChange);
   const onViewportLineChangeRef = useRef(onViewportLineChange);
   const onLockViolationRef = useRef(onLockViolation);
@@ -103,6 +109,10 @@ export function SourceMarkdownEditor({
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    markdownRef.current = markdown;
+  }, [markdown]);
 
   useEffect(() => {
     onInsertReadyRef.current = onInsertReady;
@@ -123,6 +133,10 @@ export function SourceMarkdownEditor({
   useEffect(() => {
     onSelectionTextReadyRef.current = onSelectionTextReady;
   }, [onSelectionTextReady]);
+
+  useEffect(() => {
+    onAdapterReadyRef.current = onAdapterReady;
+  }, [onAdapterReady]);
 
   useEffect(() => {
     onCursorLineChangeRef.current = onCursorLineChange;
@@ -265,6 +279,52 @@ export function SourceMarkdownEditor({
         surface: 'source',
       };
     });
+    const adapter: EditorAdapter = {
+      surface: 'source',
+      read: () => {
+        const currentView = viewRef.current;
+        if (!currentView) return null;
+        const currentMarkdown = currentView.state.doc.toString();
+        return {
+          surface: 'source',
+          markdown: currentMarkdown,
+          changed: currentMarkdown !== markdownRef.current,
+          markCommitted: () => {
+            markdownRef.current = currentMarkdown;
+          },
+        };
+      },
+      replace: (nextMarkdown) => {
+        const currentView = viewRef.current;
+        if (!currentView) return false;
+        currentView.dispatch({
+          changes: { from: 0, to: currentView.state.doc.length, insert: nextMarkdown },
+        });
+        markdownRef.current = nextMarkdown;
+        return true;
+      },
+      focus: () => {
+        viewRef.current?.focus();
+      },
+      getSelectionAnchor: () => {
+        const currentView = viewRef.current;
+        if (!currentView) return null;
+        const selection = currentView.state.selection.main;
+        return { from: selection.from, to: selection.to };
+      },
+      restoreSelectionAnchor: (anchor: EditorSelectionAnchor) => {
+        const currentView = viewRef.current;
+        if (!currentView) return false;
+        const docLength = currentView.state.doc.length;
+        const from = Math.max(0, Math.min(anchor.from, docLength));
+        const to = Math.max(from, Math.min(anchor.to ?? anchor.from, docLength));
+        currentView.dispatch({ selection: { anchor: from, head: to } });
+        currentView.focus();
+        return true;
+      },
+      flushPendingEdits: () => adapter.read(),
+    };
+    onAdapterReadyRef.current?.(adapter);
 
     return () => {
       onInsertReadyRef.current?.(undefined);
@@ -272,6 +332,7 @@ export function SourceMarkdownEditor({
       onFindReadyRef.current?.(undefined);
       onHistoryReadyRef.current?.(undefined);
       onSelectionTextReadyRef.current?.(undefined);
+      onAdapterReadyRef.current?.(undefined);
       scrollElement.removeEventListener('scroll', scheduleViewportLine);
       window.removeEventListener('resize', scheduleViewportLine);
       if (viewportAnimationFrame !== null) window.cancelAnimationFrame(viewportAnimationFrame);
@@ -612,26 +673,8 @@ export function createSourceCitationDecorationRanges(
   const entryByKey = new Map(entries.map((entry) => [entry.key, entry]));
   const known = new Set(citationKeys);
   const hasBibliography = citationKeys.length > 0;
-  const ignoredRanges = mergeRanges([
-    ...fencedCodeRanges(markdown),
-    ...inlineCodeRanges(markdown),
-    ...scieMdCommentRanges(markdown),
-  ]);
-  const ranges: SourceCitationDecorationRange[] = [];
-  const bracketPattern = /\[[^\]]*@([A-Za-z0-9_][A-Za-z0-9_:.#$%&+\-?<>~/]*)[^\]]*]/g;
-  let bracketMatch: RegExpExecArray | null;
-
-  while ((bracketMatch = bracketPattern.exec(markdown))) {
-    if (isOffsetInsideRanges(bracketMatch.index, ignoredRanges)) continue;
-    const raw = bracketMatch[0];
-    for (const citationMatch of raw.matchAll(/@([A-Za-z0-9_][A-Za-z0-9_:.#$%&+\-?<>~/]*)/g)) {
-      const localIndex = citationMatch.index ?? 0;
-      const from = bracketMatch.index + localIndex;
-      ranges.push(createCitationDecorationRange(from, from + citationMatch[0].length, citationMatch[1], entryByKey, known, hasBibliography));
-    }
-  }
-
-  return ranges;
+  return extractCitationTokens(markdown, { allowLoose: hasBibliography })
+    .map((token) => createCitationDecorationRange(token.from, token.to, token.key, entryByKey, known, hasBibliography));
 }
 
 export function createSourceVariableDecorationRanges(

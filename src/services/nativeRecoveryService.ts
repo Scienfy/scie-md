@@ -20,12 +20,26 @@ export interface RendererHeartbeatMetrics {
   warningCount: number;
   errorCount: number;
   activeBackgroundJobCount: number;
+  stuckBackgroundJobCount: number;
+  oldestBackgroundJobMs: number | null;
+  backgroundJobLabels: string[];
+  stuckBackgroundJobLabels: string[];
 }
 
 export interface RendererHeartbeatStatus {
   previousSessionSuspectedCrash: boolean;
   previousSessionLastSeenMs: number | null;
   diagnosticsDir: string;
+}
+
+export interface DiagnosticsBundleMetadata {
+  path: string;
+  diagnosticsDir: string;
+  createdAtMs: number;
+  eventCount: number;
+  logBytes: number;
+  recoverySnapshotBytes: number | null;
+  heartbeatSeenAtMs: number | null;
 }
 
 export interface DiagnosticsEvent {
@@ -117,6 +131,16 @@ export async function appendDiagnosticsEvent(event: DiagnosticsEvent): Promise<b
   } catch (error) {
     console.warn('Diagnostics event write failed.', error);
     return false;
+  }
+}
+
+export async function exportDiagnosticsBundle(): Promise<DiagnosticsBundleMetadata | null> {
+  if (!canUseNativeDiagnostics()) return null;
+  try {
+    return await invoke<DiagnosticsBundleMetadata>('export_diagnostics_bundle');
+  } catch (error) {
+    console.warn('Diagnostics bundle export failed.', error);
+    return null;
   }
 }
 

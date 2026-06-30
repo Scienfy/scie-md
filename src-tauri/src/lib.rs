@@ -3,9 +3,13 @@ mod commands;
 use std::{
     collections::VecDeque,
     ffi::OsString,
+    fs,
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
+    time::{SystemTime, UNIX_EPOCH},
 };
+
+use serde::Serialize;
 
 static PENDING_MARKDOWN_OPEN: OnceLock<Mutex<VecDeque<PathBuf>>> = OnceLock::new();
 
@@ -13,8 +17,14 @@ static PENDING_MARKDOWN_OPEN: OnceLock<Mutex<VecDeque<PathBuf>>> = OnceLock::new
 pub fn run() {
     use tauri::{Emitter, Manager};
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+    let builder = tauri::Builder::default()
+        .register_uri_scheme_protocol("scie-md-local-image", |_ctx, request| {
+            commands::local_image_protocol::serve_local_image_request(request)
+        });
+    let builder = if std::env::var_os("SCIEMD_DESKTOP_SMOKE_DISABLE_SINGLE_INSTANCE").is_some() {
+        builder
+    } else {
+        builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
                 let _ = window.set_focus();
@@ -27,10 +37,32 @@ pub fn run() {
                 }
             }
         }))
+    };
+
+    builder
         .plugin(tauri_plugin_dialog::init())
-        .setup(|_app| {
+        .setup(|app| {
             if let Some(path) = startup_markdown_path_from_env() {
                 queue_markdown_open(&path);
+            }
+            if let Some(report_path) = desktop_smoke_report_path() {
+                let exit_code =
+                    match run_desktop_smoke_self_test(app.handle().clone(), &report_path) {
+                        Ok(()) => 0,
+                        Err(error) => {
+                            let _ = write_desktop_smoke_report(
+                                &report_path,
+                                &DesktopSmokeReport {
+                                    ok: false,
+                                    scenario: desktop_smoke_scenario(),
+                                    error: Some(error),
+                                    ..DesktopSmokeReport::default()
+                                },
+                            );
+                            1
+                        }
+                    };
+                app.handle().exit(exit_code);
             }
             Ok(())
         })
@@ -48,18 +80,22 @@ pub fn run() {
             commands::dialogs::pick_pandoc_export_save_path,
             commands::diagnostics::append_diagnostics_event,
             commands::diagnostics::clear_recovery_snapshot,
+            commands::diagnostics::export_diagnostics_bundle,
             commands::diagnostics::mark_renderer_clean_shutdown,
             commands::diagnostics::read_recovery_snapshot,
             commands::diagnostics::record_renderer_heartbeat,
             commands::diagnostics::write_recovery_snapshot,
             commands::path_grants::grant_external_path,
+            commands::path_grants::sync_document_image_grants,
             commands::file_io::read_text_file,
+            commands::file_io::read_text_file_for_edit,
             commands::file_io::read_text_file_preview,
             commands::file_io::read_binary_file_base64,
             commands::file_io::list_readable_files,
             commands::file_io::stat_file,
             commands::file_io::write_text_file_atomic,
             commands::file_io::write_text_file_create_new,
+            commands::file_io::create_generated_sibling_artifact,
             commands::file_io::cleanup_stale_temp_files_for_paths,
             commands::file_watcher::watch_files_for_changes,
             commands::file_watcher::unwatch_files_for_changes,
@@ -82,6 +118,189 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running ScieMD");
+}
+
+#[derive(Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopSmokeReport {
+    ok: bool,
+    scenario: String,
+    initial_path: Option<String>,
+    startup_path: Option<String>,
+    saved_size_bytes: Option<u64>,
+    recovery_bytes: Option<usize>,
+    recovery_path: Option<String>,
+    docx_output_path: Option<String>,
+    docx_bytes: Option<u64>,
+    pdf_output_path: Option<String>,
+    pdf_bytes: Option<u64>,
+    pdf_skipped_reason: Option<String>,
+    diagnostics_dir: Option<String>,
+    error: Option<String>,
+}
+
+fn desktop_smoke_report_path() -> Option<PathBuf> {
+    std::env::var_os("SCIEMD_DESKTOP_SMOKE_SELF_TEST")
+        .filter(|value| value == "1")
+        .and_then(|_| std::env::var_os("SCIEMD_DESKTOP_SMOKE_REPORT"))
+        .map(PathBuf::from)
+}
+
+fn desktop_smoke_scenario() -> String {
+    std::env::var("SCIEMD_DESKTOP_SMOKE_SCENARIO").unwrap_or_else(|_| "unknown".into())
+}
+
+fn run_desktop_smoke_self_test(app: tauri::AppHandle, report_path: &Path) -> Result<(), String> {
+    let scenario = desktop_smoke_scenario();
+    let mut report = DesktopSmokeReport {
+        scenario: scenario.clone(),
+        initial_path: startup_markdown_path_from_env()
+            .map(|path| commands::path_utils::external_safe_path_string(&path)),
+        ..DesktopSmokeReport::default()
+    };
+
+    let heartbeat = commands::diagnostics::record_renderer_heartbeat(
+        app.clone(),
+        commands::diagnostics::RendererHeartbeatPayload {
+            session_id: format!("desktop-smoke-{scenario}"),
+            document_path: report.initial_path.clone(),
+            mode: Some("desktop-smoke".into()),
+            markdown_bytes: 0,
+            line_count: 0,
+            image_count: 0,
+            math_count: 0,
+            visual_atom_count: 0,
+            warning_count: 0,
+            error_count: 0,
+            active_background_job_count: 0,
+            stuck_background_job_count: 0,
+            oldest_background_job_ms: None,
+            background_job_labels: Vec::new(),
+            stuck_background_job_labels: Vec::new(),
+        },
+    )?;
+    report.diagnostics_dir = Some(heartbeat.diagnostics_dir);
+
+    if scenario == "no-file" {
+        if report.initial_path.is_some() {
+            return Err(format!(
+                "Expected no-file startup but found initial path {:?}",
+                report.initial_path
+            ));
+        }
+        report.ok = true;
+        write_desktop_smoke_report(report_path, &report)?;
+        return Ok(());
+    }
+
+    let startup_path = std::env::var_os("SCIEMD_DESKTOP_SMOKE_STARTUP_PATH")
+        .map(PathBuf::from)
+        .or_else(startup_markdown_path_from_env)
+        .ok_or_else(|| "Desktop smoke startup path was not provided.".to_string())?;
+    report.startup_path = Some(commands::path_utils::external_safe_path_string(
+        &startup_path,
+    ));
+
+    commands::path_grants::grant_file_and_parent(&startup_path)?;
+    let opened =
+        commands::file_io::read_text_file_for_edit(startup_path.to_string_lossy().to_string())?;
+    if !opened.content.contains("ScieMD Desktop Smoke") {
+        return Err("Packaged app could not read the startup Markdown document.".into());
+    }
+
+    let saved_markdown = format!(
+        "{}\n\nSaved by packaged desktop smoke.\n",
+        opened.content.trim_end()
+    );
+    let saved_metadata = commands::file_io::write_text_file_atomic(
+        startup_path.to_string_lossy().to_string(),
+        saved_markdown,
+        opened.metadata.line_ending,
+        opened.metadata.encoding,
+        opened.metadata.has_bom,
+        Some(opened.metadata.last_known_mtime_ms),
+        Some(opened.metadata.last_known_size_bytes),
+        opened.metadata.content_hash,
+    )?;
+    report.saved_size_bytes = Some(saved_metadata.last_known_size_bytes);
+
+    let reread =
+        commands::file_io::read_text_file_for_edit(startup_path.to_string_lossy().to_string())?;
+    if !reread.content.contains("Saved by packaged desktop smoke.") {
+        return Err("Atomic save did not persist the smoke edit.".into());
+    }
+
+    let recovery_markdown = "# Recovery Smoke\n\nNative recovery snapshot round-trip.\n";
+    let recovery = commands::diagnostics::write_recovery_snapshot(
+        app.clone(),
+        commands::diagnostics::RecoverySnapshotPayload {
+            markdown: recovery_markdown.into(),
+            file_path: report.startup_path.clone(),
+            updated_at_ms: timestamp_ms(),
+        },
+    )?;
+    let restored = commands::diagnostics::read_recovery_snapshot(app.clone())?
+        .ok_or_else(|| "Native recovery snapshot was not restored.".to_string())?;
+    if restored.markdown != recovery_markdown || restored.file_path != report.startup_path {
+        return Err("Native recovery snapshot did not round-trip.".into());
+    }
+    commands::diagnostics::clear_recovery_snapshot(app.clone())?;
+    if commands::diagnostics::read_recovery_snapshot(app.clone())?.is_some() {
+        return Err("Native recovery snapshot was not cleared.".into());
+    }
+    report.recovery_bytes = Some(recovery.markdown_bytes);
+    report.recovery_path = Some(recovery.path);
+
+    let export_path = std::env::var_os("SCIEMD_DESKTOP_SMOKE_EXPORT_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| startup_path.with_file_name("desktop-smoke-export.docx"));
+    let html = "<!doctype html><html><head><meta charset=\"utf-8\"><title>ScieMD Desktop Smoke Export</title></head><body><h1>ScieMD Desktop Smoke Export</h1><p>Packaged export command validation.</p></body></html>";
+    commands::path_grants::grant_file(&export_path)?;
+    let docx_export = commands::export::export_html_to_docx_native(
+        html.into(),
+        export_path.to_string_lossy().to_string(),
+    )?;
+    let docx_metadata = fs::metadata(&docx_export.output_path)
+        .map_err(|error| format!("Could not stat DOCX smoke export: {error}"))?;
+    report.docx_output_path = Some(docx_export.output_path);
+    report.docx_bytes = Some(docx_metadata.len());
+
+    let pdf_path = export_path.with_extension("pdf");
+    commands::path_grants::grant_file(&pdf_path)?;
+    match commands::export::export_styled_html_to_pdf(
+        html.into(),
+        pdf_path.to_string_lossy().to_string(),
+    ) {
+        Ok(pdf_export) => {
+            let pdf_metadata = fs::metadata(&pdf_export.output_path)
+                .map_err(|error| format!("Could not stat PDF smoke export: {error}"))?;
+            report.pdf_output_path = Some(pdf_export.output_path);
+            report.pdf_bytes = Some(pdf_metadata.len());
+        }
+        Err(error) => {
+            report.pdf_skipped_reason = Some(error);
+        }
+    }
+
+    report.ok = true;
+    write_desktop_smoke_report(report_path, &report)
+}
+
+fn write_desktop_smoke_report(path: &Path, report: &DesktopSmokeReport) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create desktop smoke report directory: {error}"))?;
+    }
+    let raw = serde_json::to_string_pretty(report)
+        .map_err(|error| format!("Could not serialize desktop smoke report: {error}"))?;
+    fs::write(path, raw).map_err(|error| format!("Could not write desktop smoke report: {error}"))
+}
+
+fn timestamp_ms() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
 }
 
 #[tauri::command]
@@ -417,7 +636,11 @@ mod tests {
         fs::write(&file, "# Split Startup Paper\n").unwrap();
 
         let mut argv = vec!["sciemd".to_string()];
-        argv.extend(file.to_string_lossy().split_whitespace().map(str::to_string));
+        argv.extend(
+            file.to_string_lossy()
+                .split_whitespace()
+                .map(str::to_string),
+        );
         let found = markdown_path_from_args(&argv, std::env::temp_dir().to_string_lossy().as_ref());
 
         assert_eq!(found, Some(file));
@@ -435,7 +658,11 @@ mod tests {
         fs::write(&file, "# Split OS Startup Paper\n").unwrap();
 
         let mut argv = vec![OsString::from("sciemd")];
-        argv.extend(file.to_string_lossy().split_whitespace().map(OsString::from));
+        argv.extend(
+            file.to_string_lossy()
+                .split_whitespace()
+                .map(OsString::from),
+        );
         let found = markdown_path_from_os_args(&argv, &std::env::temp_dir());
 
         assert_eq!(found, Some(file));

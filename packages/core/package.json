@@ -1,0 +1,32 @@
+{
+  "name": "@sciemd/core",
+  "version": "1.0.12",
+  "private": true,
+  "description": "Host-independent ScieMD markdown and domain utilities.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./domain/blocks/directiveParser": "./src/domain/blocks/directiveParser.ts",
+    "./domain/citations/bibtex": "./src/domain/citations/bibtex.ts",
+    "./domain/citations/citationIndex": "./src/domain/citations/citationIndex.ts",
+    "./domain/document/documentModel": "./src/domain/document/documentModel.ts",
+    "./domain/document/frontmatter": "./src/domain/document/frontmatter.ts",
+    "./domain/references/crossReferenceIndex": "./src/domain/references/crossReferenceIndex.ts",
+    "./domain/variables/variableEditing": "./src/domain/variables/variableEditing.ts",
+    "./domain/variables/variableIndex": "./src/domain/variables/variableIndex.ts",
+    "./markdown/diffReview": "./src/markdown/diffReview.ts",
+    "./markdown/editorComments": "./src/markdown/editorComments.ts",
+    "./markdown/lockRanges": "./src/markdown/lockRanges.ts",
+    "./markdown/llm": "./src/markdown/llm.ts",
+    "./markdown/markdownRanges": "./src/markdown/markdownRanges.ts",
+    "./markdown/outline": "./src/markdown/outline.ts",
+    "./markdown/protectedBlocks": "./src/markdown/protectedBlocks.ts",
+    "./markdown/quoteAnchors": "./src/markdown/quoteAnchors.ts",
+    "./markdown/reviewPlan": "./src/markdown/reviewPlan.ts",
+    "./markdown/selectionWrapping": "./src/markdown/selectionWrapping.ts",
+    "./markdown/semanticBlocks": "./src/markdown/semanticBlocks.ts",
+    "./markdown/targetedInstructions": "./src/markdown/targetedInstructions.ts",
+    "./markdown/textOffsets": "./src/markdown/textOffsets.ts",
+    "./markdown/variants": "./src/markdown/variants.ts",
+    "./security/htmlSanitizerPolicy": "./src/security/htmlSanitizerPolicy.ts"
+  }
+}

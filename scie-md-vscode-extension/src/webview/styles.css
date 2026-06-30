@@ -1,26 +1,64 @@
 :root {
   color-scheme: light dark;
-  font-family: var(--vscode-font-family, sans-serif);
-  --scie-bg: var(--vscode-editor-background, #1f1f1f);
-  --scie-fg: var(--vscode-editor-foreground, #d4d4d4);
-  --scie-muted: var(--vscode-descriptionForeground, #a6a6a6);
-  --scie-border: var(--vscode-panel-border, #3c3c3c);
-  --scie-panel: var(--vscode-editorGroupHeader-tabsBackground, #252526);
-  --scie-sidebar: var(--vscode-sideBar-background, #181818);
-  --scie-widget: var(--vscode-editorWidget-background, #252526);
-  --scie-input-bg: var(--vscode-input-background, #2a2a2a);
-  --scie-input-fg: var(--vscode-input-foreground, #d4d4d4);
-  --scie-code-bg: var(--vscode-textCodeBlock-background, #2b2b2b);
-  --scie-button-bg: var(--vscode-button-secondaryBackground, #3a3d41);
-  --scie-button-fg: var(--vscode-button-secondaryForeground, #ffffff);
-  --scie-button-hover: var(--vscode-button-secondaryHoverBackground, #45494e);
-  --scie-primary-bg: var(--vscode-button-background, #0e639c);
-  --scie-primary-fg: var(--vscode-button-foreground, #ffffff);
-  --scie-link: var(--vscode-textLink-foreground, #4ea1f3);
-  --scie-ok: var(--vscode-testing-iconPassed, #89d185);
-  --scie-warn: var(--vscode-notificationsWarningIcon-foreground, #cca700);
-  --scie-error: var(--vscode-errorForeground, #f48771);
-  --scie-warning-bg: var(--vscode-inputValidation-warningBackground, #352a05);
+  font-family: var(--vscode-font-family, "Scie Sans", sans-serif);
+
+  /* VS Code-to-ScieMD token bridge.
+   * Desktop CSS owns the ScieMD token names. The extension owns the host
+   * mapping below so shared components can render inside a VS Code webview
+   * without assuming desktop window chrome or desktop asset roots.
+   */
+  --scie-vscode-bg: var(--vscode-editor-background, #1f1f1f);
+  --scie-vscode-fg: var(--vscode-editor-foreground, #d4d4d4);
+  --scie-vscode-muted: var(--vscode-descriptionForeground, #a6a6a6);
+  --scie-vscode-border: var(--vscode-panel-border, #3c3c3c);
+  --scie-vscode-panel: var(--vscode-editorGroupHeader-tabsBackground, #252526);
+  --scie-vscode-sidebar: var(--vscode-sideBar-background, #181818);
+  --scie-vscode-widget: var(--vscode-editorWidget-background, #252526);
+  --scie-vscode-input-bg: var(--vscode-input-background, #2a2a2a);
+  --scie-vscode-input-fg: var(--vscode-input-foreground, #d4d4d4);
+  --scie-vscode-code-bg: var(--vscode-textCodeBlock-background, #2b2b2b);
+  --scie-vscode-button-bg: var(--vscode-button-secondaryBackground, #3a3d41);
+  --scie-vscode-button-fg: var(--vscode-button-secondaryForeground, #ffffff);
+  --scie-vscode-button-hover: var(--vscode-button-secondaryHoverBackground, #45494e);
+  --scie-vscode-primary-bg: var(--vscode-button-background, #0e639c);
+  --scie-vscode-primary-fg: var(--vscode-button-foreground, #ffffff);
+  --scie-vscode-link: var(--vscode-textLink-foreground, #4ea1f3);
+  --scie-vscode-ok: var(--vscode-testing-iconPassed, #89d185);
+  --scie-vscode-warn: var(--vscode-notificationsWarningIcon-foreground, #cca700);
+  --scie-vscode-error: var(--vscode-errorForeground, #f48771);
+  --scie-vscode-warning-bg: var(--vscode-inputValidation-warningBackground, #352a05);
+  --scie-bg: var(--scie-vscode-bg);
+  --scie-fg: var(--scie-vscode-fg);
+  --scie-muted: var(--scie-vscode-muted);
+  --scie-border: var(--scie-vscode-border);
+  --scie-panel: var(--scie-vscode-panel);
+  --scie-sidebar: var(--scie-vscode-sidebar);
+  --scie-widget: var(--scie-vscode-widget);
+  --scie-input-bg: var(--scie-vscode-input-bg);
+  --scie-input-fg: var(--scie-vscode-input-fg);
+  --scie-code-bg: var(--scie-vscode-code-bg);
+  --scie-button-bg: var(--scie-vscode-button-bg);
+  --scie-button-fg: var(--scie-vscode-button-fg);
+  --scie-button-hover: var(--scie-vscode-button-hover);
+  --scie-primary-bg: var(--scie-vscode-primary-bg);
+  --scie-primary-fg: var(--scie-vscode-primary-fg);
+  --scie-control-bg: var(--scie-button-bg);
+  --scie-control-fg: var(--scie-button-fg);
+  --scie-control-border: var(--scie-border);
+  --scie-control-hover: var(--scie-button-hover);
+  --scie-control-muted: var(--scie-muted);
+  --scie-control-selected-bg: var(--scie-primary-bg);
+  --scie-control-selected-fg: var(--scie-primary-fg);
+  --scie-control-selected-border: color-mix(in srgb, var(--scie-primary-bg) 70%, var(--scie-border));
+  --scie-control-disabled-bg: color-mix(in srgb, var(--scie-button-bg) 70%, var(--scie-bg));
+  --scie-control-disabled-fg: color-mix(in srgb, var(--scie-muted) 72%, var(--scie-bg));
+  --scie-control-disabled-border: color-mix(in srgb, var(--scie-border) 72%, transparent);
+  --scie-accent: var(--scie-primary-bg);
+  --scie-link: var(--scie-vscode-link);
+  --scie-ok: var(--scie-vscode-ok);
+  --scie-warn: var(--scie-vscode-warn);
+  --scie-error: var(--scie-vscode-error);
+  --scie-warning-bg: var(--scie-vscode-warning-bg);
   --bg-primary: var(--scie-bg);
   --bg-secondary: var(--scie-sidebar);
   --bg-elevated: var(--scie-widget);
@@ -29,10 +67,89 @@
   --border-subtle: var(--scie-border);
   --accent-primary: var(--scie-primary-bg);
   --accent-soft: color-mix(in srgb, var(--scie-primary-bg) 18%, transparent);
+  --focus-ring: var(--vscode-focusBorder, var(--scie-link));
   --shadow-soft: 0 16px 42px rgb(0 0 0 / 22%);
-  --editor-font: var(--vscode-editor-font-family, monospace);
+  --editor-font: var(--vscode-editor-font-family, "JetBrains Mono", monospace);
   background: var(--scie-bg);
   color: var(--scie-fg);
+}
+
+:root[data-theme-mode="vscode"] {
+  --ui-font: "Scie Sans", var(--vscode-font-family, sans-serif);
+  --font-ui: var(--ui-font);
+  --mono-font: "JetBrains Mono", var(--vscode-editor-font-family, monospace);
+  --bg: var(--scie-bg);
+  --app-bg: var(--scie-bg);
+  --surface: var(--scie-widget);
+  --surface-soft: color-mix(in srgb, var(--scie-widget) 86%, var(--scie-bg));
+  --surface-muted: var(--surface-soft);
+  --editor-bg: var(--scie-bg);
+  --text: var(--scie-fg);
+  --text-strong: var(--scie-fg);
+  --text-muted: var(--scie-muted);
+  --border: var(--scie-border);
+  --border-strong: color-mix(in srgb, var(--scie-border), var(--scie-fg) 22%);
+  --button-bg: var(--scie-button-bg);
+  --button-fg: var(--scie-button-fg);
+  --button-hover: var(--scie-button-hover);
+  --accent: var(--scie-primary-bg);
+  --accent-contrast: var(--scie-primary-fg);
+  --error: var(--scie-error);
+  --warning: var(--scie-warn);
+  --link: var(--scie-link);
+  --shadow: rgb(0 0 0 / 26%);
+  --shadow-lg: 0 18px 48px rgb(0 0 0 / 30%);
+}
+
+:root[data-theme-mode="light"],
+:root[data-theme-mode="dark"],
+:root[data-theme-mode="sepia"] {
+  --scie-bg: var(--bg);
+  --scie-fg: var(--text);
+  --scie-muted: var(--text-muted);
+  --scie-border: var(--border);
+  --scie-panel: var(--surface);
+  --scie-sidebar: var(--bg);
+  --scie-widget: var(--surface);
+  --scie-input-bg: var(--surface-soft);
+  --scie-input-fg: var(--text);
+  --scie-code-bg: var(--visual-code-bg);
+  --scie-button-bg: var(--button-bg);
+  --scie-button-fg: var(--text);
+  --scie-button-hover: var(--button-hover);
+  --scie-primary-bg: var(--accent);
+  --scie-primary-fg: var(--accent-contrast, #ffffff);
+  --scie-control-bg: var(--button-bg);
+  --scie-control-fg: var(--text);
+  --scie-control-border: var(--border);
+  --scie-control-hover: var(--button-hover);
+  --scie-control-muted: var(--text-muted);
+  --scie-control-selected-bg: var(--accent);
+  --scie-control-selected-fg: var(--accent-contrast, #ffffff);
+  --scie-control-selected-border: color-mix(in srgb, var(--accent) 66%, var(--border));
+  --scie-control-disabled-bg: color-mix(in srgb, var(--surface-soft) 74%, var(--surface));
+  --scie-control-disabled-fg: color-mix(in srgb, var(--text-muted) 82%, var(--surface));
+  --scie-control-disabled-border: color-mix(in srgb, var(--border) 74%, var(--surface));
+  --scie-accent: var(--accent);
+  --scie-link: var(--link);
+  --scie-warn: var(--warning);
+  --scie-error: var(--error);
+  --scie-warning-bg: color-mix(in srgb, var(--warning) 14%, var(--surface));
+  --bg-primary: var(--scie-bg);
+  --bg-secondary: var(--scie-sidebar);
+  --bg-elevated: var(--scie-widget);
+  --text-primary: var(--scie-fg);
+  --text-secondary: var(--scie-muted);
+  --border-subtle: var(--scie-border);
+  --accent-primary: var(--scie-primary-bg);
+  --accent-soft: color-mix(in srgb, var(--scie-primary-bg) 20%, transparent);
+}
+
+:root[data-theme-mode="light"] {
+  --scie-control-selected-bg: #2f6375;
+  --scie-control-selected-fg: #ffffff;
+  --scie-control-selected-border: #275464;
+  --scie-control-hover: #edf4f6;
 }
 
 * {
@@ -62,28 +179,33 @@ textarea {
 
 button,
 select {
-  border: 1px solid var(--vscode-button-border, transparent);
-  background: var(--scie-button-bg);
-  color: var(--scie-button-fg);
+  border: 1px solid var(--vscode-button-border, var(--scie-control-border));
+  background: var(--scie-control-bg);
+  color: var(--scie-control-fg);
   min-height: 30px;
   border-radius: 4px;
   padding: 0 10px;
 }
 
-button:hover,
-select:hover {
-  background: var(--scie-button-hover);
+button:not(:disabled):hover,
+select:not(:disabled):hover {
+  background: var(--scie-control-hover);
 }
 
-button:disabled {
+button:disabled,
+select:disabled {
   cursor: not-allowed;
-  opacity: 0.55;
+  border-color: var(--scie-control-disabled-border);
+  background: var(--scie-control-disabled-bg);
+  color: var(--scie-control-disabled-fg);
+  opacity: 1;
 }
 
-button.selected,
-button[type="submit"] {
-  background: var(--scie-primary-bg);
-  color: var(--scie-primary-fg);
+button.selected:not(:disabled),
+button[type="submit"]:not(:disabled) {
+  border-color: var(--scie-control-selected-border);
+  background: var(--scie-control-selected-bg);
+  color: var(--scie-control-selected-fg);
 }
 
 .boot-banner {
@@ -114,6 +236,10 @@ button[type="submit"] {
   color: var(--scie-fg);
 }
 
+.vscode-scie-workbench {
+  isolation: isolate;
+}
+
 .vscode-scie-topbar,
 .vscode-scie-toolbar {
   display: flex;
@@ -125,6 +251,9 @@ button[type="submit"] {
 
 .vscode-scie-topbar {
   background: var(--scie-panel);
+  justify-content: space-between;
+  min-height: 44px;
+  row-gap: 6px;
 }
 
 .vscode-scie-toolbar {
@@ -136,7 +265,9 @@ button[type="submit"] {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 220px;
+  min-width: 180px;
+  flex: 1 1 260px;
+  overflow: hidden;
 }
 
 .vscode-scie-logo {
@@ -204,11 +335,22 @@ button[type="submit"] {
   transform: translateX(4px);
 }
 
-.vscode-scie-identity span {
+.vscode-scie-title {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.vscode-scie-title strong {
+  line-height: 1.1;
+}
+
+.vscode-scie-title span {
   color: var(--scie-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.2;
 }
 
 @keyframes vscode-scie-logo-flash {
@@ -237,36 +379,206 @@ button[type="submit"] {
   border: 1px solid var(--scie-border);
   border-radius: 4px;
   overflow: hidden;
+  flex: 0 0 auto;
 }
 
 .vscode-scie-mode-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   border: 0;
   border-radius: 0;
+  min-width: 76px;
+  justify-content: center;
+  background: transparent;
+  color: var(--scie-control-fg);
 }
 
-.vscode-scie-select {
+.vscode-scie-data-toggle {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  border-color: var(--scie-control-border);
+  background: var(--scie-control-bg);
+  color: var(--scie-control-fg);
+}
+
+.vscode-scie-data-toggle[aria-pressed="true"] {
+  border-color: var(--scie-control-selected-border);
+}
+
+.vscode-scie-topbar-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  flex: 2 1 520px;
+}
+
+.vscode-scie-choice {
+  position: relative;
+  min-width: 0;
+}
+
+.vscode-scie-choice-button,
+.vscode-scie-save-button,
+.vscode-scie-tool-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  border-color: var(--scie-control-border);
+  background: var(--scie-control-bg);
+  color: var(--scie-control-fg);
+}
+
+.vscode-scie-choice-button {
+  width: 148px;
+  max-width: 28vw;
+}
+
+.vscode-scie-choice-button[aria-expanded="true"] {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--focus-ring) 36%, transparent);
+}
+
+.vscode-scie-choice-kind {
+  color: var(--scie-control-muted);
+  font-size: 11px;
+}
+
+.vscode-scie-choice-value {
+  min-width: 0;
+  overflow: hidden;
+  color: currentColor;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vscode-scie-choice-button svg:last-child {
+  margin-left: auto;
+  color: var(--scie-control-muted);
+}
+
+.vscode-scie-choice-menu {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  width: min(360px, calc(100vw - 28px));
+  max-height: min(420px, calc(100vh - 92px));
+  overflow: auto;
+  border: 1px solid var(--scie-border);
+  border-radius: 6px;
+  padding: 5px;
+  background: var(--scie-widget);
+  box-shadow: var(--shadow-soft);
+}
+
+.vscode-scie-choice-menu button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 0;
+  border-radius: 4px;
+  padding: 7px 8px;
+  background: transparent;
+  color: var(--scie-fg);
+  text-align: left;
+}
+
+.vscode-scie-choice-menu button:hover,
+.vscode-scie-choice-menu button:focus-visible,
+.vscode-scie-choice-menu button.selected {
+  background: color-mix(in srgb, var(--scie-primary-bg) 16%, var(--scie-widget));
+  color: var(--scie-fg);
+}
+
+.vscode-scie-choice-menu button.selected .vscode-scie-choice-copy small {
+  color: var(--scie-muted);
+}
+
+.vscode-scie-choice-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vscode-scie-choice-copy > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vscode-scie-choice-copy small {
+  min-width: 0;
+  color: var(--scie-muted);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.vscode-scie-choice-check {
+  color: var(--scie-primary-bg);
+}
+
+.vscode-scie-choice-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--scie-muted);
+  justify-self: center;
+}
+
+.vscode-scie-save-button {
+  flex: 0 0 auto;
+  min-width: 72px;
+}
+
+.vscode-scie-command-strip {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  color: var(--scie-muted);
-  font-size: 12px;
 }
 
-.vscode-scie-select select {
-  max-width: 180px;
-  height: 30px;
-  color: var(--scie-button-fg);
+.vscode-scie-tool-button {
+  min-width: 112px;
+  padding-inline: 10px;
+}
+
+.vscode-scie-tool-button svg,
+.vscode-scie-save-button svg,
+.vscode-scie-mode-toggle svg,
+.vscode-scie-choice-button svg,
+.vscode-scie-choice-menu svg {
+  flex: 0 0 auto;
+}
+
+.vscode-scie-data-actions button:disabled,
+.vscode-scie-data-command-row button:disabled {
+  border-color: var(--scie-control-disabled-border);
+  background: var(--scie-control-disabled-bg);
+  color: var(--scie-control-disabled-fg);
 }
 
 .vscode-scie-status {
-  margin-left: auto;
+  flex: 0 0 auto;
   border: 1px solid var(--scie-border);
   color: var(--scie-muted);
   border-radius: 999px;
   padding: 3px 8px;
-  min-width: 72px;
+  min-width: 76px;
   text-align: center;
+  white-space: nowrap;
 }
 
 .vscode-scie-status.dirty {
@@ -305,10 +617,320 @@ button[type="submit"] {
   color: var(--scie-muted);
 }
 
+.vscode-scie-content {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  background: var(--scie-bg);
+}
+
+.vscode-scie-content[data-data-sidebar-open="true"] {
+  grid-template-columns: minmax(260px, var(--vscode-scie-data-sidebar-width, 320px)) minmax(0, 1fr);
+}
+
+.vscode-scie-main-column {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.vscode-scie-data-sidebar {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: var(--vscode-scie-data-sidebar-width, 320px);
+  min-width: 260px;
+  max-width: 460px;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--scie-border);
+  background: color-mix(in srgb, var(--scie-sidebar) 94%, var(--scie-widget));
+}
+
+.vscode-scie-data-header {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  border-bottom: 1px solid var(--scie-border);
+  padding: 8px;
+}
+
+.vscode-scie-data-icon {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid var(--scie-border);
+  border-radius: 6px;
+  color: var(--scie-muted);
+  background: color-mix(in srgb, var(--scie-widget) 78%, transparent);
+}
+
+.vscode-scie-data-title {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.vscode-scie-data-title strong,
+.vscode-scie-data-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vscode-scie-data-title strong {
+  color: var(--scie-fg);
+  line-height: 1.1;
+}
+
+.vscode-scie-data-title span {
+  color: var(--scie-muted);
+  font-size: 11px;
+}
+
+.vscode-scie-data-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vscode-scie-data-actions button {
+  display: inline-grid;
+  width: 26px;
+  min-width: 26px;
+  min-height: 26px;
+  place-items: center;
+  border-color: var(--scie-control-border);
+  padding: 0;
+  background: var(--scie-control-bg);
+  color: var(--scie-control-fg);
+}
+
+.vscode-scie-data-body {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 8px;
+  scrollbar-gutter: stable;
+}
+
+.vscode-scie-data-command-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+}
+
+.vscode-scie-data-command-row button,
+.vscode-scie-data-empty button,
+.vscode-scie-variable-row button,
+.vscode-scie-variable-usage-chips button {
+  min-height: 28px;
+  border-color: var(--scie-control-border);
+  background: var(--scie-control-bg);
+  color: var(--scie-control-fg);
+}
+
+.vscode-scie-data-empty {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--scie-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--scie-widget);
+}
+
+.vscode-scie-data-empty strong {
+  color: var(--scie-fg);
+}
+
+.vscode-scie-data-empty span {
+  color: var(--scie-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.vscode-scie-variable-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vscode-scie-variable-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  color: var(--scie-fg);
+}
+
+.vscode-scie-variable-card-header div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.vscode-scie-variable-card-header span {
+  color: var(--scie-muted);
+  font-size: 11px;
+}
+
+.vscode-scie-variable-list {
+  display: grid;
+  gap: 6px;
+}
+
+.vscode-scie-variable-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--scie-border), transparent 24%);
+  border-radius: 8px;
+  padding: 7px;
+  background: color-mix(in srgb, var(--scie-widget) 86%, transparent);
+  color: var(--scie-fg);
+  line-height: 1.2;
+  text-align: left;
+}
+
+.vscode-scie-variable-row:hover,
+.vscode-scie-variable-row:focus-visible {
+  border-color: color-mix(in srgb, var(--scie-border), transparent 28%);
+  background: color-mix(in srgb, var(--scie-button-hover) 78%, transparent);
+  color: var(--scie-fg);
+}
+
+.vscode-scie-variable-row.selected {
+  border-color: color-mix(in srgb, var(--scie-primary-bg), var(--scie-border) 38%);
+  background: color-mix(in srgb, var(--scie-primary-bg) 18%, transparent);
+  color: var(--scie-fg);
+}
+
+.vscode-scie-variable-row.missing {
+  border-color: color-mix(in srgb, var(--scie-warn), var(--scie-border) 42%);
+}
+
+.vscode-scie-variable-row input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--scie-border);
+  border-radius: 5px;
+  padding: 5px 7px;
+  background: var(--scie-input-bg);
+  color: var(--scie-input-fg);
+}
+
+.vscode-scie-variable-row .vscode-scie-variable-usage-button,
+.vscode-scie-variable-row > button:last-of-type {
+  width: 100%;
+}
+
+.vscode-scie-variable-row small {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--scie-muted);
+  font-size: 11px;
+}
+
+.vscode-scie-variable-selected-usage {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--scie-border);
+  border-radius: 8px;
+  padding: 9px;
+  background: color-mix(in srgb, var(--scie-widget) 80%, transparent);
+}
+
+.vscode-scie-variable-selected-usage strong {
+  overflow-wrap: anywhere;
+  color: var(--scie-fg);
+}
+
+.vscode-scie-variable-selected-usage span {
+  color: var(--scie-muted);
+  font-size: 12px;
+}
+
+.vscode-scie-variable-usage-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.vscode-scie-variable-usage-chips button {
+  min-height: 24px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.vscode-scie-variable-usage-chips small {
+  align-self: center;
+  color: var(--scie-muted);
+  font-size: 12px;
+}
+
+.vscode-scie-data-warning {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--scie-warn), var(--scie-border) 42%);
+  border-radius: 8px;
+  padding: 9px;
+  background: var(--scie-warning-bg);
+  color: var(--scie-warn);
+}
+
+.vscode-scie-data-warning div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vscode-scie-data-warning span {
+  color: var(--scie-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .vscode-scie-editor-stage {
+  position: relative;
   min-height: 0;
   overflow: auto;
   background: var(--scie-bg);
+}
+
+.vscode-scie-quick-outline-slot {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 24;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.vscode-scie-quick-outline-slot .quick-outline {
+  top: 14px;
+  left: 14px;
+  pointer-events: auto;
+}
+
+.vscode-scie-quick-outline-slot .quick-outline-card {
+  max-height: min(70vh, calc(100vh - 136px));
 }
 
 .vscode-scie-editor-stage .milkdown {
@@ -333,33 +955,98 @@ button[type="submit"] {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   border-bottom: 1px solid var(--scie-border);
-  background: var(--scie-widget);
-  max-height: 42vh;
+  background: color-mix(in srgb, var(--scie-widget) 92%, var(--scie-bg));
+  max-height: min(58vh, 620px);
   overflow: hidden;
 }
 
-.vscode-scie-review-panel header,
+.vscode-scie-review-header,
 .vscode-scie-review-panel footer {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--scie-border);
   background: var(--scie-widget);
 }
 
+.vscode-scie-review-header {
+  justify-content: space-between;
+}
+
+.vscode-scie-review-header > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vscode-scie-review-header strong {
+  color: var(--scie-fg);
+  font-size: 14px;
+}
+
+.vscode-scie-review-header span,
+.vscode-scie-review-header small {
+  color: var(--scie-muted);
+  line-height: 1.35;
+}
+
+.vscode-scie-review-header small {
+  font-size: 11px;
+}
+
 .vscode-scie-review-panel footer {
+  justify-content: space-between;
   border-top: 1px solid var(--scie-border);
   border-bottom: 0;
 }
 
-.vscode-scie-review-panel header button {
-  margin-left: auto;
+.vscode-scie-review-panel footer > span {
+  color: var(--scie-muted);
+  font-size: 12px;
+}
+
+.vscode-scie-review-panel footer > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.vscode-scie-review-panel button.primary {
+  background: var(--scie-primary-bg);
+  color: var(--scie-primary-fg);
+}
+
+.vscode-scie-review-warning,
+.vscode-scie-review-large-note {
+  display: grid;
+  gap: 2px;
+  border: 1px solid color-mix(in srgb, var(--scie-warn), var(--scie-border) 45%);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--scie-warning-bg) 82%, transparent);
+  color: var(--scie-fg);
+}
+
+.vscode-scie-review-warning {
+  margin: 10px 12px 0;
+}
+
+.vscode-scie-review-large-note {
+  border-color: color-mix(in srgb, var(--scie-link), var(--scie-border) 48%);
+  background: color-mix(in srgb, var(--scie-link) 10%, var(--scie-widget));
+}
+
+.vscode-scie-review-warning span,
+.vscode-scie-review-large-note span {
+  color: var(--scie-muted);
+  line-height: 1.35;
 }
 
 .vscode-scie-review-units {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
@@ -370,27 +1057,172 @@ button[type="submit"] {
 .vscode-scie-review-unit {
   border: 1px solid var(--scie-border);
   border-radius: 6px;
-  padding: 8px;
+  background: color-mix(in srgb, var(--scie-widget) 82%, var(--scie-bg));
+  overflow: hidden;
 }
 
 .vscode-scie-review-unit.rejected {
-  border-color: var(--scie-error);
+  border-color: color-mix(in srgb, var(--scie-error), var(--scie-border) 44%);
 }
 
-.vscode-scie-review-grid {
+.vscode-scie-review-unit.protected {
+  border-style: dashed;
+}
+
+.vscode-scie-review-card-shell {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: stretch;
 }
 
-.vscode-scie-review-grid pre {
-  margin: 0;
+.vscode-scie-review-selector {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  min-width: 78px;
+  border-right: 1px solid var(--scie-border);
+  padding: 10px;
+  color: var(--scie-muted);
+  font-size: 12px;
+}
+
+.vscode-scie-review-selector input {
+  justify-self: start;
+}
+
+.vscode-scie-review-selector span {
+  white-space: nowrap;
+}
+
+.vscode-scie-review-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 8px;
+  min-height: 64px;
+  border: 0;
+  border-radius: 0;
+  padding: 9px 10px;
+  background: transparent;
+  color: var(--scie-fg);
+  text-align: left;
+}
+
+.vscode-scie-review-summary:hover,
+.vscode-scie-review-summary:focus-visible {
+  background: color-mix(in srgb, var(--scie-button-hover) 72%, transparent);
+}
+
+.vscode-scie-review-index {
+  color: var(--scie-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.vscode-scie-review-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--scie-fg);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vscode-scie-review-preview {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--scie-muted);
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vscode-scie-review-summary em {
+  grid-column: 1 / -1;
+  color: var(--scie-warn);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.vscode-scie-review-detail {
+  border-top: 1px solid var(--scie-border);
+  background: color-mix(in srgb, var(--scie-bg) 70%, var(--scie-widget));
+}
+
+.vscode-scie-review-detail[aria-hidden="true"] {
+  display: none;
+}
+
+.vscode-scie-review-detail .review-unit-body {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.vscode-scie-review-detail .review-unit-location {
+  color: var(--scie-muted);
+  font-size: 11px;
+}
+
+.vscode-scie-review-detail .review-visual-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.vscode-scie-review-detail .review-preview-pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  max-height: 320px;
+  overflow: hidden;
+  border: 1px solid var(--scie-border);
+  border-radius: 6px;
+  background: var(--scie-bg);
+}
+
+.vscode-scie-review-detail .review-preview-pane header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--scie-border);
+  padding: 6px 8px;
+  color: var(--scie-muted);
+  font-size: 11px;
+}
+
+.vscode-scie-review-detail .review-preview-pane.before {
+  border-left-color: color-mix(in srgb, var(--scie-error), var(--scie-border) 52%);
+}
+
+.vscode-scie-review-detail .review-preview-pane.after {
+  border-left-color: color-mix(in srgb, var(--scie-ok), var(--scie-border) 52%);
+}
+
+.vscode-scie-review-detail .review-preview-prose,
+.vscode-scie-review-detail .review-preview-empty {
+  min-width: 0;
   overflow: auto;
-  white-space: pre-wrap;
-  background: var(--scie-code-bg);
   padding: 8px;
-  border-radius: 4px;
+  color: var(--scie-fg);
+  line-height: 1.45;
+}
+
+.vscode-scie-review-detail .review-preview-prose p:first-child,
+.vscode-scie-review-detail .review-preview-prose :first-child {
+  margin-top: 0;
+}
+
+.vscode-scie-review-detail .review-preview-prose p:last-child,
+.vscode-scie-review-detail .review-preview-prose :last-child {
+  margin-bottom: 0;
+}
+
+.vscode-scie-review-empty {
+  margin: 0;
+  color: var(--scie-muted);
+  padding: 8px;
 }
 
 .vscode-scie-toast {
@@ -425,41 +1257,80 @@ button[type="submit"] {
   display: grid;
   place-items: center;
   background: rgb(0 0 0 / 48%);
-  z-index: 20;
+  z-index: 45;
 }
 
 .vscode-scie-modal {
   width: min(680px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
-  overflow: auto;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
   border: 1px solid var(--scie-border);
   border-radius: 8px;
   background: var(--scie-widget);
-  padding: 18px;
   box-shadow: var(--shadow-soft);
 }
 
-.vscode-scie-modal-close {
-  float: right;
+.vscode-scie-dialog-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  border-bottom: 1px solid var(--scie-border);
+  padding: 14px 16px;
 }
 
-.vscode-scie-modal h2 {
-  margin: 0 0 12px;
+.vscode-scie-dialog-header > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.vscode-scie-dialog-header span {
+  color: var(--scie-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.vscode-scie-dialog-header h2 {
+  margin: 0;
+  color: var(--scie-fg);
   font-size: 18px;
+  line-height: 1.2;
 }
 
-.vscode-scie-modal form {
+.vscode-scie-dialog-header p {
+  margin: 0;
+  color: var(--scie-muted);
+  line-height: 1.35;
+}
+
+.vscode-scie-modal-close {
+  min-width: 0;
+  border-color: var(--scie-border);
+}
+
+.vscode-scie-dialog-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.vscode-scie-dialog-form {
   display: grid;
   gap: 12px;
 }
 
-.vscode-scie-modal label {
+.vscode-scie-dialog-form label {
   display: grid;
   gap: 5px;
+  color: var(--scie-muted);
+  font-size: 12px;
 }
 
-.vscode-scie-modal input,
-.vscode-scie-modal textarea {
+.vscode-scie-dialog-form input,
+.vscode-scie-dialog-form textarea {
   width: 100%;
   border: 1px solid var(--vscode-input-border, var(--scie-border));
   border-radius: 4px;
@@ -470,6 +1341,7 @@ button[type="submit"] {
 
 .vscode-scie-dialog-actions {
   display: flex;
+  gap: 8px;
   justify-content: flex-end;
 }
 
@@ -485,18 +1357,74 @@ button[type="submit"] {
     width: 100%;
   }
 
+  .vscode-scie-topbar-controls,
+  .vscode-scie-command-strip {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .vscode-scie-choice {
+    flex: 1 1 calc(50% - 4px);
+  }
+
+  .vscode-scie-choice-button {
+    width: 100%;
+    max-width: none;
+  }
+
+  .vscode-scie-choice-menu {
+    right: auto;
+    left: 0;
+    width: min(360px, calc(100vw - 24px));
+  }
+
+  .vscode-scie-tool-button {
+    flex: 1 1 calc(50% - 4px);
+  }
+
+  .vscode-scie-content[data-data-sidebar-open="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vscode-scie-data-sidebar {
+    position: absolute;
+    z-index: 35;
+    inset: 8px auto 8px 8px;
+    width: min(var(--vscode-scie-data-sidebar-width, 320px), calc(100% - 16px));
+    min-width: min(260px, calc(100% - 16px));
+    max-width: calc(100% - 16px);
+    border: 1px solid var(--scie-border);
+    border-radius: 8px;
+    box-shadow: var(--shadow-soft);
+  }
+
   .vscode-scie-status,
   .vscode-scie-metrics {
     margin-left: 0;
   }
 
-  .vscode-scie-select {
-    width: calc(50% - 4px);
+  .vscode-scie-review-panel footer,
+  .vscode-scie-review-header {
+    align-items: stretch;
+    flex-direction: column;
   }
 
-  .vscode-scie-select select {
+  .vscode-scie-review-card-shell,
+  .vscode-scie-review-detail .review-visual-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vscode-scie-review-selector {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    min-width: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--scie-border);
+  }
+
+  .vscode-scie-review-panel footer > div {
     width: 100%;
-    max-width: none;
+    justify-content: flex-start;
   }
 }
 
@@ -517,6 +1445,17 @@ button[type="submit"] {
     --scie-button-hover: Highlight;
     --scie-primary-bg: Highlight;
     --scie-primary-fg: HighlightText;
+    --scie-control-bg: ButtonFace;
+    --scie-control-fg: ButtonText;
+    --scie-control-border: ButtonBorder;
+    --scie-control-hover: Highlight;
+    --scie-control-muted: CanvasText;
+    --scie-control-selected-bg: Highlight;
+    --scie-control-selected-fg: HighlightText;
+    --scie-control-selected-border: Highlight;
+    --scie-control-disabled-bg: Canvas;
+    --scie-control-disabled-fg: GrayText;
+    --scie-control-disabled-border: GrayText;
     --scie-link: LinkText;
     --scie-warn: Mark;
     --scie-error: Mark;
@@ -527,15 +1466,28 @@ button[type="submit"] {
     --bg-elevated: Canvas;
     --surface: Canvas;
     --surface-alt: Canvas;
+    --surface-soft: Canvas;
+    --surface-muted: Canvas;
+    --editor-bg: Canvas;
     --text: CanvasText;
+    --text-strong: CanvasText;
+    --text-muted: CanvasText;
     --text-primary: CanvasText;
     --text-secondary: CanvasText;
     --muted: CanvasText;
     --border: ButtonBorder;
+    --border-strong: ButtonBorder;
     --border-subtle: ButtonBorder;
+    --button-bg: ButtonFace;
+    --button-hover: Highlight;
     --accent: Highlight;
+    --accent-contrast: HighlightText;
     --accent-primary: Highlight;
     --accent-soft: Highlight;
+    --focus-ring: Highlight;
+    --link: LinkText;
+    --error: Mark;
+    --warning: Mark;
     --visual-page-bg: Canvas;
     --visual-text: CanvasText;
     --visual-heading: CanvasText;
@@ -556,7 +1508,18 @@ button[type="submit"] {
   .vscode-scie-status,
   .vscode-scie-review-unit,
   .vscode-scie-modal,
+  .vscode-scie-review-warning,
+  .vscode-scie-review-large-note,
+  .vscode-scie-review-detail .review-preview-pane,
   .vscode-scie-toast,
+  .vscode-scie-data-sidebar,
+  .vscode-scie-data-icon,
+  .vscode-scie-data-actions button,
+  .vscode-scie-data-command-row button,
+  .vscode-scie-variable-row,
+  .vscode-scie-variable-selected-usage,
+  .vscode-scie-data-warning,
+  .vscode-scie-choice-menu,
   .startup-panel {
     border-color: ButtonBorder;
   }

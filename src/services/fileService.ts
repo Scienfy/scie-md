@@ -13,6 +13,13 @@ export interface FileExplorerEntry {
   modifiedMs: number;
 }
 
+export type GeneratedSiblingArtifactKind = 'llm-skill' | 'submission-readiness';
+
+export interface GeneratedSiblingArtifactResponse {
+  path: string;
+  metadata: FileMetadata;
+}
+
 export async function pickMarkdownFile(): Promise<string | null> {
   return invoke<string | null>('pick_markdown_file');
 }
@@ -47,6 +54,10 @@ export async function grantExternalPath(path: string, kind: 'image'): Promise<st
   return invoke<string>('grant_external_path', { path, kind });
 }
 
+export async function syncDocumentImageGrants(documentPath: string, imageUrls: string[]): Promise<number> {
+  return invoke<number>('sync_document_image_grants', { documentPath, imageUrls });
+}
+
 export async function getInitialMarkdownPath(): Promise<string | null> {
   return invoke<string | null>('initial_markdown_path');
 }
@@ -65,6 +76,10 @@ export async function clearPendingMarkdownOpen(path: string): Promise<void> {
 
 export async function readTextFile(path: string): Promise<ReadTextFileResponse> {
   return invoke<ReadTextFileResponse>('read_text_file', { path });
+}
+
+export async function readTextFileForEdit(path: string): Promise<ReadTextFileResponse> {
+  return invoke<ReadTextFileResponse>('read_text_file_for_edit', { path });
 }
 
 export async function readTextFilePreview(path: string, maxBytes = 8192): Promise<{ content: string; modifiedMs: number }> {
@@ -113,6 +128,23 @@ export async function writeTextFileCreateNew(
   const writeMetadata = metadata ?? DEFAULT_METADATA;
   return invoke<FileMetadata>('write_text_file_create_new', {
     path,
+    markdown,
+    lineEnding: writeMetadata.lineEnding,
+    encoding: writeMetadata.encoding,
+    hasBom: writeMetadata.hasBom,
+  });
+}
+
+export async function createGeneratedSiblingArtifact(
+  documentPath: string,
+  artifactKind: GeneratedSiblingArtifactKind,
+  markdown: string,
+  metadata: FileMetadata | null = null,
+): Promise<GeneratedSiblingArtifactResponse> {
+  const writeMetadata = metadata ?? DEFAULT_METADATA;
+  return invoke<GeneratedSiblingArtifactResponse>('create_generated_sibling_artifact', {
+    documentPath,
+    artifactKind,
     markdown,
     lineEnding: writeMetadata.lineEnding,
     encoding: writeMetadata.encoding,

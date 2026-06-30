@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createCitationHoverRanges } from './citationHoverPlugin';
-import type { BibtexEntry } from '../domain/citations/bibtex';
+import type { BibtexEntry } from '@sciemd/core';
 
 describe('createCitationHoverRanges', () => {
   const entry: BibtexEntry = {

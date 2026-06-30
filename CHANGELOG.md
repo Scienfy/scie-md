@@ -2,6 +2,26 @@
 
 All notable ScieMD release changes are tracked here.
 
+## 1.0.12 - Merge Gate And Preview Release Readiness
+
+- Added a repeatable pre-merge gate for release validation, packaged desktop build,
+  required packaged smoke testing, VSIX packaging, package-content validation,
+  staged artifact checks, release identity checks, and whitespace checks.
+- Consolidated shared Markdown/domain logic into the `@sciemd/core` workspace
+  package and expanded desktop/VS Code drift guards so mirrored code paths are
+  classified and checked before release.
+- Hardened startup-open recovery, external-change review, visual round-trip safety,
+  path grants, export sanitization, generated-output checks, and large-document
+  validation.
+- Refined the VS Code extension shell with the modern ScieMD toolbar, Data panel,
+  floating outline, light/dark/sepia theme polish, and clearer insert actions.
+- Kept public Windows release artifacts installer-first by staging NSIS/MSI bundles
+  and rejecting stale standalone portable executables by default.
+- Added runtime version reporting in the About dialog for packaged Tauri builds,
+  with package metadata as the browser/development fallback.
+- Hardened VS Code extension packaging so local `file:` workspace dependencies are
+  stripped from the packaged VSIX manifest while development installs keep them.
+
 ## 1.0.11 - Startup Launch Hardening
 
 - Fixed cold-start Markdown file association launches so double-clicked `.md` and

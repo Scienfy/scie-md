@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
 import type { Editor as MilkdownEditor } from '@milkdown/kit/core';
-import type { BibtexEntry } from '../domain/citations/bibtex';
-import type { VariableDefinition } from '../domain/variables/variableIndex';
+import type { BibtexEntry } from '@sciemd/core';
+import type { VariableDefinition } from '@sciemd/core';
 import { captureEditorHtmlForExport } from '../export/renderCapture';
 import type { CapturedEditorHtml } from '../export/renderCapture';
 import { VisualMarkdownEditor } from './VisualMarkdownEditor';

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CompletionContext } from '@codemirror/autocomplete';
 import { EditorState } from '@codemirror/state';
 import { buildInsertTransaction, createScientificCompletionSource, createSourceCitationDecorationRanges, createSourceInsertion, createSourceVariableDecorationRanges } from './SourceMarkdownEditor';
-import { createVariantGroupSnippet } from '../markdown/variants';
+import { createVariantGroupSnippet } from '@sciemd/core';
 
 function applyChange(doc: string, change: { from: number; to: number; insert: string }): string {
   return `${doc.slice(0, change.from)}${change.insert}${doc.slice(change.to)}`;
@@ -144,5 +144,18 @@ describe('createSourceCitationDecorationRanges', () => {
     expect(ranges[0].className).toContain('source-citation-verified');
     expect(ranges[0].title).toContain('Useful Paper');
     expect(ranges[1].className).toContain('source-citation-missing');
+  });
+
+  it('decorates narrative citations when a bibliography is loaded', () => {
+    const ranges = createSourceCitationDecorationRanges('Smith reports this in @smith2026.', [
+      { type: 'article', key: 'smith2026', fields: { title: 'Known', author: 'Smith' } },
+    ]);
+
+    expect(ranges).toEqual([
+      expect.objectContaining({
+        key: 'smith2026',
+        className: expect.stringContaining('source-citation-verified'),
+      }),
+    ]);
   });
 });

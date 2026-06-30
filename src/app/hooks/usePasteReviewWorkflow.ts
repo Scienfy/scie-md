@@ -2,9 +2,9 @@ import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { createInsertionAuthorshipMark } from '../../markdown/authorship';
 import type { AuthorshipMark } from '../../markdown/authorship';
-import { detectEditorNoteLifecycleIssues } from '../../markdown/editorComments';
-import { detectProtectedChanges } from '../../markdown/protectedBlocks';
-import { applyReviewPlanDecisions, reviewUnitIdsForRawHunkIds } from '../../markdown/reviewPlan';
+import { detectEditorNoteLifecycleIssues } from '@sciemd/core';
+import { detectProtectedChanges } from '@sciemd/core';
+import { applyReviewPlanDecisions, reviewUnitIdsForRawHunkIds } from '@sciemd/core';
 import type { PasteReviewState } from './useDocumentDropPaste';
 
 interface PasteReviewWorkflowParams {

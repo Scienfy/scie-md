@@ -1,4 +1,4 @@
-import { lineStartOffsets } from './textOffsets';
+import { lineStartOffsets } from '@sciemd/core';
 
 export interface AuthorshipMark {
   id: string;

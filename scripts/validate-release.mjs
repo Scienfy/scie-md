@@ -5,9 +5,12 @@ const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const cargoCommand = process.platform === 'win32' ? 'cargo.exe' : 'cargo';
 
 const steps = [
+  { label: 'Version and changelog guard', command: npmCommand, args: ['run', 'validate:version-changelog'] },
+  { label: 'Generated-output policy guard', command: npmCommand, args: ['run', 'validate:generated-outputs'] },
   { label: 'Scie Sans font build', command: npmCommand, args: ['run', 'fonts:scie-sans'] },
   { label: 'Scie Sans font verification', command: npmCommand, args: ['run', 'fonts:verify'] },
   { label: 'Distribution configuration guard', command: npmCommand, args: ['run', 'validate:distribution'] },
+  { label: 'Tauri command contract guard', command: npmCommand, args: ['run', 'validate:tauri-contract'] },
   { label: 'Frontend build', command: npmCommand, args: ['run', 'build'] },
   { label: 'Visual export smoke validation', command: npmCommand, args: ['run', 'validate:export'] },
   { label: 'Visual style smoke validation', command: npmCommand, args: ['run', 'validate:styles'] },

@@ -236,6 +236,20 @@ interface TableSizePickerProps {
 function TableSizePicker({ rows, columns, onPreview, onBack, onInsert, onClose }: TableSizePickerProps) {
   const maxRows = 7;
   const maxColumns = 7;
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const currentSizeRef = useRef({ rows, columns });
+  useEffect(() => {
+    currentSizeRef.current = { rows, columns };
+  }, [columns, rows]);
+  const previewSize = (nextRows: number, nextColumns: number) => {
+    const boundedRows = Math.min(maxRows, Math.max(1, nextRows));
+    const boundedColumns = Math.min(maxColumns, Math.max(1, nextColumns));
+    currentSizeRef.current = { rows: boundedRows, columns: boundedColumns };
+    onPreview(boundedRows, boundedColumns);
+    gridRef.current
+      ?.querySelector<HTMLButtonElement>(`[data-table-size="${boundedRows}x${boundedColumns}"]`)
+      ?.focus();
+  };
 
   return (
     <div
@@ -249,13 +263,37 @@ function TableSizePicker({ rows, columns, onPreview, onBack, onInsert, onClose }
           event.preventDefault();
           onInsert();
         }
+        if (event.key === 'ArrowRight') {
+          event.preventDefault();
+          previewSize(currentSizeRef.current.rows, currentSizeRef.current.columns + 1);
+        }
+        if (event.key === 'ArrowLeft') {
+          event.preventDefault();
+          previewSize(currentSizeRef.current.rows, currentSizeRef.current.columns - 1);
+        }
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          previewSize(currentSizeRef.current.rows + 1, currentSizeRef.current.columns);
+        }
+        if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          previewSize(currentSizeRef.current.rows - 1, currentSizeRef.current.columns);
+        }
+        if (event.key === 'Home') {
+          event.preventDefault();
+          previewSize(currentSizeRef.current.rows, 1);
+        }
+        if (event.key === 'End') {
+          event.preventDefault();
+          previewSize(currentSizeRef.current.rows, maxColumns);
+        }
       }}
     >
       <div className="slash-table-header">
         <button type="button" onClick={onBack} aria-label="Back to insert actions">Back</button>
         <span>{rows} rows x {columns} columns</span>
       </div>
-      <div className="slash-table-grid" role="grid" aria-label="Choose table size">
+      <div ref={gridRef} className="slash-table-grid" role="grid" aria-label="Choose table size">
         {Array.from({ length: maxRows }).map((_, rowIndex) => (
           Array.from({ length: maxColumns }).map((__, columnIndex) => {
             const previewRows = rowIndex + 1;
@@ -267,6 +305,9 @@ function TableSizePicker({ rows, columns, onPreview, onBack, onInsert, onClose }
                 type="button"
                 className={active ? 'active' : ''}
                 autoFocus={previewRows === rows && previewColumns === columns}
+                data-table-size={`${previewRows}x${previewColumns}`}
+                role="gridcell"
+                aria-selected={previewRows === rows && previewColumns === columns}
                 aria-label={`${previewRows} rows by ${previewColumns} columns`}
                 onMouseEnter={() => onPreview(previewRows, previewColumns)}
                 onFocus={() => onPreview(previewRows, previewColumns)}

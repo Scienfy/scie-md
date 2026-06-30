@@ -1,30 +1,51 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { VisualMarkdownEditor } from '../scie-md/components/VisualMarkdownEditor';
-import type { VisualMarkdownInsert, VisualMarkdownSelection } from '../scie-md/components/VisualMarkdownEditor';
+import type { VisualMarkdownInsert, VisualMarkdownJump, VisualMarkdownJumpTarget, VisualMarkdownSelection } from '../scie-md/components/VisualMarkdownEditor';
 import { SourceMarkdownEditor } from '../scie-md/components/SourceMarkdownEditor';
-import type { SourceMarkdownInsert, SourceMarkdownSelection } from '../scie-md/components/SourceMarkdownEditor';
+import type { SourceMarkdownInsert, SourceMarkdownJump, SourceMarkdownSelection } from '../scie-md/components/SourceMarkdownEditor';
+import { QuickOutlineHover } from '../scie-md/components/QuickOutlineHover';
+import { ReviewUnitBody } from '../scie-md/components/ReviewUnitBody';
 import type { EditorSelectionSnapshot } from '../scie-md/components/editorSelection';
 import { flushVisualEditorState } from '../scie-md/components/visualEditorStateSync';
-import { buildVariableIndex } from '../scie-md/domain/variables/variableIndex';
-import { createVariableToken, nextVariableName, upsertFrontmatterVariable, VARIABLE_NAME_PATTERN } from '../scie-md/domain/variables/variableEditing';
-import { parseFrontmatter } from '../scie-md/domain/document/frontmatter';
-import { insertEditorNote, parseEditorComments } from '../scie-md/markdown/editorComments';
-import type { EditorNoteKind } from '../scie-md/markdown/editorComments';
-import { detectProtectedChanges, parseProtectedBlocks } from '../scie-md/markdown/protectedBlocks';
-import { insertStandaloneMarkdownBlockNearSelection, wrapMarkdownBlockSelection } from '../scie-md/markdown/selectionWrapping';
-import { createAnchoredVariantGroupSnippet, createVariantGroupSnippet, parseVariantGroups } from '../scie-md/markdown/variants';
-import { createReviewPlan, applyReviewPlanDecisions } from '../scie-md/markdown/reviewPlan';
-import type { ReviewPlan } from '../scie-md/markdown/reviewPlan';
-import { applyThreeWayDiffDecisions } from '../scie-md/markdown/diffReview';
-import { extractHeadings } from '../scie-md/markdown/outline';
-import { VISUAL_STYLE_OPTIONS, getVisualStyleOption, isVisualStyleId } from '../scie-md/services/visualStyleService';
+import { buildVariableIndex } from '@sciemd/core';
+import { createVariableToken, nextVariableName, renameVariableAndUpdateUsages, upsertFrontmatterVariable, VARIABLE_NAME_PATTERN } from '@sciemd/core';
+import { parseFrontmatter } from '@sciemd/core';
+import {
+  applyReviewPlanDecisions,
+  applyThreeWayDiffDecisions,
+  createAnchoredVariantGroupSnippet,
+  createReviewPlan,
+  createVariantGroupSnippet,
+  detectProtectedChanges,
+  extractHeadings,
+  insertEditorNote,
+  insertStandaloneMarkdownBlockNearSelection,
+  parseEditorComments,
+  parseProtectedBlocks,
+  parseVariantGroups,
+  wrapMarkdownBlockSelection,
+} from '@sciemd/core';
+import type { EditorNoteKind, MarkdownHeading, ReviewPlan, ReviewUnit, VariableUsage } from '@sciemd/core';
+import { isVisualStyleId } from '../scie-md/services/visualStyleService';
 import type { VisualStyleId } from '../scie-md/services/visualStyleService';
 import type { ExtensionToWebviewMessage, ScieMDDocumentSnapshot } from '../shared/webviewProtocol';
+import { normalizeThemeMode, useResolvedVscodeTheme } from './theme';
+import type { VscodeThemeMode } from './theme';
+import {
+  VscodeEditorStage,
+  VscodeMarkdownToolbar,
+  VscodeDataSidebar,
+  VscodeReadOnlyBanner,
+  VscodeStartupPanel,
+  VscodeToast,
+  VscodeTopbar,
+  VscodeWorkbenchShell,
+} from './VscodeWorkbenchShell';
+import type { VscodeChromeMenu, VscodeEditorMode } from './VscodeWorkbenchShell';
 import { vscodeApi } from './vscodeApi';
 
-type EditorMode = 'visual' | 'source';
-type VscodeThemeMode = 'vscode' | 'light' | 'dark' | 'sepia';
+type EditorMode = VscodeEditorMode;
 
 interface ReviewState {
   kind: 'external';
@@ -33,6 +54,7 @@ interface ReviewState {
   after: string;
   plan: ReviewPlan;
   rejectedUnitIds: string[];
+  protectedUnitIds: string[];
 }
 
 type ModalState =
@@ -48,12 +70,10 @@ interface ToastState {
 
 const EDIT_DEBOUNCE_MS = 250;
 const WEBVIEW_SETTINGS_KEY = 'scie-md-vscode.webview-settings.v1';
-const THEME_OPTIONS: Array<{ id: VscodeThemeMode; label: string; detail: string }> = [
-  { id: 'vscode', label: 'VS Code', detail: 'Match the active VS Code light or dark theme.' },
-  { id: 'light', label: 'Light', detail: 'Use ScieMD light document colors.' },
-  { id: 'dark', label: 'Dark', detail: 'Use ScieMD dark document colors.' },
-  { id: 'sepia', label: 'Sepia', detail: 'Use ScieMD warm sepia document colors.' },
-];
+const DATA_SIDEBAR_DEFAULT_WIDTH = 320;
+const DATA_SIDEBAR_MIN_WIDTH = 260;
+const DATA_SIDEBAR_MAX_WIDTH = 460;
+const DATA_SIDEBAR_WIDTH_STEP = 32;
 
 export function App() {
   const [snapshot, setSnapshot] = useState<ScieMDDocumentSnapshot | null>(null);
@@ -61,6 +81,10 @@ export function App() {
   const [mode, setMode] = useState<EditorMode>(savedState.mode);
   const [themeMode, setThemeMode] = useState<VscodeThemeMode>(savedState.themeMode);
   const [visualStyle, setVisualStyle] = useState<VisualStyleId>(savedState.visualStyle);
+  const [openChromeMenu, setOpenChromeMenu] = useState<VscodeChromeMenu>(null);
+  const [dataSidebarOpen, setDataSidebarOpen] = useState(savedState.dataSidebarOpen);
+  const [dataSidebarWidth, setDataSidebarWidth] = useState(savedState.dataSidebarWidth);
+  const [selectedVariableName, setSelectedVariableName] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [status, setStatus] = useState('Loading');
   const [modal, setModal] = useState<ModalState>(null);
@@ -70,6 +94,8 @@ export function App() {
   const [visualInsert, setVisualInsert] = useState<VisualMarkdownInsert | undefined>();
   const [sourceInsert, setSourceInsert] = useState<SourceMarkdownInsert | undefined>();
   const selectionGetterRef = useRef<VisualMarkdownSelection | SourceMarkdownSelection | undefined>(undefined);
+  const visualJumpRef = useRef<VisualMarkdownJump | undefined>(undefined);
+  const sourceJumpRef = useRef<SourceMarkdownJump | undefined>(undefined);
   const textRef = useRef('');
   const snapshotRef = useRef<ScieMDDocumentSnapshot | null>(null);
   const reviewRef = useRef<ReviewState | null>(null);
@@ -77,6 +103,8 @@ export function App() {
   const pendingEditTextByIdRef = useRef(new Map<string, string>());
   const lastSentTextRef = useRef('');
   const pendingRejectedHunkIdsRef = useRef<string[]>([]);
+  const panelIdRef = useRef<string | null>(null);
+  const editChainIdRef = useRef(createEditChainId());
 
   const documentReadOnly = Boolean(snapshot?.isReadonly);
   const fileLabel = snapshot?.fileName ?? 'Markdown';
@@ -85,11 +113,11 @@ export function App() {
   const variableIndex = useMemo(() => buildVariableIndex(text, frontmatter), [frontmatter, text]);
   const protectedBlocks = useMemo(() => parseProtectedBlocks(text), [text]);
   const headings = useMemo(() => extractHeadings(text), [text]);
+  const activeHeadingId = useMemo(() => activeHeadingIdForLine(headings, currentLine), [currentLine, headings]);
   const noteCount = useMemo(() => parseEditorComments(text), [text]);
   const variantCount = useMemo(() => parseVariantGroups(text).length, [text]);
   const nextVariantGroupId = useMemo(() => `revision-${variantCount + 1}`, [variantCount]);
   const nextVariable = useMemo(() => nextVariableName(variableIndex.definitions), [variableIndex.definitions]);
-  const currentVisualStyle = useMemo(() => getVisualStyleOption(visualStyle), [visualStyle]);
   const activeMode: EditorMode = mode;
   const resolvedTheme = useResolvedVscodeTheme(themeMode);
 
@@ -100,6 +128,17 @@ export function App() {
   useEffect(() => {
     snapshotRef.current = snapshot;
   }, [snapshot]);
+
+  useEffect(() => {
+    if (!selectedVariableName) return;
+    const knownVariableNames = new Set([
+      ...variableIndex.definitions.map((definition) => definition.name),
+      ...variableIndex.usages.map((usage) => usage.name),
+    ]);
+    if (!knownVariableNames.has(selectedVariableName)) {
+      setSelectedVariableName(null);
+    }
+  }, [selectedVariableName, variableIndex.definitions, variableIndex.usages]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme;
@@ -118,8 +157,19 @@ export function App() {
   useEffect(() => {
     const listener = (event: MessageEvent<ExtensionToWebviewMessage>) => {
       const message = event.data;
+      if (message.type === 'operationResult') {
+        if (message.panelId && panelIdRef.current && message.panelId !== panelIdRef.current) return;
+        if (message.id) pendingEditTextByIdRef.current.delete(message.id);
+        if (!message.ok) {
+          lastSentTextRef.current = '';
+          setStatus(message.result === 'readonly' ? 'Read-only' : 'Refresh pending');
+          pushToast(message.message, message.result === 'readonly' ? 'warning' : 'error');
+        }
+        return;
+      }
       if (message.type !== 'documentUpdate') return;
       markDocumentReceived();
+      panelIdRef.current = message.panelId;
 
       const incomingText = message.snapshot.text;
       const previousSyncedText = lastSyncedDocumentTextRef.current;
@@ -152,6 +202,7 @@ export function App() {
             after: incomingText,
             plan,
             rejectedUnitIds: protectedUnitIds,
+            protectedUnitIds,
           });
           setStatus('External changes pending');
           return;
@@ -186,10 +237,10 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const state: SavedWebviewState = { mode, themeMode, visualStyle };
+    const state: SavedWebviewState = { mode, themeMode, visualStyle, dataSidebarOpen, dataSidebarWidth };
     vscodeApi.setState(state);
     writeSavedWebviewState(state);
-  }, [mode, themeMode, visualStyle]);
+  }, [dataSidebarOpen, dataSidebarWidth, mode, themeMode, visualStyle]);
 
   useEffect(() => {
     const handleUndoRedo = (event: KeyboardEvent) => {
@@ -211,6 +262,8 @@ export function App() {
         lastSentTextRef.current = pendingText;
         vscodeApi.postMessage({
           type: undo ? 'undo' : 'redo',
+          panelId: panelIdRef.current ?? undefined,
+          editChainId: editChainIdRef.current,
           pendingText,
           editId,
           baseText: syncedText,
@@ -218,7 +271,7 @@ export function App() {
         });
         return;
       }
-      vscodeApi.postMessage({ type: undo ? 'undo' : 'redo' });
+      vscodeApi.postMessage({ type: undo ? 'undo' : 'redo', panelId: panelIdRef.current ?? undefined, editChainId: editChainIdRef.current });
     };
     window.addEventListener('keydown', handleUndoRedo, { capture: true });
     return () => window.removeEventListener('keydown', handleUndoRedo, { capture: true });
@@ -240,6 +293,8 @@ export function App() {
     lastSentTextRef.current = pendingText;
     vscodeApi.postMessage({
       type: 'replaceDocument',
+      panelId: panelIdRef.current ?? undefined,
+      editChainId: editChainIdRef.current,
       text: pendingText,
       editId,
       baseText: syncedText,
@@ -292,6 +347,10 @@ export function App() {
     setMode('visual');
   }, []);
 
+  const updateCurrentLine = useCallback((line: number) => {
+    setCurrentLine(Math.max(1, Math.floor(line)));
+  }, []);
+
   const commitMarkdown = useCallback((nextText: string) => {
     if (documentReadOnly) return;
     textRef.current = nextText;
@@ -326,6 +385,24 @@ export function App() {
     const selection = getEditorSelectionSnapshot();
     commitMarkdown(insertStandaloneMarkdownBlockNearSelection(textRef.current, selection, snippet, currentLine));
   }, [activeMode, commitMarkdown, currentLine, documentReadOnly, filePath, getEditorSelectionSnapshot, sourceInsert, visualInsert]);
+
+  const jumpToHeading = useCallback((heading: MarkdownHeading) => {
+    updateCurrentLine(heading.line);
+    if (activeMode === 'visual') {
+      visualJumpRef.current?.(visualJumpTargetForHeading(headings, heading));
+      return;
+    }
+    sourceJumpRef.current?.(heading.line);
+  }, [activeMode, headings, updateCurrentLine]);
+
+  const selectVariable = useCallback((name: string, usage?: VariableUsage) => {
+    setSelectedVariableName(name);
+    if (!usage) return;
+    updateCurrentLine(usage.line);
+    if (activeMode === 'source') {
+      sourceJumpRef.current?.(usage.line);
+    }
+  }, [activeMode, updateCurrentLine]);
 
   const wrapSelectedEditorBlock = useCallback((selection: EditorSelectionSnapshot, wrap: (rawSelection: string) => string) => {
     const nextMarkdown = wrapMarkdownBlockSelection(textRef.current, selection, wrap, currentLine);
@@ -373,6 +450,22 @@ export function App() {
       pushToast(error instanceof Error ? error.message : 'Variable could not be created.', 'error');
     }
   }, [commitMarkdown, insertMarkdown, pushToast]);
+
+  const editVariable = useCallback((originalName: string, nextName: string, value: string) => {
+    const trimmedOriginalName = originalName.trim();
+    const trimmedNextName = nextName.trim();
+    if (!VARIABLE_NAME_PATTERN.test(trimmedOriginalName) || !VARIABLE_NAME_PATTERN.test(trimmedNextName)) {
+      pushToast('Variable names must start with a letter or underscore and use only letters, numbers, dots, dashes, and underscores.', 'error');
+      return;
+    }
+    try {
+      commitMarkdown(renameVariableAndUpdateUsages(textRef.current, trimmedOriginalName, trimmedNextName, value));
+      setSelectedVariableName(trimmedNextName);
+      pushToast(`Variable {{ ${trimmedNextName} }} saved.`, 'success');
+    } catch (error) {
+      pushToast(error instanceof Error ? error.message : 'Variable could not be saved.', 'error');
+    }
+  }, [commitMarkdown, pushToast]);
 
   const submitVersion = useCallback((groupId: string) => {
     const selection = getEditorSelectionSnapshot();
@@ -440,6 +533,8 @@ export function App() {
       lastSentTextRef.current = flushedText;
       vscodeApi.postMessage({
         type: 'save',
+        panelId: panelIdRef.current ?? undefined,
+        editChainId: editChainIdRef.current,
         pendingText: flushedText,
         editId,
         baseText: syncedText,
@@ -450,91 +545,72 @@ export function App() {
       setStatus('Saving');
       return;
     }
-    vscodeApi.postMessage({ type: 'save' });
+    vscodeApi.postMessage({ type: 'save', panelId: panelIdRef.current ?? undefined, editChainId: editChainIdRef.current });
   };
 
   return (
-    <div className="vscode-scie-shell app-shell" data-editor-mode={activeMode}>
-      <header className="vscode-scie-topbar">
-        <div className="vscode-scie-identity">
-          <ScieMDWebviewMark />
-          <strong>ScieMD</strong>
-          <span>{fileLabel}</span>
-        </div>
-        <div className="vscode-scie-mode-toggle" role="tablist" aria-label="Editor mode">
-          <button
-            type="button"
-            className={activeMode === 'visual' ? 'selected' : ''}
-            onClick={switchToVisualMode}
-            title="Visual"
-          >
-            Visual
-          </button>
-          <button type="button" className={activeMode === 'source' ? 'selected' : ''} onClick={() => setMode('source')}>Source</button>
-        </div>
-        <label className="vscode-scie-select">
-          <span>Style</span>
-          <select
-            value={visualStyle}
-            title={currentVisualStyle.detail}
-            onChange={(event) => setVisualStyle(event.target.value as VisualStyleId)}
-          >
-            {VISUAL_STYLE_OPTIONS.map((style) => (
-              <option key={style.id} value={style.id}>{style.label}</option>
-            ))}
-          </select>
-        </label>
-        <label className="vscode-scie-select">
-          <span>Theme</span>
-          <select
-            value={themeMode}
-            title={THEME_OPTIONS.find((option) => option.id === themeMode)?.detail}
-            onChange={(event) => setThemeMode(event.target.value as VscodeThemeMode)}
-          >
-            {THEME_OPTIONS.map((option) => (
-              <option key={option.id} value={option.id}>{option.label}</option>
-            ))}
-          </select>
-        </label>
-        <button type="button" onClick={save} disabled={documentReadOnly}>Save</button>
-        <span className={`vscode-scie-status ${snapshot?.isDirty ? 'dirty' : ''}`}>{status}</span>
-      </header>
-
-      {snapshot?.isReadonly && (
-        <div className="vscode-scie-banner" role="status">
-          {snapshot.readonlyReason ?? 'This document is read-only.'}
-        </div>
+    <VscodeWorkbenchShell
+      editorMode={activeMode}
+      topbar={(
+        <VscodeTopbar
+          fileLabel={fileLabel}
+          mode={activeMode}
+          visualStyle={visualStyle}
+          themeMode={themeMode}
+          openMenu={openChromeMenu}
+          status={status}
+          dirty={Boolean(snapshot?.isDirty)}
+          documentReadOnly={documentReadOnly}
+          dataSidebarOpen={dataSidebarOpen}
+          onSelectVisual={switchToVisualMode}
+          onSelectSource={() => setMode('source')}
+          onToggleDataSidebar={() => setDataSidebarOpen((open) => !open)}
+          onOpenMenuChange={setOpenChromeMenu}
+          onSelectStyle={setVisualStyle}
+          onSelectTheme={setThemeMode}
+          onSave={save}
+        />
       )}
-
-      <div className="vscode-scie-toolbar">
-        <button type="button" onClick={() => setModal({ type: 'note', kind: 'llm', body: 'Revise this text for clarity while preserving the scientific meaning.' })} disabled={documentReadOnly}>Note to LLM</button>
-        <button type="button" onClick={() => setModal({ type: 'note', kind: 'human', body: 'Review note: summarize what changed and why.' })} disabled={documentReadOnly}>Note to Human</button>
-        <button type="button" onClick={() => setModal({ type: 'variable', name: nextVariable, value: 'XXX' })} disabled={documentReadOnly}>Variable</button>
-        <button type="button" onClick={() => setModal({ type: 'version', groupId: nextVariantGroupId })} disabled={documentReadOnly}>Text Version</button>
-        <div className="vscode-scie-metrics" aria-label="Document summary">
-          <span>{noteCount.length} notes</span>
-          <span>{variableIndex.definitions.length} variables</span>
-          <span>{variantCount} versions</span>
-        </div>
-      </div>
-
-      {!snapshot && (
-        <section className="startup-panel" role="status">
-          <strong>Waiting for Markdown document from VS Code</strong>
-          <span>The ScieMD webview has mounted and asked the extension host for the active file.</span>
-        </section>
+      readonlyBanner={snapshot?.isReadonly ? <VscodeReadOnlyBanner reason={snapshot.readonlyReason} /> : null}
+      toolbar={(
+        <VscodeMarkdownToolbar
+          documentReadOnly={documentReadOnly}
+          noteCount={noteCount.length}
+          variableCount={variableIndex.definitions.length}
+          variantCount={variantCount}
+          onInsertNote={() => setModal({ type: 'note', kind: 'llm', body: 'Revise this text for clarity while preserving the scientific meaning.' })}
+          onInsertVersion={() => setModal({ type: 'version', groupId: nextVariantGroupId })}
+        />
       )}
-
-      {review && (
+      dataSidebarOpen={dataSidebarOpen}
+      dataSidebarWidth={dataSidebarWidth}
+      dataSidebar={(
+        <VscodeDataSidebar
+          variableDefinitions={variableIndex.definitions}
+          variableUsages={variableIndex.usages}
+          missingVariables={variableIndex.missingVariables}
+          selectedVariableName={selectedVariableName}
+          documentReadOnly={documentReadOnly}
+          width={dataSidebarWidth}
+          minWidth={DATA_SIDEBAR_MIN_WIDTH}
+          maxWidth={DATA_SIDEBAR_MAX_WIDTH}
+          widthStep={DATA_SIDEBAR_WIDTH_STEP}
+          onInsertVariable={() => setModal({ type: 'variable', name: nextVariable, value: 'XXX' })}
+          onEditVariable={editVariable}
+          onSelectVariable={selectVariable}
+          onClose={() => setDataSidebarOpen(false)}
+          onWidthChange={(width) => setDataSidebarWidth(normalizeDataSidebarWidth(width))}
+        />
+      )}
+      startupPanel={!snapshot ? <VscodeStartupPanel /> : null}
+      reviewPanel={review ? (
         <ReviewPanel
           review={review}
-          onToggleReject={(unitId) => {
+          onRejectedUnitsChange={(rejectedUnitIds) => {
             setReview((current) => current
               ? {
                   ...current,
-                  rejectedUnitIds: current.rejectedUnitIds.includes(unitId)
-                    ? current.rejectedUnitIds.filter((id) => id !== unitId)
-                    : [...current.rejectedUnitIds, unitId],
+                  rejectedUnitIds,
                 }
               : current);
           }}
@@ -542,178 +618,329 @@ export function App() {
           onClose={() => setReview(null)}
           disabled={documentReadOnly}
         />
+      ) : null}
+      editorStage={(
+        <VscodeEditorStage
+          mode={activeMode}
+          quickOutline={(
+            <QuickOutlineHover
+              headings={headings}
+              activeHeadingId={activeHeadingId}
+              onJump={jumpToHeading}
+            />
+          )}
+          visualEditor={(
+            <VisualMarkdownEditor
+              markdown={text}
+              filePath={filePath}
+              onChange={commitMarkdown}
+              onEditorReady={() => undefined}
+              onInsertReady={(handler) => setVisualInsert(() => handler)}
+              onJumpReady={(handler) => {
+                visualJumpRef.current = handler;
+              }}
+              onSelectionTextReady={(getter) => {
+                selectionGetterRef.current = getter;
+              }}
+              onCursorLineChange={(line) => updateCurrentLine(line)}
+              onViewportLineChange={updateCurrentLine}
+              outlineHeadings={headings}
+              onLockViolation={(message) => pushToast(message, 'warning')}
+              onToast={pushToast}
+              confirmText={async (state) => window.confirm(`${state.title}\n\n${state.message}`)}
+              variableDefinitions={variableIndex.definitions}
+              highlightedVariableName={selectedVariableName}
+              onEditVariable={(name) => {
+                setSelectedVariableName(name);
+                setDataSidebarOpen(true);
+              }}
+              readOnly={documentReadOnly}
+            />
+          )}
+          sourceEditor={(
+            <SourceMarkdownEditor
+              markdown={text}
+              onChange={commitMarkdown}
+              onInsertReady={(handler) => setSourceInsert(() => handler)}
+              onJumpReady={(handler) => {
+                sourceJumpRef.current = handler;
+              }}
+              onSelectionTextReady={(getter) => {
+                selectionGetterRef.current = getter;
+              }}
+              onCursorLineChange={(line) => updateCurrentLine(line)}
+              onViewportLineChange={updateCurrentLine}
+              variableDefinitions={variableIndex.definitions}
+              highlightedVariableName={selectedVariableName}
+              protectedBlocks={protectedBlocks}
+              onLockViolation={(message) => pushToast(message, 'warning')}
+              readOnly={documentReadOnly}
+            />
+          )}
+        />
       )}
-
-      <main className="vscode-scie-editor-stage">
-        {activeMode === 'visual' ? (
-          <VisualMarkdownEditor
-            markdown={text}
-            filePath={filePath}
-            onChange={commitMarkdown}
-            onEditorReady={() => undefined}
-            onInsertReady={(handler) => setVisualInsert(() => handler)}
-            onSelectionTextReady={(getter) => {
-              selectionGetterRef.current = getter;
-            }}
-            onCursorLineChange={(line) => setCurrentLine(line)}
-            onViewportLineChange={() => undefined}
-            outlineHeadings={headings}
-            onLockViolation={(message) => pushToast(message, 'warning')}
-            onToast={pushToast}
-            confirmText={async (state) => window.confirm(`${state.title}\n\n${state.message}`)}
-            variableDefinitions={variableIndex.definitions}
-          />
-        ) : (
-          <SourceMarkdownEditor
-            markdown={text}
-            onChange={commitMarkdown}
-            onInsertReady={(handler) => setSourceInsert(() => handler)}
-            onSelectionTextReady={(getter) => {
-              selectionGetterRef.current = getter;
-            }}
-            onCursorLineChange={(line) => setCurrentLine(line)}
-            onViewportLineChange={() => undefined}
-            variableDefinitions={variableIndex.definitions}
-            protectedBlocks={protectedBlocks}
-            onLockViolation={(message) => pushToast(message, 'warning')}
-          />
-        )}
-      </main>
-
-      {toast && <div className={`vscode-scie-toast ${toast.tone}`}>{toast.text}</div>}
-
-      {modal && (
+      toast={toast ? <VscodeToast toast={toast} /> : null}
+      modal={modal ? (
         <Modal state={modal} onClose={() => setModal(null)}>
           {modal.type === 'note' ? (
-            <NoteForm state={modal} onSubmit={submitNote} />
+            <NoteForm state={modal} onSubmit={submitNote} onCancel={() => setModal(null)} />
           ) : modal.type === 'variable' ? (
-            <VariableForm state={modal} onSubmit={submitVariable} />
+            <VariableForm state={modal} onSubmit={submitVariable} onCancel={() => setModal(null)} />
           ) : (
-            <VersionForm state={modal} onSubmit={submitVersion} />
+            <VersionForm state={modal} onSubmit={submitVersion} onCancel={() => setModal(null)} />
           )}
         </Modal>
-      )}
-    </div>
-  );
-}
-
-function ScieMDWebviewMark() {
-  const [reacting, setReacting] = useState(false);
-  const react = () => {
-    setReacting(false);
-    window.requestAnimationFrame(() => {
-      setReacting(true);
-      window.setTimeout(() => setReacting(false), 760);
-    });
-  };
-  return (
-    <button
-      type="button"
-      className={`vscode-scie-logo ${reacting ? 'is-reacting' : ''}`}
-      aria-label="ScieMD mark"
-      onClick={react}
-    >
-      <span className="vscode-scie-logo-circle left" aria-hidden="true" />
-      <span className="vscode-scie-logo-circle right" aria-hidden="true" />
-    </button>
+      ) : null}
+    />
   );
 }
 
 function ReviewPanel({
   review,
-  onToggleReject,
+  onRejectedUnitsChange,
   onApply,
   onClose,
   disabled,
 }: {
   review: ReviewState;
-  onToggleReject: (unitId: string) => void;
+  onRejectedUnitsChange: (unitIds: string[]) => void;
   onApply: () => void;
   onClose: () => void;
   disabled: boolean;
 }) {
+  const changedLines = useMemo(() => review.plan.units.reduce((total, unit) => (
+    total + Math.max(unit.displayHunk.beforeLines.length, unit.displayHunk.afterLines.length)
+  ), 0), [review.plan.units]);
+  const largeReview = isLargeExternalReview(review.plan.units, changedLines);
+  const [expandedId, setExpandedId] = useState<string | null>(() => largeReview ? null : review.plan.units[0]?.id ?? null);
+  const rejectedUnitIds = useMemo(() => new Set(review.rejectedUnitIds), [review.rejectedUnitIds]);
+  const protectedUnitIds = useMemo(() => new Set(review.protectedUnitIds), [review.protectedUnitIds]);
+
+  useEffect(() => {
+    setExpandedId(largeReview ? null : review.plan.units[0]?.id ?? null);
+  }, [largeReview, review.plan.units]);
+
+  const toggleRejected = (unitId: string) => {
+    const nextRejected = new Set(rejectedUnitIds);
+    if (nextRejected.has(unitId)) nextRejected.delete(unitId);
+    else nextRejected.add(unitId);
+    onRejectedUnitsChange([...nextRejected]);
+  };
+
+  const rejectAll = () => {
+    onRejectedUnitsChange(review.plan.units.map((unit) => unit.id));
+  };
+
+  const acceptAll = () => {
+    onRejectedUnitsChange([...protectedUnitIds]);
+  };
+
+  const rejectedCount = rejectedUnitIds.size;
+  const acceptedCount = Math.max(0, review.plan.units.length - rejectedCount);
+
   return (
     <section className="vscode-scie-review-panel">
-      <header>
-        <strong>{review.title}</strong>
-        <span>{review.plan.units.length} review unit(s)</span>
-        <button type="button" onClick={onClose}>Close</button>
+      <header className="vscode-scie-review-header">
+        <div>
+          <strong>{review.title}</strong>
+          <span>Disk changed while this document was open. Choose which disk changes should be rejected before applying the review.</span>
+          <small>{review.plan.units.length} change{review.plan.units.length === 1 ? '' : 's'} - {changedLines} changed line{changedLines === 1 ? '' : 's'}</small>
+        </div>
+        <button type="button" aria-label="Close external change review" onClick={onClose}>Close</button>
       </header>
+      {review.protectedUnitIds.length > 0 && (
+        <div className="vscode-scie-review-warning" role="alert">
+          <strong>Locked content changed.</strong>
+          <span>Those changes are rejected by default. Clear a rejection only if you intentionally want to accept the disk edit.</span>
+        </div>
+      )}
       <div className="vscode-scie-review-units">
-        {review.plan.units.map((unit) => {
-          const rejected = review.rejectedUnitIds.includes(unit.id);
+        {largeReview && review.plan.units.length > 0 && (
+          <div className="vscode-scie-review-large-note" role="status">
+            <strong>Large external change set</strong>
+            <span>Cards start collapsed so the review stays readable. Expand one change at a time to compare the open document with the disk version.</span>
+          </div>
+        )}
+        {review.plan.units.length === 0 ? (
+          <p className="vscode-scie-review-empty">Only review metadata changed.</p>
+        ) : review.plan.units.map((unit, index) => {
+          const rejected = rejectedUnitIds.has(unit.id);
+          const protectedChange = protectedUnitIds.has(unit.id);
+          const expanded = expandedId === unit.id;
           return (
-            <div key={unit.id} className={`vscode-scie-review-unit ${rejected ? 'rejected' : ''}`}>
-              <label>
-                <input type="checkbox" checked={rejected} disabled={disabled} onChange={() => onToggleReject(unit.id)} />
-                Reject this external change
-              </label>
-              <div className="vscode-scie-review-grid">
-                <pre>{unit.beforeMarkdown || '(empty)'}</pre>
-                <pre>{unit.afterMarkdown || '(empty)'}</pre>
+            <section key={unit.id} className={`vscode-scie-review-unit ${rejected ? 'rejected' : ''} ${expanded ? 'expanded' : ''} ${protectedChange ? 'protected' : ''}`}>
+              <div className="vscode-scie-review-card-shell">
+                <label className="vscode-scie-review-selector">
+                  <input type="checkbox" checked={rejected} disabled={disabled} onChange={() => toggleRejected(unit.id)} />
+                  <span>Reject</span>
+                </label>
+                <button
+                  type="button"
+                  className="vscode-scie-review-summary"
+                  aria-expanded={expanded}
+                  onClick={() => setExpandedId((current) => current === unit.id ? null : unit.id)}
+                >
+                  <span className="vscode-scie-review-index">Change {index + 1}</span>
+                  <span className="vscode-scie-review-title">{reviewUnitTitle(unit)}</span>
+                  <span className="vscode-scie-review-preview">{summarizeMarkdown(unit.afterMarkdown || unit.beforeMarkdown)}</span>
+                  {protectedChange && <em>locked content</em>}
+                </button>
               </div>
-            </div>
+              <div className="vscode-scie-review-detail" aria-hidden={!expanded}>
+                {expanded && (
+                  <ReviewUnitBody
+                    unit={unit}
+                    beforeLabel="Open document"
+                    afterLabel="Disk version"
+                  />
+                )}
+              </div>
+            </section>
           );
         })}
       </div>
       <footer>
-        <button type="button" onClick={onApply} disabled={disabled}>Apply Review</button>
+        <span>{acceptedCount} accepted - {rejectedCount} rejected</span>
+        <div>
+          <button type="button" onClick={rejectAll} disabled={disabled || review.plan.units.length === 0}>Reject all</button>
+          <button type="button" onClick={acceptAll} disabled={disabled || review.plan.units.length === 0}>Accept all safe</button>
+          <button type="button" className="primary" onClick={onApply} disabled={disabled}>Apply review</button>
+        </div>
       </footer>
     </section>
   );
 }
 
 function Modal({ state, children, onClose }: { state: ModalState; children: ReactNode; onClose: () => void }) {
-  const title = state?.type ?? 'Dialog';
+  const copy = dialogCopyForState(state);
   return (
     <div className="vscode-scie-modal-backdrop" role="presentation">
-      <section className="vscode-scie-modal" role="dialog" aria-modal="true" aria-label={title}>
-        <button type="button" className="vscode-scie-modal-close" onClick={onClose}>Close</button>
-        {children}
+      <section className="vscode-scie-modal" role="dialog" aria-modal="true" aria-labelledby="vscode-scie-dialog-title" aria-describedby="vscode-scie-dialog-description">
+        <header className="vscode-scie-dialog-header">
+          <div>
+            <span>{copy.eyebrow}</span>
+            <h2 id="vscode-scie-dialog-title">{copy.title}</h2>
+            <p id="vscode-scie-dialog-description">{copy.description}</p>
+          </div>
+          <button type="button" className="vscode-scie-modal-close" aria-label={`Close ${copy.title}`} onClick={onClose}>Close</button>
+        </header>
+        <div className="vscode-scie-dialog-body">
+          {children}
+        </div>
       </section>
     </div>
   );
 }
 
-function NoteForm({ state, onSubmit }: { state: Extract<ModalState, { type: 'note' }>; onSubmit: (kind: EditorNoteKind, body: string) => void }) {
+function NoteForm({ state, onSubmit, onCancel }: { state: Extract<ModalState, { type: 'note' }>; onSubmit: (kind: EditorNoteKind, body: string) => void; onCancel: () => void }) {
   const [body, setBody] = useState(state.body);
   return (
-    <form onSubmit={(event) => { event.preventDefault(); onSubmit(state.kind, body); }}>
-      <h2>{state.kind === 'human' ? 'Note to Human' : 'Note to LLM'}</h2>
-      <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={5} autoFocus />
+    <form className="vscode-scie-dialog-form" onSubmit={(event) => { event.preventDefault(); onSubmit(state.kind, body); }}>
+      <label>Note text<textarea value={body} onChange={(event) => setBody(event.target.value)} rows={5} autoFocus /></label>
       <div className="vscode-scie-dialog-actions">
+        <button type="button" onClick={onCancel}>Cancel</button>
         <button type="submit">Insert Note</button>
       </div>
     </form>
   );
 }
 
-function VariableForm({ state, onSubmit }: { state: Extract<ModalState, { type: 'variable' }>; onSubmit: (name: string, value: string) => void }) {
+function VariableForm({ state, onSubmit, onCancel }: { state: Extract<ModalState, { type: 'variable' }>; onSubmit: (name: string, value: string) => void; onCancel: () => void }) {
   const [name, setName] = useState(state.name);
   const [value, setValue] = useState(state.value);
   return (
-    <form onSubmit={(event) => { event.preventDefault(); onSubmit(name, value); }}>
-      <h2>Variable</h2>
+    <form className="vscode-scie-dialog-form" onSubmit={(event) => { event.preventDefault(); onSubmit(name, value); }}>
       <label>Name<input value={name} onChange={(event) => setName(event.target.value)} autoFocus /></label>
       <label>Value<input value={value} onChange={(event) => setValue(event.target.value)} /></label>
       <div className="vscode-scie-dialog-actions">
+        <button type="button" onClick={onCancel}>Cancel</button>
         <button type="submit">Create Variable</button>
       </div>
     </form>
   );
 }
 
-function VersionForm({ state, onSubmit }: { state: Extract<ModalState, { type: 'version' }>; onSubmit: (groupId: string) => void }) {
+function VersionForm({ state, onSubmit, onCancel }: { state: Extract<ModalState, { type: 'version' }>; onSubmit: (groupId: string) => void; onCancel: () => void }) {
   const [groupId, setGroupId] = useState(state.groupId);
   return (
-    <form onSubmit={(event) => { event.preventDefault(); onSubmit(groupId); }}>
-      <h2>Text Version</h2>
+    <form className="vscode-scie-dialog-form" onSubmit={(event) => { event.preventDefault(); onSubmit(groupId); }}>
       <label>Group ID<input value={groupId} onChange={(event) => setGroupId(event.target.value)} autoFocus /></label>
       <div className="vscode-scie-dialog-actions">
+        <button type="button" onClick={onCancel}>Cancel</button>
         <button type="submit">Insert Version</button>
       </div>
     </form>
   );
+}
+
+function isLargeExternalReview(reviewUnits: ReviewUnit[], changedLines: number): boolean {
+  return reviewUnits.length >= 12 || changedLines >= 160;
+}
+
+function reviewUnitTitle(unit: ReviewUnit): string {
+  if (unit.beforeMarkdown.trim() && unit.afterMarkdown.trim()) return 'Text changed on disk';
+  if (unit.afterMarkdown.trim()) return 'Text added on disk';
+  if (unit.beforeMarkdown.trim()) return 'Text removed on disk';
+  return 'Metadata changed on disk';
+}
+
+function summarizeMarkdown(markdown: string): string {
+  const text = markdown
+    .replace(/```[\s\S]*?```/g, ' code block ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/[#*_`>\[\](){}|~]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return 'No visible text.';
+  return text.length > 170 ? `${text.slice(0, 167).trimEnd()}...` : text;
+}
+
+function dialogCopyForState(state: ModalState): { eyebrow: string; title: string; description: string } {
+  if (state?.type === 'note') {
+      return state.kind === 'human'
+        ? {
+          eyebrow: 'Review note',
+          title: 'Note to Human',
+          description: 'Add a human-facing review note at the current selection or cursor.',
+        }
+        : {
+          eyebrow: 'Document note',
+          title: 'Insert note',
+          description: 'Add a note at the current selection or cursor.',
+        };
+  }
+  if (state?.type === 'variable') {
+    return {
+      eyebrow: 'Document variable',
+      title: 'Variable',
+      description: 'Create or update a frontmatter variable and insert its token at the cursor.',
+    };
+  }
+  return {
+    eyebrow: 'Revision block',
+    title: 'Text Version',
+    description: 'Wrap selected text or insert a new version-choice block.',
+  };
+}
+
+function activeHeadingIdForLine(headings: MarkdownHeading[], line: number): string | null {
+  let activeHeading: MarkdownHeading | null = null;
+  for (const heading of headings) {
+    if (heading.line > line) break;
+    activeHeading = heading;
+  }
+  return activeHeading?.id ?? headings[0]?.id ?? null;
+}
+
+function visualJumpTargetForHeading(headings: MarkdownHeading[], heading: MarkdownHeading): VisualMarkdownJumpTarget {
+  const occurrence = headings
+    .filter((candidate) => candidate.line <= heading.line && candidate.level === heading.level && candidate.text === heading.text)
+    .length - 1;
+  return {
+    level: heading.level,
+    text: heading.text,
+    occurrence: Math.max(0, occurrence),
+  };
 }
 
 function latestPendingEditText(pending: Map<string, string>): string | null {
@@ -724,6 +951,10 @@ function latestPendingEditText(pending: Map<string, string>): string | null {
 
 function createEditId(): string {
   return `webview-${Date.now().toString(36)}-${randomToken(8)}`;
+}
+
+function createEditChainId(): string {
+  return `chain-${Date.now().toString(36)}-${randomToken(8)}`;
 }
 
 function randomToken(length: number): string {
@@ -766,6 +997,8 @@ interface SavedWebviewState {
   mode: EditorMode;
   themeMode: VscodeThemeMode;
   visualStyle: VisualStyleId;
+  dataSidebarOpen: boolean;
+  dataSidebarWidth: number;
 }
 
 function readSavedWebviewState(): SavedWebviewState {
@@ -773,7 +1006,14 @@ function readSavedWebviewState(): SavedWebviewState {
   const mode = normalizeEditorMode(raw?.mode);
   const themeMode = normalizeThemeMode(raw?.themeMode);
   const visualStyle = isVisualStyleId(raw?.visualStyle) ? raw.visualStyle : 'science';
-  return { mode, themeMode, visualStyle };
+  const legacyState = raw as (Partial<SavedWebviewState> & { outlineSidebarOpen?: unknown; outlineSidebarWidth?: unknown }) | null;
+  const dataSidebarOpen = typeof raw?.dataSidebarOpen === 'boolean'
+    ? raw.dataSidebarOpen
+    : typeof legacyState?.outlineSidebarOpen === 'boolean'
+      ? legacyState.outlineSidebarOpen
+      : false;
+  const dataSidebarWidth = normalizeDataSidebarWidth(raw?.dataSidebarWidth ?? legacyState?.outlineSidebarWidth);
+  return { mode, themeMode, visualStyle, dataSidebarOpen, dataSidebarWidth };
 }
 
 function mergeSavedWebviewState(...states: Array<unknown>): Partial<SavedWebviewState> | null {
@@ -808,29 +1048,9 @@ function normalizeEditorMode(value: unknown): EditorMode {
   return 'visual';
 }
 
-function normalizeThemeMode(value: unknown): VscodeThemeMode {
-  return value === 'light' || value === 'dark' || value === 'sepia' || value === 'vscode'
+function normalizeDataSidebarWidth(value: unknown): number {
+  const width = typeof value === 'number' && Number.isFinite(value)
     ? value
-    : 'dark';
-}
-
-function useResolvedVscodeTheme(themeMode: VscodeThemeMode): 'light' | 'dark' | 'sepia' {
-  const [vscodeTheme, setVscodeTheme] = useState(resolveVscodeWorkbenchTheme);
-
-  useEffect(() => {
-    if (typeof MutationObserver === 'undefined') return undefined;
-    const observer = new MutationObserver(() => setVscodeTheme(resolveVscodeWorkbenchTheme()));
-    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-    return () => observer.disconnect();
-  }, []);
-
-  if (themeMode === 'vscode') return vscodeTheme;
-  return themeMode;
-}
-
-function resolveVscodeWorkbenchTheme(): 'light' | 'dark' {
-  const classList = document.body.classList;
-  if (classList.contains('vscode-light')) return 'light';
-  if (classList.contains('vscode-dark') || classList.contains('vscode-high-contrast')) return 'dark';
-  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    : DATA_SIDEBAR_DEFAULT_WIDTH;
+  return Math.max(DATA_SIDEBAR_MIN_WIDTH, Math.min(DATA_SIDEBAR_MAX_WIDTH, Math.round(width)));
 }

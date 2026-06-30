@@ -3,13 +3,18 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { AutosaveStatus, FileMetadata } from '../documentState';
 import { DEFAULT_METADATA, UNTITLED_NAME, metadataChanged } from '../documentState';
 import { BACKUP_INTERVAL_MS, markAutosaveBackupCreated, shouldCreateAutosaveBackup } from '../../services/autosaveService';
-import { createBackupSnapshot, pickSavePath, statFile, writeTextFileAtomic } from '../../services/fileService';
-import { rememberRecentFile } from '../../services/settingsService';
 import type { PersistedSettings } from '../../services/settingsService';
 import type { ConfirmState } from './useDialogs';
-import { clearFileDraft, saveFileDraft } from '../../services/draftRecoveryService';
-import { parseFrontmatter } from '../../domain/document/frontmatter';
-import { flushVisualEditorState } from '../../components/visualEditorStateSync';
+import { parseFrontmatter } from '@sciemd/core';
+import { commitVisualEditorReadResult, readVisualEditorState } from '../../components/visualEditorStateSync';
+import type { DocumentHost } from '../host/documentHost';
+
+export interface VisualRoundTripWriteContext {
+  autosave: boolean;
+  forceSaveAs: boolean;
+  forceOverwrite: boolean;
+  reason: 'save';
+}
 
 interface SaveOperationsParams {
   filePath: string | null;
@@ -23,8 +28,11 @@ interface SaveOperationsParams {
   setLastAutosavedAt: (timestamp: number | null) => void;
   setExternalConflict: (conflict: boolean) => void;
   setSettings: Dispatch<SetStateAction<PersistedSettings>>;
+  commitMarkdownEdit: (markdown: string) => void;
+  confirmVisualRoundTripWrite?: (markdown: string, context: VisualRoundTripWriteContext) => Promise<boolean>;
   confirmText: (state: ConfirmState) => Promise<boolean>;
   pushToast: (text: string, tone?: 'info' | 'success' | 'warning' | 'error') => void;
+  host: DocumentHost;
 }
 
 export function useSaveOperations({
@@ -39,8 +47,11 @@ export function useSaveOperations({
   setLastAutosavedAt,
   setExternalConflict,
   setSettings,
+  commitMarkdownEdit,
+  confirmVisualRoundTripWrite,
   confirmText,
   pushToast,
+  host,
 }: SaveOperationsParams) {
   const backupScheduleRef = useRef({ sessionBackupDone: false, lastBackupAtMs: 0 });
   const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -77,10 +88,15 @@ export function useSaveOperations({
       forceSaveAs: options.forceSaveAs ?? false,
       forceOverwrite: options.forceOverwrite ?? false,
     };
-    const flushedMarkdown = flushVisualEditorState();
-    if (flushedMarkdown !== null) {
-      markdownRef.current = flushedMarkdown;
-    }
+    const visualState = readVisualEditorState();
+    const outputMarkdown = visualState?.markdown ?? markdownRef.current;
+    const visualWriteAllowed = await confirmVisualRoundTripWrite?.(outputMarkdown, {
+      ...requestedOptions,
+      reason: 'save',
+    });
+    if (visualWriteAllowed === false) return false;
+    const flushedMarkdown = commitVisualEditorReadResult(visualState, commitMarkdownEdit);
+    markdownRef.current = flushedMarkdown ?? outputMarkdown;
     const snapshot = {
       ...requestedOptions,
       sourceDocumentIdentityVersion: getDocumentIdentityVersion(),
@@ -92,15 +108,24 @@ export function useSaveOperations({
       getDocumentIdentityVersion() === snapshot.sourceDocumentIdentityVersion
       && filePathRef.current === snapshot.sourcePath
     );
+    const recordSaveDiagnostic = (eventType: string, message: string, documentPath = snapshot.sourcePath) => {
+      void host.recovery.appendDiagnosticsEvent({
+        eventType,
+        message,
+        documentPath,
+        markdownBytes: byteLength(snapshot.sourceMarkdown),
+      });
+    };
 
     const runSave = async (): Promise<string | false> => {
       if (!isSnapshotCurrent()) return false;
       let targetPath: string | null = null;
       try {
         targetPath = snapshot.forceSaveAs || !snapshot.sourcePath
-          ? await pickSavePath(suggestedMarkdownSavePath(snapshot.sourceMarkdown, snapshot.sourcePath))
+          ? await host.dialog.pickSavePath(suggestedMarkdownSavePath(snapshot.sourceMarkdown, snapshot.sourcePath))
           : snapshot.sourcePath;
       } catch (error) {
+        recordSaveDiagnostic('save-dialog-failed', saveErrorMessage(error, 'Could not open the Save As dialog.'), targetPath);
         if (isSnapshotCurrent()) {
           console.error(error);
           setAutosaveStatus('error');
@@ -113,14 +138,20 @@ export function useSaveOperations({
 
       setAutosaveStatus('saving');
 
-      let metadataForWrite = targetPath === snapshot.sourcePath ? snapshot.sourceMetadata : DEFAULT_METADATA;
+      const latestSourceMetadata = () => (
+        targetPath === snapshot.sourcePath && filePathRef.current === snapshot.sourcePath
+          ? fileMetadataRef.current
+          : snapshot.sourceMetadata
+      );
+      let metadataForWrite = targetPath === snapshot.sourcePath ? latestSourceMetadata() : DEFAULT_METADATA;
       let existingMetadata: FileMetadata | null = null;
       let externalBackupCreated = false;
       let forceOverwriteConfirmed = false;
       let backupWarning = false;
+      let sourceTargetWasMissing = false;
       const tryCreateBackupSnapshot = async (label: string): Promise<boolean> => {
         try {
-          await createBackupSnapshot(targetPath, label);
+          await host.file.createBackupSnapshot(targetPath, label);
           return true;
         } catch (backupError) {
           backupWarning = true;
@@ -141,9 +172,9 @@ export function useSaveOperations({
       };
 
       try {
-        const preliminaryMetadata = await statFile(targetPath, { contentHash: false });
+        const preliminaryMetadata = await host.file.statFile(targetPath, { contentHash: false });
         if (isCloudPlaceholderMetadata(preliminaryMetadata)) {
-          saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+          host.recovery.saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
           if (isSnapshotCurrent()) {
             setAutosaveStatus('error');
             pushToast(
@@ -155,13 +186,22 @@ export function useSaveOperations({
           }
           return false;
         }
-        existingMetadata = await statFile(targetPath, { contentHash: true });
+        existingMetadata = await host.file.statFile(targetPath, { contentHash: true });
         if (targetPath !== snapshot.sourcePath) metadataForWrite = existingMetadata;
       } catch (error) {
         if (targetPath !== snapshot.sourcePath && isMissingFileStatError(error)) {
           existingMetadata = null;
+        } else if (targetPath === snapshot.sourcePath && snapshot.forceOverwrite && isMissingFileStatError(error)) {
+          existingMetadata = null;
+          metadataForWrite = latestSourceMetadata();
+          sourceTargetWasMissing = true;
         } else {
-          saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+          recordSaveDiagnostic(
+            snapshot.autosave ? 'autosave-verify-failed' : 'save-verify-failed',
+            saveErrorMessage(error, 'Could not verify the disk file before saving.'),
+            targetPath,
+          );
+          host.recovery.saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
           if (isSnapshotCurrent()) {
             setAutosaveStatus('error');
             pushToast(
@@ -190,7 +230,12 @@ export function useSaveOperations({
       }
 
       if (targetPath === snapshot.sourcePath && existingMetadata && metadataChanged(snapshot.sourceMetadata, existingMetadata)) {
-        saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+        recordSaveDiagnostic(
+          snapshot.autosave ? 'autosave-external-change-detected' : 'save-external-change-detected',
+          'The disk file changed before ScieMD could save the current document.',
+          targetPath,
+        );
+        host.recovery.saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
         if (isSnapshotCurrent()) {
           setAutosaveStatus('conflict');
           setExternalConflict(true);
@@ -213,13 +258,18 @@ export function useSaveOperations({
 
       try {
         if (targetPath === snapshot.sourcePath) {
-          const preWriteMetadata = await statFile(targetPath, { contentHash: true }).catch(() => null);
+          const preWriteMetadata = await host.file.statFile(targetPath, { contentHash: true }).catch(() => null);
           if (preWriteMetadata && metadataChanged(metadataForWrite, preWriteMetadata)) {
             existingMetadata = preWriteMetadata;
             metadataForWrite = preWriteMetadata;
             externalBackupCreated = false;
             if (!snapshot.forceOverwrite) {
-              saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+              recordSaveDiagnostic(
+                snapshot.autosave ? 'autosave-prewrite-conflict' : 'save-prewrite-conflict',
+                'The disk file changed just before ScieMD could write the current document.',
+                targetPath,
+              );
+              host.recovery.saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
               if (isSnapshotCurrent()) {
                 setAutosaveStatus('conflict');
                 setExternalConflict(true);
@@ -248,9 +298,9 @@ export function useSaveOperations({
         }
 
         const expectedMetadata = targetPath === snapshot.sourcePath
-          ? existingMetadata ?? snapshot.sourceMetadata
+          ? (sourceTargetWasMissing ? null : existingMetadata ?? snapshot.sourceMetadata)
           : existingMetadata;
-        const nextMetadata = await writeTextFileAtomic(targetPath, snapshot.sourceMarkdown, metadataForWrite, expectedMetadata);
+        const nextMetadata = await host.file.writeTextFileAtomic(targetPath, snapshot.sourceMarkdown, metadataForWrite, expectedMetadata);
         if (!isSnapshotCurrent()) return false;
         filePathRef.current = targetPath;
         fileMetadataRef.current = nextMetadata;
@@ -260,10 +310,10 @@ export function useSaveOperations({
         setAutosaveStatus('saved');
         setLastAutosavedAt(Date.now());
         setExternalConflict(false);
-        setSettings(rememberRecentFile(targetPath));
-        clearFileDraft(targetPath);
+        setSettings(host.settings.rememberRecentFile(targetPath));
+        host.recovery.clearFileDraft(targetPath);
         if (snapshot.sourcePath && snapshot.sourcePath !== targetPath) {
-          clearFileDraft(snapshot.sourcePath);
+          host.recovery.clearFileDraft(snapshot.sourcePath);
         }
         if (!snapshot.autosave) {
           pushToast(
@@ -275,7 +325,12 @@ export function useSaveOperations({
       } catch (error) {
         console.error(error);
         if (isExternalChangeSaveError(error)) {
-          if (snapshot.sourcePath) saveFileDraft(snapshot.sourcePath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+          recordSaveDiagnostic(
+            snapshot.autosave ? 'autosave-write-conflict' : 'save-write-conflict',
+            saveErrorMessage(error, 'The file changed on disk before ScieMD could save.'),
+            targetPath,
+          );
+          if (snapshot.sourcePath) host.recovery.saveFileDraft(snapshot.sourcePath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
           if (isSnapshotCurrent()) {
             setAutosaveStatus('conflict');
             setExternalConflict(true);
@@ -288,7 +343,12 @@ export function useSaveOperations({
           }
           return false;
         }
-        if (snapshot.sourcePath) saveFileDraft(snapshot.sourcePath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+        recordSaveDiagnostic(
+          snapshot.autosave ? 'autosave-failed' : 'save-failed',
+          saveErrorMessage(error, 'Save failed.'),
+          targetPath,
+        );
+        if (snapshot.sourcePath) host.recovery.saveFileDraft(snapshot.sourcePath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
         if (isSnapshotCurrent()) {
           setAutosaveStatus('error');
           pushToast(
@@ -306,6 +366,7 @@ export function useSaveOperations({
     const queuedSave: Promise<string | false> = saveQueueRef.current.then(runSave, runSave);
     const handledSave: Promise<string | false> = queuedSave.catch((error): false => {
       console.error('Save queue chain error:', error);
+      recordSaveDiagnostic('save-queue-failed', saveErrorMessage(error, 'Save queue failed before the document could be written.'));
       if (isSnapshotCurrent()) {
         setAutosaveStatus('error');
         pushToast(error instanceof Error ? error.message : 'Save queue failed before the document could be written.', 'error');
@@ -314,7 +375,7 @@ export function useSaveOperations({
     });
     saveQueueRef.current = handledSave.finally(() => updateSaveQueueDepth(-1));
     return handledSave;
-  }, [confirmText, getDocumentIdentityVersion, pushToast, setAutosaveStatus, setExternalConflict, setFileMetadata, setFilePath, setLastAutosavedAt, setLastSavedMarkdown, setSettings, updateSaveQueueDepth]);
+  }, [commitMarkdownEdit, confirmText, confirmVisualRoundTripWrite, getDocumentIdentityVersion, host, pushToast, setAutosaveStatus, setExternalConflict, setFileMetadata, setFilePath, setLastAutosavedAt, setLastSavedMarkdown, setSettings, updateSaveQueueDepth]);
 
   const ensureDocumentPathForAssets = useCallback(async () => {
     if (filePath) return filePath;
@@ -369,4 +430,15 @@ function isExternalChangeSaveError(error: unknown): boolean {
 function isMissingFileStatError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /could not resolve file path|not found|cannot find|no such file|os error 2/i.test(message);
+}
+
+function saveErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.trim()) return error;
+  return fallback;
+}
+
+function byteLength(value: string): number {
+  if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(value).byteLength;
+  return unescape(encodeURIComponent(value)).length;
 }

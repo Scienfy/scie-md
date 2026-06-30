@@ -1,0 +1,409 @@
+/*
+ * ScieMD app styles: editor stage, floating metadata rail, context menu, and shared editor containers.
+ * Import order is owned by app.css and mirrored by appCssBundle.ts for HTML export.
+ */
+/*
+ * ScieMD app styles: editor stage, visual/source editors, metadata rail, atoms, and save pill surfaces.
+ * Import order is owned by app.css and mirrored by appCssBundle.ts for HTML export.
+ */
+.editor-stage {
+  position: relative;
+  --editor-floating-top-safe: 20px;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.editor-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image:
+    radial-gradient(circle at 1px 1px, var(--text) 1px, transparent 0);
+  background-size: 12px 12px;
+  z-index: 1;
+}
+
+.editor-drop-overlay {
+  position: absolute;
+  inset: 14px;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  border: 1.5px dashed color-mix(in srgb, var(--accent), transparent 18%);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at center, color-mix(in srgb, var(--accent), transparent 88%), transparent 54%),
+    color-mix(in srgb, var(--surface), transparent 14%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--surface), white 16%);
+  color: var(--text-strong);
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+}
+
+.editor-drop-overlay div {
+  display: grid;
+  gap: 4px;
+  max-width: 420px;
+  border: 1px solid color-mix(in srgb, var(--border-strong), transparent 20%);
+  border-radius: 12px;
+  padding: 15px 18px;
+  background: color-mix(in srgb, var(--surface), transparent 4%);
+  box-shadow: 0 18px 48px color-mix(in srgb, var(--shadow), transparent 12%);
+  text-align: center;
+}
+
+.editor-drop-overlay strong {
+  font-size: 15px;
+}
+
+.editor-drop-overlay span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+:root[data-visual-style="scienfy"] .editor-stage {
+  --scienfy-reading-page-dot: var(--scienfy-reading-dot-color);
+}
+
+:root[data-visual-style="scienfy"] .editor-stage::before {
+  opacity: 0.04;
+  background-image:
+    radial-gradient(circle at 1px 1px, var(--scienfy-reading-stage-dot-color) 1px, transparent 1.25px);
+  background-position: 0 0;
+  background-size:
+    var(--scienfy-reading-dot-space)
+    var(--scienfy-reading-dot-space);
+  mask-image: linear-gradient(to right, transparent 0, #000 14%, #000 86%, transparent 100%);
+  transition: opacity 180ms ease, background-position 220ms ease, filter 180ms ease;
+}
+
+:root[data-visual-style="scienfy"] .editor-stage:hover,
+:root[data-visual-style="scienfy"] .editor-stage:focus-within {
+  --scienfy-reading-page-dot: var(--scienfy-reading-dot-focus-color);
+}
+
+:root[data-visual-style="scienfy"] .editor-stage:hover::before,
+:root[data-visual-style="scienfy"] .editor-stage:focus-within::before {
+  opacity: 0.065;
+  background-position: 2px 1px;
+  filter: saturate(1.04);
+}
+
+.metadata-rail {
+  position: absolute;
+  top: 74px;
+  right: 10px;
+  z-index: 16;
+  width: 34px;
+  min-height: 34px;
+  max-height: calc(100% - 120px);
+  overflow: visible;
+  pointer-events: auto;
+  font-family: var(--ui-font);
+}
+
+.metadata-rail-icons {
+  display: grid;
+  gap: 6px;
+  max-height: calc(100vh - 190px);
+  overflow: auto;
+  padding: 1px;
+  scrollbar-width: none;
+}
+
+.metadata-rail-icons::-webkit-scrollbar {
+  display: none;
+}
+
+.quick-outline {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 24;
+  display: block;
+  font-family: "Scie Sans", var(--ui-font);
+  font-weight: 400;
+}
+
+.quick-outline-trigger {
+  display: grid;
+  gap: 6px;
+  width: 42px;
+  min-width: 42px;
+  min-height: 48px;
+  max-height: min(72vh, 560px);
+  overflow: hidden;
+  place-content: center;
+  border-color: transparent;
+  border-radius: 12px;
+  padding: 8px 0;
+  background: color-mix(in srgb, var(--surface), transparent 35%);
+  box-shadow: none;
+  backdrop-filter: blur(12px);
+}
+
+.quick-outline-trigger:hover,
+.quick-outline:focus-within .quick-outline-trigger {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--surface), transparent 8%);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--shadow), transparent 28%);
+}
+
+.quick-outline-dash {
+  display: block;
+  width: 15px;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted), transparent 42%);
+}
+
+.quick-outline-dash.active {
+  width: 22px;
+  background: var(--text-strong);
+  opacity: 1;
+}
+
+.quick-outline-dash.level-2 { width: 14px; opacity: 0.86; }
+.quick-outline-dash.level-3 { width: 11px; opacity: 0.76; }
+.quick-outline-dash.level-4,
+.quick-outline-dash.level-5,
+.quick-outline-dash.level-6 { width: 9px; opacity: 0.68; }
+
+.quick-outline-dash.active.level-2,
+.quick-outline-dash.active.level-3,
+.quick-outline-dash.active.level-4,
+.quick-outline-dash.active.level-5,
+.quick-outline-dash.active.level-6 {
+  width: 22px;
+  opacity: 1;
+}
+
+.quick-outline-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: min(360px, calc(100vw - 44px));
+  max-height: min(74vh, 620px);
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--border-strong), transparent 20%);
+  border-radius: 13px;
+  padding: 11px 8px;
+  background: color-mix(in srgb, var(--surface), transparent 5%);
+  box-shadow: 0 22px 60px color-mix(in srgb, var(--shadow), transparent 12%);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-3px) scale(0.985);
+  transform-origin: top left;
+  transition: opacity 90ms ease, transform 90ms ease;
+  backdrop-filter: blur(18px);
+  font-family: "Scie Sans", var(--ui-font);
+  font-weight: 400;
+}
+
+.quick-outline:hover .quick-outline-card,
+.quick-outline:focus-within .quick-outline-card {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.quick-outline:hover .quick-outline-trigger,
+.quick-outline:focus-within .quick-outline-trigger {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.quick-outline-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  min-height: 30px;
+  border-color: transparent;
+  border-radius: 7px;
+  padding: 4px 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.22;
+  text-align: left;
+}
+
+.quick-outline-item:hover,
+.quick-outline-item:focus-visible {
+  background: var(--button-hover);
+  color: var(--text-strong);
+}
+
+.quick-outline-item.active {
+  background: color-mix(in srgb, var(--button-hover), var(--accent) 10%);
+  color: var(--text-strong);
+  font-weight: 500;
+}
+
+.quick-outline-item.level-2 { padding-left: 18px; }
+.quick-outline-item.level-3 { padding-left: 30px; }
+.quick-outline-item.level-4,
+.quick-outline-item.level-5,
+.quick-outline-item.level-6 { padding-left: 42px; }
+
+.quick-outline-item-dash {
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor, transparent 45%);
+}
+
+.quick-outline-item.active .quick-outline-item-dash {
+  background: currentColor;
+}
+
+.quick-outline-item-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-outline-empty,
+.quick-outline-more {
+  margin: 4px 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.metadata-rail-item {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 999px;
+  padding: 0;
+  background: color-mix(in srgb, var(--surface), transparent 8%);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--shadow), transparent 26%);
+  color: var(--text-muted);
+  backdrop-filter: blur(10px);
+}
+
+.metadata-rail-item.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.metadata-rail-item.llm-comment {
+  color: #7c4dff;
+}
+
+.metadata-rail-item.human-comment {
+  color: #0f8b6f;
+}
+
+.metadata-rail-item.warning {
+  border-color: color-mix(in srgb, var(--warning), var(--border) 28%);
+  color: var(--warning);
+}
+
+.metadata-rail-item.error {
+  border-color: color-mix(in srgb, var(--error), var(--border) 28%);
+  color: var(--error);
+}
+
+.editor-context-menu {
+  position: fixed;
+  z-index: 60;
+  display: grid;
+  gap: 4px;
+  width: 290px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 6px;
+  background: var(--surface);
+  box-shadow: 0 18px 48px var(--shadow);
+  color: var(--text);
+  font-family: var(--ui-font);
+}
+
+.editor-context-menu header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.editor-context-menu header button,
+.editor-context-menu > button {
+  border: 0;
+  background: transparent;
+}
+
+.editor-context-menu header button {
+  width: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  color: var(--text-muted);
+}
+
+.editor-context-menu > button {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border-radius: 7px;
+  padding: 0 9px;
+  color: var(--text);
+  text-align: left;
+}
+
+.editor-context-menu > button:hover:not(:disabled),
+.editor-context-menu > button:focus-visible:not(:disabled) {
+  background: color-mix(in srgb, var(--accent), transparent 90%);
+  color: var(--text-strong);
+}
+
+.editor-context-menu > button:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+:root[data-visual-style="codex"] .editor-stage::before {
+  opacity: 0;
+}
+
+:root[data-visual-style="amin"] .editor-stage::before {
+  opacity: 0;
+}
+
+:root[data-visual-style="science"] .editor-stage::before,
+:root[data-visual-style="nature"] .editor-stage::before {
+  opacity: 0;
+}
+
+.visual-editor,
+.source-editor {
+  height: 100%;
+  min-height: 0;
+}
+
+.source-editor-shell {
+  position: relative;
+}
+
+.source-editor-host {
+  height: 100%;
+  min-height: 0;
+}

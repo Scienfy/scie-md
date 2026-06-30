@@ -155,7 +155,7 @@ describe('htmlExport', () => {
     const html = await renderMarkdownHtmlFragment('![Critical workflow](assets/missing.png)\n', 'C:\\docs\\paper.md');
 
     expect(html).toContain('data:image/svg+xml');
-    expect(html).toContain('Missing%20image');
+    expect(html).toContain('data-scie-md-export-issue%3D%22missing-image%22');
     expect(html).not.toContain('assets/missing.png');
   });
 

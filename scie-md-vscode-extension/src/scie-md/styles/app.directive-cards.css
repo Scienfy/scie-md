@@ -1,0 +1,145 @@
+/*
+ * ScieMD app styles: directive card preview, source editing controls, and base card shell.
+ * Import order is owned by app.css and mirrored by appCssBundle.ts for HTML export.
+ */
+/*
+ * ScieMD app styles: directive card editors, rendered directives, Mermaid cards, and math edit controls.
+ * Import order is owned by app.css and mirrored by appCssBundle.ts for HTML export.
+ */
+.directive-card-preview {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.directive-card-preview > :first-child {
+  margin-top: 0;
+}
+
+.directive-card-preview > :last-child {
+  margin-bottom: 0;
+}
+
+.directive-card-preview img,
+.directive-card-preview svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.directive-card-preview .mermaid-figure {
+  display: grid;
+  justify-items: center;
+  margin: 0.5rem 0;
+  overflow-x: auto;
+}
+
+.directive-card-preview .mermaid-figure svg {
+  width: clamp(680px, 72%, 1080px);
+  max-width: 100%;
+}
+
+.directive-card-body {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  background: var(--editor-bg);
+  color: var(--text);
+  font: 0.82em/1.5 var(--mono-font);
+}
+
+.directive-card-body:focus,
+.directive-card-controls input:focus,
+.directive-card-controls select:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent), transparent 55%);
+  outline-offset: 1px;
+}
+
+.directive-card-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.45fr) minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.directive-card-type-field,
+.directive-card-label-field,
+.directive-card-apply-field {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.directive-card-type-field small,
+.directive-card-label-field small,
+.directive-card-apply-status {
+  color: var(--text-muted);
+  font: 11px/1.25 var(--ui-font);
+}
+
+.directive-card-type-field > span {
+  color: var(--text-muted);
+  font: 11px/1.2 var(--ui-font);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.directive-card-label-warning {
+  color: #c62828;
+  font: 11px/1.2 var(--ui-font);
+}
+
+.directive-card-label-warning[hidden] {
+  display: none;
+}
+
+.directive-card-controls input,
+.directive-card-controls select {
+  min-width: 0;
+  min-height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: 12px var(--ui-font);
+}
+
+.directive-card-controls select {
+  cursor: pointer;
+}
+
+.directive-card-controls button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.directive-card-apply-field {
+  grid-template-columns: auto auto;
+  justify-content: end;
+  align-items: start;
+}
+
+.directive-card-apply-status {
+  grid-column: 1 / -1;
+  min-width: 112px;
+  text-align: right;
+}
+
+.directive-card-apply-status[data-tone="pending"] {
+  color: var(--accent);
+}
+
+.directive-card-apply-status[data-tone="success"] {
+  color: #2e7d32;
+}
+
+.directive-card {
+  border-left: 4px solid var(--accent);
+}

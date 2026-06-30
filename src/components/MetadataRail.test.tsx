@@ -1,9 +1,9 @@
 import { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ParsedScienfyDocument } from '../domain/document/documentModel';
-import type { EditorComment } from '../markdown/editorComments';
-import type { ProtectedBlock } from '../markdown/protectedBlocks';
+import type { ParsedScienfyDocument } from '@sciemd/core';
+import type { EditorComment } from '@sciemd/core';
+import type { ProtectedBlock } from '@sciemd/core';
 import { MetadataRail } from './MetadataRail';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

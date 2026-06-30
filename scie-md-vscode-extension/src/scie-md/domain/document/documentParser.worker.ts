@@ -1,5 +1,5 @@
-import { safeParseScienfyDocument } from './documentModel';
-import type { ParsedScienfyDocument, ParseScienfyDocumentOptions } from './documentModel';
+import { safeParseScienfyDocument } from '@sciemd/core';
+import type { ParsedScienfyDocument, ParseScienfyDocumentOptions } from '@sciemd/core';
 
 interface ParseWorkerRequest {
   id: number;

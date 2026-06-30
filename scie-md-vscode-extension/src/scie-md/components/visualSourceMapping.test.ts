@@ -2,7 +2,7 @@ import { Editor, defaultValueCtx, editorViewCtx } from '@milkdown/kit/core';
 import { commonmark } from '@milkdown/kit/preset/commonmark';
 import { gfm } from '@milkdown/kit/preset/gfm';
 import { describe, expect, it } from 'vitest';
-import { parseFrontmatter } from '../domain/document/frontmatter';
+import { parseFrontmatter } from '@sciemd/core';
 import { markdownTextblockStartLines, textblockIndexAtPosition, visualSourceLineForPosition } from './visualSourceMapping';
 
 describe('visualSourceMapping', () => {

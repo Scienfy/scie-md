@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseScienfyDocument } from '../domain/document/documentModel';
+import { parseScienfyDocument } from '@sciemd/core';
 import { analyzeMarkdownDocument } from './documentIntelligence';
 import {
   assessManuscriptReadiness,

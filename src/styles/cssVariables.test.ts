@@ -1,13 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { appCssModuleOrder } from './appCssBundle';
 
-const appCss = readFileSync(join(process.cwd(), 'src/styles/app.css'), 'utf8');
+const appIndexCss = readFileSync(join(process.cwd(), 'src/styles/app.css'), 'utf8');
+const appCss = appCssModuleOrder
+  .map((fileName) => readFileSync(join(process.cwd(), 'src/styles', fileName), 'utf8'))
+  .join('\n');
 const scientificDocumentCss = readFileSync(join(process.cwd(), 'src/styles/scientific-document.css'), 'utf8');
 const styleFiles = [appCss, scientificDocumentCss];
 const combinedCss = styleFiles.join('\n');
 
 describe('style CSS variables', () => {
+  it('keeps app.css as the explicit ownership index for runtime imports', () => {
+    const imports = appIndexCss
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("@import './"))
+      .map((line) => line.slice("@import './".length, -2));
+
+    expect(imports).toEqual([...appCssModuleOrder]);
+    expect(appIndexCss).toContain('ScieMD app style index');
+    expect(appIndexCss).toContain('appCssBundle.ts');
+  });
+
   it('defines every CSS custom property referenced by app styles', () => {
     const definitions = new Set<string>();
     const usages = new Set<string>();

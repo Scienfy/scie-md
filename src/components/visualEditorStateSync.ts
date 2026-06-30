@@ -1,4 +1,6 @@
-type VisualEditorStateReader = () => string | null;
+import type { EditorReadResult } from './editorAdapter';
+
+type VisualEditorStateReader = () => EditorReadResult | null;
 
 interface RegisteredVisualEditorStateReader {
   id: symbol;
@@ -16,6 +18,26 @@ export function setVisualEditorStateReader(reader: VisualEditorStateReader): () 
   };
 }
 
-export function flushVisualEditorState(): string | null {
+export function readVisualEditorState(): EditorReadResult | null {
   return registeredReaders.at(-1)?.reader() ?? null;
+}
+
+export function flushVisualEditorState(): string | null {
+  return readVisualEditorState()?.markdown ?? null;
+}
+
+export function commitVisualEditorReadResult(
+  result: EditorReadResult | null,
+  onCommit: (markdown: string) => void,
+): string | null {
+  if (!result) return null;
+  if (result.changed) {
+    result.markCommitted?.();
+    onCommit(result.markdown);
+  }
+  return result.markdown;
+}
+
+export function commitVisualEditorState(onCommit: (markdown: string) => void): string | null {
+  return commitVisualEditorReadResult(readVisualEditorState(), onCommit);
 }

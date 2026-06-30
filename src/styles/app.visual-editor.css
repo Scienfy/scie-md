@@ -1,0 +1,176 @@
+/*
+ * ScieMD app styles: visual editor base, block handles, insertion gaps, and math preview shells.
+ * Import order is owned by app.css and mirrored by appCssBundle.ts for HTML export.
+ */
+.visual-editor {
+  position: relative;
+  font-family: var(--doc-font);
+  font-size: calc(var(--document-body-size) * var(--font-scale));
+  line-height: var(--editor-line-height);
+  overflow: visible;
+}
+
+.visual-editor .ProseMirror {
+  position: relative;
+  min-height: 100%;
+  padding-bottom: 42vh;
+}
+
+.editor-stage .visual-editor .ProseMirror {
+  padding-top: var(--editor-floating-top-safe);
+}
+
+.block-handle {
+  position: absolute;
+  left: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+  background: color-mix(in srgb, var(--surface), transparent 8%);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--shadow), transparent 40%);
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.block-handle-grip {
+  width: 18px;
+  color: var(--text-muted);
+  font-family: var(--ui-font);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: -1px;
+  text-align: center;
+  cursor: grab;
+}
+
+.block-handle button {
+  width: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  border-radius: 4px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.visual-editor .ProseMirror > p:has(> br.ProseMirror-trailingBreak) {
+  min-height: 1.8em;
+  border-radius: 6px;
+}
+
+.visual-editor .ProseMirror > p:only-child:has(> br.ProseMirror-trailingBreak)::before {
+  content: "Start writing";
+  display: inline-block;
+  color: var(--text-muted);
+  font-family: var(--ui-font);
+  font-size: 0.82em;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.visual-editor .ProseMirror:focus > p:only-child:has(> br.ProseMirror-trailingBreak)::before,
+.visual-editor .ProseMirror:focus-within > p:only-child:has(> br.ProseMirror-trailingBreak)::before {
+  color: var(--accent);
+  opacity: 0.72;
+}
+
+.visual-insertion-gap {
+  display: grid;
+  place-items: center;
+  min-height: 26px;
+  margin-block:
+    calc(var(--document-block-gap) * var(--visual-block-scale) * -0.2);
+  opacity: 0.72;
+  user-select: none;
+}
+
+.visual-insertion-gap::before {
+  content: "";
+  grid-area: 1 / 1;
+  width: min(240px, 62%);
+  height: 1px;
+  background:
+    repeating-linear-gradient(
+      to right,
+      color-mix(in srgb, var(--border), transparent 8%) 0 5px,
+      transparent 5px 11px
+    );
+}
+
+.visual-insertion-gap-button {
+  grid-area: 1 / 1;
+  min-height: 24px;
+  border: 1px solid color-mix(in srgb, var(--border), transparent 22%);
+  border-radius: 999px;
+  padding: 2px 10px;
+  background: color-mix(in srgb, var(--surface), transparent 8%);
+  color: var(--text-muted);
+  font-family: var(--ui-font);
+  font-size: 11px;
+  line-height: 1;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--shadow), transparent 40%);
+  opacity: 0;
+  transform: translateY(1px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.visual-insertion-gap:hover,
+.visual-insertion-gap:focus-within {
+  opacity: 1;
+}
+
+.visual-insertion-gap:hover .visual-insertion-gap-button,
+.visual-insertion-gap-button:focus-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.visual-insertion-gap-button:hover,
+.visual-insertion-gap-button:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.math-source-hidden {
+  display: inline-block;
+  width: 0;
+  max-width: 0;
+  overflow: hidden;
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
+  user-select: none;
+}
+
+.math-preview {
+  color: var(--text-strong);
+}
+
+.math-preview-error .math-preview-rendered {
+  color: var(--error);
+  text-decoration: underline wavy color-mix(in srgb, var(--error), transparent 25%);
+  text-underline-offset: 3px;
+}
+
+.render-error-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  border: 1px solid color-mix(in srgb, var(--error), transparent 28%);
+  border-radius: 999px;
+  padding: 0 6px;
+  background: color-mix(in srgb, var(--error), transparent 90%);
+  color: var(--error);
+  font: 10.5px/1 var(--ui-font);
+  vertical-align: middle;
+}

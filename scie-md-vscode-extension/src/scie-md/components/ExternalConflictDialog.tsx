@@ -1,8 +1,7 @@
 import { Check, ChevronDown, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { DiffHunk } from '../markdown/diffReview';
-import type { ProtectedChange } from '../markdown/protectedBlocks';
-import type { ReviewUnit } from '../markdown/reviewPlan';
+import type { DiffHunk, ReviewUnit } from '@sciemd/core';
+import type { ProtectedChange } from '@sciemd/core';
 import { ModalShell } from './ModalShell';
 import { ReviewUnitBody } from './ReviewUnitBody';
 
@@ -16,6 +15,8 @@ interface ExternalConflictDialogProps {
 }
 
 const EMPTY_PROTECTED_CHANGES: ProtectedChange[] = [];
+const LARGE_EXTERNAL_REVIEW_UNIT_THRESHOLD = 12;
+const LARGE_EXTERNAL_REVIEW_LINE_THRESHOLD = 160;
 
 export function ExternalConflictDialog({
   open,
@@ -43,12 +44,13 @@ export function ExternalConflictDialog({
   const [selected, setSelected] = useState<Set<string>>(() => new Set(defaultSelectedUnitIds));
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const changedLines = useMemo(() => hunks.reduce((total, hunk) => total + hunk.diffLines.length, 0), [hunks]);
+  const largeReview = isLargeExternalReview(reviewUnits, changedLines);
 
   useEffect(() => {
     if (!open) return;
     setSelected(new Set(defaultSelectedUnitIds));
-    setExpandedId(reviewUnits[0]?.id ?? null);
-  }, [defaultSelectedUnitIds, open, reviewUnits]);
+    setExpandedId(largeReview ? null : reviewUnits[0]?.id ?? null);
+  }, [defaultSelectedUnitIds, largeReview, open, reviewUnits]);
 
   if (!open) return null;
 
@@ -97,6 +99,12 @@ export function ExternalConflictDialog({
         </div>
       )}
       <div className="review-card-list">
+        {largeReview && reviewUnits.length > 0 && (
+          <div className="review-large-change-note" role="status">
+            <strong>Large disk change set</strong>
+            <span>Cards start collapsed so the list stays readable. Open one card to compare the current document with the disk version.</span>
+          </div>
+        )}
         {reviewUnits.length === 0 ? (
           <p className="empty-state">No textual difference was found; only file metadata changed.</p>
         ) : reviewUnits.map((unit, index) => {
@@ -160,6 +168,11 @@ export function ExternalConflictDialog({
       </footer>
     </ModalShell>
   );
+}
+
+function isLargeExternalReview(reviewUnits: ReviewUnit[], changedLines: number): boolean {
+  return reviewUnits.length >= LARGE_EXTERNAL_REVIEW_UNIT_THRESHOLD
+    || changedLines >= LARGE_EXTERNAL_REVIEW_LINE_THRESHOLD;
 }
 
 function rawHunkToReviewUnit(hunk: DiffHunk): ReviewUnit {

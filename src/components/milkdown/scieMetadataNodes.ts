@@ -2,23 +2,13 @@ import { $nodeSchema, $prose, $remark, $view } from '@milkdown/kit/utils';
 import type { MilkdownPlugin } from '@milkdown/kit/ctx';
 import type { Node as ProseNode } from '@milkdown/prose/model';
 import { Plugin, PluginKey } from '@milkdown/prose/state';
-import type { Transaction } from '@milkdown/prose/state';
-import { Decoration, DecorationSet } from '@milkdown/prose/view';
+import { DecorationSet } from '@milkdown/prose/view';
 import type { EditorView, NodeView, NodeViewConstructor } from '@milkdown/prose/view';
-import { directiveBody, parseDirectiveBlocks } from '../../domain/blocks/directiveParser';
-import type { DirectiveBlock } from '../../domain/blocks/directiveParser';
-import { createEditorCommentSnippet, createEditorNoteSnippet, parseEditorCommentRaw } from '../../markdown/editorComments';
+import { createEditorCommentSnippet, createEditorNoteSnippet, parseEditorCommentRaw } from '@sciemd/core';
 import { toVisualImagePaths } from '../../markdown/imagePaths';
-import { changeTouchesLockRange, collectLockRangesFromBoundaries } from '../../markdown/lockRanges';
-import type { LockBoundary, LockRange } from '../../markdown/lockRanges';
-import { findQuoteSelectorRangeInTextIndex } from '../../markdown/quoteAnchors';
-import type { QuoteAnchorSelector } from '../../markdown/quoteAnchors';
-import { findMermaidFenceBlocks, mermaidFenceBody } from '../../markdown/mermaidBlocks';
-import { findSvgFenceBlocks, svgFenceBody } from '../../markdown/svgBlocks';
 import { optimizeSvgSource } from '../../markdown/svgSanitizer';
-import { createTargetedInstructionSnippet, parseTargetedInstructionRaw } from '../../markdown/targetedInstructions';
-import { lineStartOffsets } from '../../markdown/textOffsets';
-import { parseVariantGroups } from '../../markdown/variants';
+import { createTargetedInstructionSnippet, parseTargetedInstructionRaw } from '@sciemd/core';
+import { parseVariantGroups } from '@sciemd/core';
 import {
   checkInkscapeAvailable,
   cleanupInkscapeSvgSession,
@@ -41,6 +31,46 @@ import {
   visualAtomConfirm,
   visualAtomToast,
 } from './scieMetadataRuntime';
+import {
+  changeTouchesLockedRange,
+  collectLockedRanges,
+  createScieMetadataDecorations,
+  decodeHtmlAttribute,
+  decorateMissingImages,
+  emitLockViolation,
+  escapeHtmlAttribute,
+  findMatchingLockEnd,
+  findNextTopLevelNode,
+  isScieMetadataNode,
+  lockOperationMeta,
+  nodeTouchesProtectedBlock,
+  normalizeAudience,
+  normalizeNoteKind,
+  normalizeTarget,
+  scheduleNoteCardLayout,
+  shortDisplayText,
+  transactionTouchedLockedRange,
+} from './nodes/metadataNodeDecorations';
+import type { MetadataNodeKind } from './nodes/metadataNodeDecorations';
+import { flushPendingMetadataNodeViewEdits, registerPendingMetadataEditNodeView } from './nodes/pendingMetadataEdits';
+import type { PendingMetadataEditNodeView } from './nodes/pendingMetadataEdits';
+import {
+  attrsForDirectiveRaw,
+  attrsForMermaidRaw,
+  attrsForSvgRaw,
+  createOversizedAtomFallback,
+  isOversizedVisualAtomSource,
+  oversizedDirectiveAttrs,
+  oversizedMermaidAttrs,
+  oversizedSvgAttrs,
+  replaceRenderedVisualAtomNodes,
+} from './nodes/renderedVisualAtoms';
+import type {
+  DirectiveAttrs,
+  MermaidAttrs,
+  MetadataMdastNode as MdastNode,
+  SvgAttrs,
+} from './nodes/renderedVisualAtoms';
 
 export {
   registerScieMetadataEditorContext,
@@ -51,28 +81,8 @@ export {
   updateScieMetadataEditorContext,
 } from './scieMetadataRuntime';
 
-type MetadataNodeKind =
-  | 'scie_lock_start'
-  | 'scie_lock_end'
-  | 'scie_lock_anchor'
-  | 'scie_comment'
-  | 'scie_comment_end'
-  | 'scie_instruction'
-  | 'scie_variant_group'
-  | 'scie_directive_block'
-  | 'scie_mermaid_block'
-  | 'scie_svg_block';
-
-interface MdastNode {
-  type: string;
-  value?: string;
-  children?: MdastNode[];
-  position?: {
-    start?: { offset?: number };
-    end?: { offset?: number };
-  };
-  [key: string]: unknown;
-}
+export { changeTouchesLockedRange, isScieMetadataNode } from './nodes/metadataNodeDecorations';
+export type { LockedRange } from './nodes/metadataNodeDecorations';
 
 interface LockStartAttrs {
   raw: string;
@@ -123,42 +133,14 @@ interface VariantAttrs {
   itemsJson: string;
 }
 
-interface DirectiveAttrs {
-  raw: string;
-  name: string;
-  label: string;
-  detail: string;
-  body: string;
-}
-
-interface MermaidAttrs {
-  raw: string;
-  body: string;
-}
-
-interface SvgAttrs {
-  raw: string;
-  body: string;
-}
-
 interface VariantItemViewModel {
   id: string;
   name: string;
   markdown: string;
 }
 
-const lockOperationMeta = 'scie-md-lock-operation';
-const lockViolationEvent = 'scie-md-lock-violation';
-const activeVariantNodeViews = new Set<VariantNodeView>();
-const MAX_VISUAL_ATOM_RENDER_BYTES = 256 * 1024;
-const MAX_VISUAL_ATOM_RAW_PREVIEW_CHARS = 12_000;
-
 export function flushScieMetadataNodeViews(): boolean {
-  let changed = false;
-  for (const nodeView of Array.from(activeVariantNodeViews)) {
-    changed = nodeView.flushPendingEditForSync() || changed;
-  }
-  return changed;
+  return flushPendingMetadataNodeViewEdits();
 }
 
 const lockStartPattern = /^\s*<!--\s*scie_md:lock:start(?:\s+reason=(?:"([^"]*)"|'([^']*)'|([^\s-][^>]*?)))?\s*-->\s*$/i;
@@ -168,30 +150,14 @@ const commentStartPattern = /^\s*<!--\s*scie_md:comment(?!:)(?:\s+audience=(?:"(
 const commentEndPattern = /^\s*<!--\s*scie_md:comment:end\s*-->\s*$/i;
 const variantGroupPattern = /^\s*<!--\s*scie_md:variant:group\b/i;
 const variantEndPattern = /^\s*<!--\s*scie_md:variant:end\s*-->\s*$/i;
-const metadataNodeNames = new Set<MetadataNodeKind>([
-  'scie_lock_start',
-  'scie_lock_end',
-  'scie_lock_anchor',
-  'scie_comment',
-  'scie_comment_end',
-  'scie_instruction',
-  'scie_variant_group',
-  'scie_directive_block',
-  'scie_mermaid_block',
-  'scie_svg_block',
-]);
 
 async function renderMarkdownHtmlFragmentLazy(
   markdown: string,
   documentPath: string | null,
-  options: { embedImages: boolean; citationEntries?: import('../../domain/citations/bibtex').BibtexEntry[] },
+  options: { embedImages: boolean; citationEntries?: import('@sciemd/core').BibtexEntry[] },
 ): Promise<string> {
   const module = await import('../../markdown/htmlExport');
   return module.renderMarkdownHtmlFragment(markdown, documentPath, options);
-}
-
-export function isScieMetadataNode(node: ProseNode): boolean {
-  return metadataNodeNames.has(node.type.name as MetadataNodeKind);
 }
 
 export function transformScieMetadataAst(tree: MdastNode, sourceMarkdown = ''): MdastNode {
@@ -705,7 +671,7 @@ function defaultRawForNode(node: ProseNode): string {
 function transformChildren(node: MdastNode, sourceMarkdown: string): void {
   if (!node.children) return;
   const children = node.children;
-  replaceDirectiveAndMermaidNodes(children, sourceMarkdown);
+  replaceRenderedVisualAtomNodes(children, sourceMarkdown);
   for (let index = 0; index < children.length; index += 1) {
     const child = children[index];
     transformChildren(child, sourceMarkdown);
@@ -819,166 +785,6 @@ function buildVariantNode(children: MdastNode[], startIndex: number, sourceMarkd
       } satisfies VariantItemViewModel))),
     }, children[startIndex], children[endIndex]),
   };
-}
-
-interface SourceRangeNode {
-  start: number;
-  end: number;
-  node: MdastNode;
-}
-
-function replaceDirectiveAndMermaidNodes(children: MdastNode[], sourceMarkdown: string): void {
-  if (!sourceMarkdown || children.length === 0) return;
-  const ranges = collectDirectiveAndMermaidNodes(sourceMarkdown);
-  if (ranges.length === 0) return;
-
-  for (const range of ranges) {
-    const span = childSpanForSourceRange(children, range.start, range.end);
-    if (!span) continue;
-    children.splice(span.startIndex, span.removeCount, withPosition(range.node, children[span.startIndex], children[span.endIndex]));
-  }
-}
-
-function collectDirectiveAndMermaidNodes(sourceMarkdown: string): SourceRangeNode[] {
-  const ranges = removeOverlappingSourceRanges([
-    ...collectDirectiveNodes(sourceMarkdown),
-    ...collectMermaidNodes(sourceMarkdown),
-    ...collectSvgNodes(sourceMarkdown),
-  ].sort((a, b) => a.start - b.start || b.end - a.end));
-  return ranges.sort((a, b) => b.start - a.start);
-}
-
-function collectDirectiveNodes(sourceMarkdown: string): SourceRangeNode[] {
-  const starts = lineStartOffsets(sourceMarkdown);
-  return parseDirectiveBlocks(sourceMarkdown)
-    .filter((directive) => directive.known && directive.endLine !== null)
-    .map((directive) => {
-      const start = starts[directive.line - 1] ?? 0;
-      const end = lineEndOffset(starts, sourceMarkdown, directive.endLine ?? directive.line);
-      return {
-        start,
-        end,
-        node: directiveNodeFromBlock(directive),
-      };
-    });
-}
-
-function collectMermaidNodes(sourceMarkdown: string): SourceRangeNode[] {
-  return findMermaidFenceBlocks(sourceMarkdown).map((block) => ({
-    start: block.start,
-    end: block.end,
-    node: mermaidNodeFromRaw(block.raw),
-  }));
-}
-
-function collectSvgNodes(sourceMarkdown: string): SourceRangeNode[] {
-  return findSvgFenceBlocks(sourceMarkdown).map((block) => ({
-    start: block.start,
-    end: block.end,
-    node: svgNodeFromRaw(block.raw),
-  }));
-}
-
-function directiveNodeFromBlock(directive: DirectiveBlock): MdastNode {
-  return {
-    type: 'scie_directive_block',
-    ...attrsForDirectiveBlock(directive),
-  };
-}
-
-function attrsForDirectiveBlock(directive: DirectiveBlock): DirectiveAttrs {
-  if (isOversizedVisualAtomSource(directive.raw)) return oversizedDirectiveAttrs(directive.raw);
-  return {
-    raw: directive.raw,
-    name: directive.name,
-    label: directive.label ?? '',
-    detail: directiveDetail(directive),
-    body: directiveBody(directive.raw),
-  };
-}
-
-function mermaidNodeFromRaw(raw: string): MdastNode {
-  return {
-    type: 'scie_mermaid_block',
-    ...attrsForMermaidRaw(raw),
-  };
-}
-
-function svgNodeFromRaw(raw: string): MdastNode {
-  return {
-    type: 'scie_svg_block',
-    ...attrsForSvgRaw(raw),
-  };
-}
-
-function attrsForDirectiveRaw(raw: string): DirectiveAttrs {
-  const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
-  const directive = parseDirectiveBlocks(normalized).find((item) => item.known && item.endLine !== null && item.line === 1);
-  if (directive) return attrsForDirectiveBlock(directive);
-  return {
-    raw: normalized || ':::note\nWrite the note here.\n:::',
-    name: 'note',
-    label: '',
-    detail: 'Invalid directive syntax',
-    body: normalized,
-  };
-}
-
-function attrsForMermaidRaw(raw: string): MermaidAttrs {
-  const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
-  if (isOversizedVisualAtomSource(normalized)) return oversizedMermaidAttrs(normalized);
-  const body = mermaidFenceBody(raw);
-  return {
-    raw: normalized || '```mermaid\nflowchart LR\n  A --> B\n```',
-    body,
-  };
-}
-
-function childSpanForSourceRange(
-  children: MdastNode[],
-  start: number,
-  end: number,
-): { startIndex: number; endIndex: number; removeCount: number } | null {
-  let startIndex = -1;
-  let endIndex = -1;
-
-  for (let index = 0; index < children.length; index += 1) {
-    const childStart = children[index].position?.start?.offset;
-    const childEnd = children[index].position?.end?.offset;
-    if (typeof childStart !== 'number' || typeof childEnd !== 'number') continue;
-    if (childEnd <= start || childStart >= end) continue;
-    if (startIndex === -1) startIndex = index;
-    endIndex = index;
-  }
-
-  if (startIndex < 0 || endIndex < startIndex) return null;
-  return { startIndex, endIndex, removeCount: endIndex - startIndex + 1 };
-}
-
-function lineEndOffset(starts: number[], sourceMarkdown: string, line: number): number {
-  const nextLineStart = starts[line];
-  if (typeof nextLineStart === 'number') {
-    const maybeCarriageReturn = sourceMarkdown[nextLineStart - 2] === '\r' ? 2 : 1;
-    return Math.max(starts[line - 1] ?? 0, nextLineStart - maybeCarriageReturn);
-  }
-  return sourceMarkdown.length;
-}
-
-function removeOverlappingSourceRanges(ranges: SourceRangeNode[]): SourceRangeNode[] {
-  const accepted: SourceRangeNode[] = [];
-  for (const range of ranges) {
-    if (accepted.some((item) => range.start < item.end && item.start < range.end)) continue;
-    accepted.push(range);
-  }
-  return accepted;
-}
-
-function directiveDetail(directive: DirectiveBlock): string {
-  const parts = [
-    directive.label ? `#${directive.label}` : '',
-    directive.classes.length > 0 ? directive.classes.map((item) => `.${item}`).join(' ') : '',
-  ].filter(Boolean);
-  return parts.join(' - ') || directive.opening;
 }
 
 function autoResizeTextarea(textarea: HTMLTextAreaElement): void {
@@ -1219,10 +1025,13 @@ class LockAnchorNodeView implements NodeView {
   }
 }
 
-class NoteNodeView implements NodeView {
+class NoteNodeView implements NodeView, PendingMetadataEditNodeView {
   dom: HTMLElement;
   private node: ProseNode;
   private mode: 'rendered' | 'editing' = 'rendered';
+  private pendingEditValue: string | null = null;
+  private originalEditValue: string | null = null;
+  private readonly unregisterPendingEditNodeView: () => void;
 
   constructor(
     node: ProseNode,
@@ -1235,6 +1044,7 @@ class NoteNodeView implements NodeView {
     this.dom.className = `scie-md-note-anchor scie-md-${noteType}-anchor`;
     this.dom.contentEditable = 'false';
     this.dom.dataset.scieMdNode = noteType === 'comment' ? 'comment' : 'instruction';
+    this.unregisterPendingEditNodeView = registerPendingMetadataEditNodeView(this);
     this.render();
   }
 
@@ -1259,6 +1069,16 @@ class NoteNodeView implements NodeView {
 
   deselectNode(): void {
     this.dom.classList.remove('selected');
+  }
+
+  destroy(): void {
+    this.flushPendingEditForSync();
+    this.unregisterPendingEditNodeView();
+  }
+
+  flushPendingEditForSync(): boolean {
+    if (this.pendingEditValue === null) return false;
+    return this.applyEdit(this.pendingEditValue, { focus: false, render: false });
   }
 
   private render(): void {
@@ -1320,6 +1140,11 @@ class NoteNodeView implements NodeView {
       ? String(this.node.attrs.prompt ?? '')
       : String(this.node.attrs.body ?? '');
     textarea.rows = 4;
+    this.originalEditValue = textarea.value.trim();
+    this.pendingEditValue = null;
+    textarea.addEventListener('input', () => {
+      this.pendingEditValue = textarea.value;
+    });
 
     const actions = document.createElement('div');
     actions.className = 'scie-md-note-actions';
@@ -1329,7 +1154,7 @@ class NoteNodeView implements NodeView {
     apply.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      this.applyEdit(textarea.value);
+      this.applyEdit(textarea.value, { focus: true, render: true });
     });
     const cancel = document.createElement('button');
     cancel.type = 'button';
@@ -1337,6 +1162,8 @@ class NoteNodeView implements NodeView {
     cancel.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
+      this.pendingEditValue = null;
+      this.originalEditValue = null;
       this.mode = 'rendered';
       this.render();
     });
@@ -1355,29 +1182,45 @@ class NoteNodeView implements NodeView {
     return card;
   }
 
-  private applyEdit(value: string): void {
+  private applyEdit(value: string, options: { focus: boolean; render: boolean }): boolean {
     const position = this.getPos();
-    if (typeof position !== 'number') return;
+    if (typeof position !== 'number') return false;
     if (nodeTouchesProtectedBlock(this.view.state.doc, position, this.node.nodeSize)) {
       visualAtomToast(`Cannot edit ${this.commentTitle()} inside a locked section. Unlock the section first.`, 'warning', this.dom);
-      return;
+      return false;
+    }
+    const trimmedValue = value.trim();
+    if (trimmedValue === this.originalEditValue) {
+      this.pendingEditValue = null;
+      if (options.render) {
+        this.originalEditValue = null;
+        this.mode = 'rendered';
+        this.render();
+        if (options.focus) this.view.focus();
+      }
+      return false;
     }
     const attrs = this.noteType === 'instruction'
       ? {
           ...this.node.attrs,
-          prompt: value.trim(),
-          raw: createTargetedInstructionSnippet(value.trim(), normalizeTarget(String(this.node.attrs.target ?? 'next-block'))).trim(),
+          prompt: trimmedValue,
+          raw: createTargetedInstructionSnippet(trimmedValue, normalizeTarget(String(this.node.attrs.target ?? 'next-block'))).trim(),
         }
       : {
           ...this.node.attrs,
-          body: value.trim(),
-          raw: this.commentRawForEdit(value.trim()),
+          body: trimmedValue,
+          raw: this.commentRawForEdit(trimmedValue),
         };
     const transaction = this.view.state.tr.setNodeMarkup(position, undefined, attrs);
     this.view.dispatch(transaction);
-    this.mode = 'rendered';
-    this.render();
-    this.view.focus();
+    this.pendingEditValue = null;
+    this.originalEditValue = options.render ? null : trimmedValue;
+    if (options.render) {
+      this.mode = 'rendered';
+      this.render();
+    }
+    if (options.focus) this.view.focus();
+    return true;
   }
 
   private commentTitle(): string {
@@ -1438,7 +1281,7 @@ class NoteNodeView implements NodeView {
   }
 }
 
-class VariantNodeView implements NodeView {
+class VariantNodeView implements NodeView, PendingMetadataEditNodeView {
   dom: HTMLElement;
   private node: ProseNode;
   private renderId = 0;
@@ -1448,6 +1291,7 @@ class VariantNodeView implements NodeView {
   private isComposing = false;
   private saveTimer: number | null = null;
   private menuCloseTimer: number | null = null;
+  private readonly unregisterPendingEditNodeView: () => void;
 
   constructor(
     node: ProseNode,
@@ -1459,7 +1303,7 @@ class VariantNodeView implements NodeView {
     this.dom.className = 'scie-md-variant-inline';
     this.dom.contentEditable = 'false';
     this.dom.dataset.scieMdNode = 'variant-group';
-    activeVariantNodeViews.add(this);
+    this.unregisterPendingEditNodeView = registerPendingMetadataEditNodeView(this);
     this.render();
   }
 
@@ -1490,7 +1334,7 @@ class VariantNodeView implements NodeView {
     this.flushActiveEdit(false);
     this.clearSaveTimer();
     this.clearMenuCloseTimer();
-    activeVariantNodeViews.delete(this);
+    this.unregisterPendingEditNodeView();
   }
 
   flushPendingEditForSync(): boolean {
@@ -1918,17 +1762,20 @@ class VariantNodeView implements NodeView {
 
 type RenderedBlockType = 'directive' | 'mermaid' | 'svg';
 
-class RenderedMarkdownAtomNodeView implements NodeView {
+class RenderedMarkdownAtomNodeView implements NodeView, PendingMetadataEditNodeView {
   dom: HTMLElement;
   private node: ProseNode;
   private mode: 'rendered' | 'editing' = 'rendered';
   private renderId = 0;
+  private pendingRawEdit: string | null = null;
+  private originalRawEdit: string | null = null;
   private inkscapeSession: InkscapeSession | null = null;
   private inkscapePollTimer: number | null = null;
   private inkscapePollFocusListener: (() => void) | null = null;
   private inkscapeSaveNoticeShown = false;
   private inkscapeState: 'unknown' | 'checking' | 'available' | 'missing' = 'unknown';
   private inkscapeMessage = 'Checking Inkscape availability...';
+  private readonly unregisterPendingEditNodeView: () => void;
 
   constructor(
     node: ProseNode,
@@ -1945,6 +1792,7 @@ class RenderedMarkdownAtomNodeView implements NodeView {
       : blockType === 'mermaid'
         ? 'mermaid-block'
         : 'svg-block';
+    this.unregisterPendingEditNodeView = registerPendingMetadataEditNodeView(this);
     this.syncDomDataset();
     this.render();
     if (this.blockType === 'svg') {
@@ -1979,11 +1827,18 @@ class RenderedMarkdownAtomNodeView implements NodeView {
   }
 
   destroy(): void {
+    this.flushPendingEditForSync();
+    this.unregisterPendingEditNodeView();
     this.stopInkscapePolling();
     if (this.inkscapeSession) {
       void cleanupInkscapeSvgSession(this.inkscapeSession.sessionId).catch(() => undefined);
       this.inkscapeSession = null;
     }
+  }
+
+  flushPendingEditForSync(): boolean {
+    if (this.pendingRawEdit === null) return false;
+    return this.applyRaw(this.pendingRawEdit, { focus: false, render: false });
   }
 
   private render(): void {
@@ -2074,7 +1929,12 @@ class RenderedMarkdownAtomNodeView implements NodeView {
     const textarea = document.createElement('textarea');
     textarea.value = String(this.node.attrs.raw ?? '');
     textarea.rows = Math.min(18, Math.max(5, textarea.value.split(/\r?\n/).length + 1));
-    textarea.addEventListener('input', () => autoResizeTextarea(textarea));
+    this.originalRawEdit = textarea.value;
+    this.pendingRawEdit = null;
+    textarea.addEventListener('input', () => {
+      this.pendingRawEdit = textarea.value;
+      autoResizeTextarea(textarea);
+    });
 
     const actions = document.createElement('div');
     actions.className = 'scie-md-visual-atom-actions';
@@ -2084,7 +1944,7 @@ class RenderedMarkdownAtomNodeView implements NodeView {
     apply.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      this.applyRaw(textarea.value);
+      this.applyRaw(textarea.value, { focus: true, render: true });
     });
     const cancel = document.createElement('button');
     cancel.type = 'button';
@@ -2092,6 +1952,8 @@ class RenderedMarkdownAtomNodeView implements NodeView {
     cancel.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
+      this.pendingRawEdit = null;
+      this.originalRawEdit = null;
       this.mode = 'rendered';
       this.render();
     });
@@ -2131,12 +1993,22 @@ class RenderedMarkdownAtomNodeView implements NodeView {
     }
   }
 
-  private applyRaw(value: string): void {
+  private applyRaw(value: string, options: { focus: boolean; render: boolean }): boolean {
     const position = this.getPos();
-    if (typeof position !== 'number') return;
+    if (typeof position !== 'number') return false;
     if (this.nodeTouchesProtectedBlock(position)) {
       visualAtomToast(`Cannot edit ${this.blockLabel()} inside a locked section. Unlock the section first.`, 'warning', this.dom);
-      return;
+      return false;
+    }
+    if (value === this.originalRawEdit) {
+      this.pendingRawEdit = null;
+      if (options.render) {
+        this.originalRawEdit = null;
+        this.mode = 'rendered';
+        this.render();
+        if (options.focus) this.view.focus();
+      }
+      return false;
     }
     const attrs = this.blockType === 'directive'
       ? attrsForDirectiveRaw(value)
@@ -2145,9 +2017,14 @@ class RenderedMarkdownAtomNodeView implements NodeView {
         : attrsForSvgRaw(value);
     const transaction = this.view.state.tr.setNodeMarkup(position, undefined, attrs);
     this.view.dispatch(transaction);
-    this.mode = 'rendered';
-    this.render();
-    this.view.focus();
+    this.pendingRawEdit = null;
+    this.originalRawEdit = options.render ? null : value;
+    if (options.render) {
+      this.mode = 'rendered';
+      this.render();
+    }
+    if (options.focus) this.view.focus();
+    return true;
   }
 
   private async deleteAtom(): Promise<void> {
@@ -2251,7 +2128,7 @@ class RenderedMarkdownAtomNodeView implements NodeView {
       return;
     }
     const svg = await readInkscapeSvgSession(this.inkscapeSession.sessionId);
-    this.applyRaw(`\`\`\`svg\n${optimizeSvgSource(svg).trim()}\n\`\`\``);
+    this.applyRaw(`\`\`\`svg\n${optimizeSvgSource(svg).trim()}\n\`\`\``, { focus: true, render: true });
     await cleanupInkscapeSvgSession(this.inkscapeSession.sessionId).catch(() => undefined);
     this.inkscapeSession = null;
     this.stopInkscapePolling();
@@ -2342,94 +2219,6 @@ class RenderedMarkdownAtomNodeView implements NodeView {
   }
 }
 
-function findNextTopLevelNode(doc: ProseNode, fromPosition: number, typeName: string): { from: number; to: number } | null {
-  let found: { from: number; to: number } | null = null;
-  doc.forEach((node, offset) => {
-    if (found) return;
-    const from = offset;
-    if (from <= fromPosition) return;
-    if (node.type.name === typeName) found = { from, to: from + node.nodeSize };
-  });
-  return found;
-}
-
-export interface LockedRange extends LockRange {
-  reason: string;
-}
-
-function collectLockedRanges(doc: ProseNode): LockedRange[] {
-  const boundaries: LockBoundary[] = [];
-  doc.forEach((node, offset) => {
-    if (node.type.name === 'scie_lock_start') {
-      boundaries.push({
-        kind: 'start',
-        from: offset,
-        to: offset + node.nodeSize,
-        contentFrom: offset + node.nodeSize,
-        reason: String(node.attrs.reason ?? ''),
-      });
-      return;
-    }
-    if (node.type.name === 'scie_lock_end') {
-      boundaries.push({
-        kind: 'end',
-        from: offset,
-        to: offset + node.nodeSize,
-      });
-    }
-  });
-  const blockRanges = collectLockRangesFromBoundaries(boundaries).map((range) => ({
-    ...range,
-    reason: range.reason ?? '',
-  }));
-  const items = topLevelNodePositions(doc);
-  const anchoredRanges: LockedRange[] = [];
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index];
-    if (item.node.type.name !== 'scie_lock_anchor') continue;
-    const quote = String(item.node.attrs.quote ?? '').trim();
-    const target = String(item.node.attrs.target ?? 'quote');
-    if (target !== 'quote' || !quote) continue;
-    const range = findQuoteTargetRange(doc, items, index, quoteSelectorFromAttrs(item.node.attrs));
-    if (!range) continue;
-    anchoredRanges.push({
-      from: range.from,
-      to: range.to,
-      contentFrom: range.from,
-      contentTo: range.to,
-      reason: String(item.node.attrs.reason ?? ''),
-    });
-  }
-  return [...blockRanges, ...anchoredRanges].sort((left, right) => left.from - right.from || left.to - right.to);
-}
-
-function nodeTouchesProtectedBlock(doc: ProseNode, position: number, nodeSize: number): boolean {
-  const nodeEnd = position + nodeSize;
-  return collectLockedRanges(doc)
-    .some((range) => position < range.contentTo && range.contentFrom < nodeEnd);
-}
-
-function transactionTouchedLockedRange(transaction: Transaction, lockedRanges: LockedRange[]): LockedRange | null {
-  let touchedRange: LockedRange | null = null;
-  transaction.mapping.maps.forEach((map) => {
-    map.forEach((oldStart, oldEnd) => {
-      if (touchedRange) return;
-      touchedRange = lockedRanges.find((range) => changeTouchesLockedRange(oldStart, oldEnd, range)) ?? null;
-    });
-  });
-  if (touchedRange) return touchedRange;
-  return lockedRanges.find((range) => lockedRangeContentChanged(transaction, range)) ?? null;
-}
-
-function attrsForSvgRaw(raw: string): SvgAttrs {
-  const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
-  if (isOversizedVisualAtomSource(normalized)) return oversizedSvgAttrs(normalized);
-  return {
-    raw: normalized || '```svg\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120"></svg>\n```',
-    body: svgFenceBody(normalized),
-  };
-}
-
 function oversizedVariantAttrs(raw: string): VariantAttrs {
   const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
   const attrs = variantOpeningAttrs(normalized);
@@ -2445,511 +2234,7 @@ function oversizedVariantAttrs(raw: string): VariantAttrs {
   };
 }
 
-function oversizedDirectiveAttrs(raw: string): DirectiveAttrs {
-  const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
-  const opening = normalized.match(/^\s*:::\s*([A-Za-z][\w-]*)(?:\s+\{([^}]*)})?/);
-  const detail = opening?.[2]?.trim() || 'Large directive shown as raw Markdown';
-  return {
-    raw: normalized || ':::note\nWrite the note here.\n:::',
-    name: opening?.[1] ?? 'note',
-    label: detail.match(/#([A-Za-z0-9_.:-]+)/)?.[1] ?? '',
-    detail,
-    body: '',
-  };
-}
-
-function oversizedMermaidAttrs(raw: string): MermaidAttrs {
-  const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
-  return {
-    raw: normalized || '```mermaid\nflowchart LR\n  A --> B\n```',
-    body: '',
-  };
-}
-
-function oversizedSvgAttrs(raw: string): SvgAttrs {
-  const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
-  return {
-    raw: normalized || '```svg\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120"></svg>\n```',
-    body: '',
-  };
-}
-
 function variantOpeningAttrs(raw: string): Record<string, string> {
   const match = raw.match(/<!--\s*scie_md:variant:group\s+([^>]*)-->/i);
   return match ? parseMetadataAttributes(match[1] ?? '') : {};
-}
-
-function isOversizedVisualAtomSource(raw: string): boolean {
-  return byteLength(raw) > MAX_VISUAL_ATOM_RENDER_BYTES;
-}
-
-function byteLength(value: string): number {
-  if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(value).byteLength;
-  return unescape(encodeURIComponent(value)).length;
-}
-
-function createOversizedAtomFallback(label: string, raw: string): HTMLElement {
-  const fallback = document.createElement('div');
-  fallback.className = 'scie-md-visual-atom-raw-fallback';
-  const title = document.createElement('strong');
-  title.textContent = `${label} shown as raw Markdown`;
-  const meta = document.createElement('span');
-  meta.textContent = `${formatBytes(byteLength(raw))}. Rendering is skipped to keep visual mode responsive.`;
-  const preview = document.createElement('pre');
-  preview.textContent = raw.length > MAX_VISUAL_ATOM_RAW_PREVIEW_CHARS
-    ? `${raw.slice(0, MAX_VISUAL_ATOM_RAW_PREVIEW_CHARS).trimEnd()}\n\n... raw block truncated in visual preview ...`
-    : raw;
-  fallback.append(title, meta, preview);
-  return fallback;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-export function changeTouchesLockedRange(changeFrom: number, changeTo: number, range: LockedRange): boolean {
-  return changeTouchesLockRange(changeFrom, changeTo, range);
-}
-
-function lockedRangeContentChanged(transaction: Transaction, range: LockedRange): boolean {
-  const nextFrom = transaction.mapping.map(range.contentFrom, 1);
-  const nextTo = transaction.mapping.map(range.contentTo, -1);
-  if (nextFrom < 0 || nextTo < nextFrom || nextTo > transaction.doc.content.size) return true;
-  return serializeDocSlice(transaction.before, range.contentFrom, range.contentTo)
-    !== serializeDocSlice(transaction.doc, nextFrom, nextTo);
-}
-
-function serializeDocSlice(doc: ProseNode, from: number, to: number): string {
-  return JSON.stringify(doc.slice(from, to).content.toJSON());
-}
-
-function emitLockViolation(range: LockedRange): void {
-  if (typeof window === 'undefined') return;
-  const detail = {
-    reason: range.reason,
-    message: range.reason
-      ? `This section is locked (${range.reason}). Use the lock icon to unlock it before editing.`
-      : 'This section is locked. Use the lock icon to unlock it before editing.',
-  };
-  queueMicrotask(() => {
-    window.dispatchEvent(new CustomEvent(lockViolationEvent, { detail }));
-  });
-}
-
-function findMatchingLockEnd(doc: ProseNode, startPosition: number): { from: number; to: number } | null {
-  let foundStart = false;
-  let depth = 0;
-  let match: { from: number; to: number } | null = null;
-  doc.forEach((node, offset) => {
-    if (match) return;
-    if (offset === startPosition && node.type.name === 'scie_lock_start') {
-      foundStart = true;
-      depth = 1;
-      return;
-    }
-    if (!foundStart || offset <= startPosition) return;
-    if (node.type.name === 'scie_lock_start') {
-      depth += 1;
-      return;
-    }
-    if (node.type.name === 'scie_lock_end') {
-      depth -= 1;
-      if (depth === 0) match = { from: offset, to: offset + node.nodeSize };
-    }
-  });
-  return match;
-}
-
-function createScieMetadataDecorations(doc: ProseNode): DecorationSet {
-  const decorations: Decoration[] = [];
-  addLockRangeDecorations(doc, decorations);
-  addNoteTargetDecorations(doc, decorations);
-  return decorations.length > 0 ? DecorationSet.create(doc, decorations) : DecorationSet.empty;
-}
-
-function addLockRangeDecorations(doc: ProseNode, decorations: Decoration[]): void {
-  const ranges = collectLockedRanges(doc);
-  if (ranges.length === 0) return;
-  doc.forEach((node, offset) => {
-    if (decorations.length >= MAX_SCIE_METADATA_DECORATIONS) return;
-    for (const range of ranges) {
-      if (offset < range.contentFrom || offset >= range.contentTo) continue;
-      if (isScieMetadataNode(node)) continue;
-      const className = offset === range.contentFrom ? 'locked-range-block locked-range-first' : 'locked-range-block';
-      decorations.push(Decoration.node(offset, offset + node.nodeSize, { class: className }));
-      break;
-    }
-  });
-}
-
-function addNoteTargetDecorations(doc: ProseNode, decorations: Decoration[]): void {
-  const nodePositions = topLevelNodePositions(doc);
-  for (let index = 0; index < nodePositions.length; index += 1) {
-    if (decorations.length >= MAX_SCIE_METADATA_DECORATIONS) return;
-    const item = nodePositions[index];
-    if (item.node.type.name === 'scie_comment') {
-      const noteKind = normalizeNoteKind(String(item.node.attrs.kind ?? item.node.attrs.audience ?? 'llm'));
-      const quoteClass = noteKind === 'human' ? 'human-note-target-quote' : 'llm-note-target-quote';
-      const blockClass = noteKind === 'human' ? 'human-note-target-block' : 'llm-note-target-block';
-      const target = String(item.node.attrs.target ?? '');
-      const quote = String(item.node.attrs.quote ?? '').trim();
-      if (target === 'quote' && quote) {
-        decorateQuoteTarget(doc, nodePositions, decorations, index, quoteSelectorFromAttrs(item.node.attrs), quoteClass);
-        continue;
-      }
-      const endIndex = findNextNodeIndex(nodePositions, index + 1, 'scie_comment_end');
-      if (endIndex !== null) {
-        decorateRange(nodePositions, decorations, index + 1, endIndex, blockClass);
-      } else {
-        const next = findNextEditableNodeIndex(nodePositions, index + 1);
-        if (next !== null) decorateRange(nodePositions, decorations, next, next + 1, blockClass);
-      }
-    }
-    if (item.node.type.name === 'scie_instruction') {
-      const target = String(item.node.attrs.target ?? 'next-block');
-      if (target === 'previous-block') {
-        const previous = findPreviousEditableNodeIndex(nodePositions, index - 1);
-        if (previous !== null) decorateRange(nodePositions, decorations, previous, previous + 1, 'llm-note-target-block');
-      } else if (target === 'next-block') {
-        const next = findNextEditableNodeIndex(nodePositions, index + 1);
-        if (next !== null) decorateRange(nodePositions, decorations, next, next + 1, 'llm-note-target-block');
-      } else if (target === 'section') {
-        decorateInstructionSection(nodePositions, decorations, index);
-      }
-    }
-    if (item.node.type.name === 'scie_lock_anchor') {
-      const quote = String(item.node.attrs.quote ?? '').trim();
-      if (quote) decorateQuoteTarget(doc, nodePositions, decorations, index, quoteSelectorFromAttrs(item.node.attrs), 'locked-range-quote');
-    }
-    if (item.node.type.name === 'scie_variant_group') {
-      const target = String(item.node.attrs.target ?? '');
-      const quote = String(item.node.attrs.quote ?? '').trim();
-      if (target === 'quote' && quote) decorateQuoteTarget(doc, nodePositions, decorations, index, quoteSelectorFromAttrs(item.node.attrs), 'variant-target-quote');
-    }
-  }
-}
-
-function decorateQuoteTarget(
-  doc: ProseNode,
-  items: Array<{ node: ProseNode; offset: number }>,
-  decorations: Decoration[],
-  noteIndex: number,
-  selector: QuoteAnchorSelector,
-  className: string,
-): boolean {
-  const range = findQuoteTargetRange(doc, items, noteIndex, selector);
-  if (!range) return false;
-  if (decorations.length >= MAX_SCIE_METADATA_DECORATIONS) return false;
-  decorations.push(Decoration.inline(range.from, range.to, { class: className }));
-  return true;
-}
-
-function findQuoteTargetRange(
-  doc: ProseNode,
-  items: Array<{ node: ProseNode; offset: number }>,
-  anchorIndex: number,
-  selector: QuoteAnchorSelector,
-): { from: number; to: number } | null {
-  const next = findNextEditableNodeIndex(items, anchorIndex + 1);
-  if (next !== null) {
-    const range = findQuoteRangeInNode(doc, items[next], selector);
-    if (range) return range;
-  }
-
-  const previous = findPreviousEditableNodeIndex(items, anchorIndex - 1);
-  if (previous !== null) {
-    const range = findQuoteRangeInNode(doc, items[previous], selector);
-    if (range) return range;
-  }
-
-  for (let index = anchorIndex + 1; index < items.length; index += 1) {
-    if (isScieMetadataNode(items[index].node)) continue;
-    const range = findQuoteRangeInNode(doc, items[index], selector);
-    if (range) return range;
-  }
-  for (let index = anchorIndex - 1; index >= 0; index -= 1) {
-    if (isScieMetadataNode(items[index].node)) continue;
-    const range = findQuoteRangeInNode(doc, items[index], selector);
-    if (range) return range;
-  }
-  return null;
-}
-
-function findQuoteRangeInNode(
-  doc: ProseNode,
-  item: { node: ProseNode; offset: number },
-  selector: QuoteAnchorSelector,
-): { from: number; to: number } | null {
-  const index = buildNormalizedTextIndex(doc, item.offset, item.offset + item.node.nodeSize);
-  const match = findQuoteSelectorRangeInTextIndex(index, selector);
-  return match ? { from: match.from, to: match.to } : null;
-}
-
-function quoteSelectorFromAttrs(attrs: ProseNode['attrs']): QuoteAnchorSelector {
-  return {
-    quote: String(attrs.quote ?? '').trim(),
-    prefix: String(attrs.prefix ?? '').trim() || undefined,
-    suffix: String(attrs.suffix ?? '').trim() || undefined,
-  };
-}
-
-function buildNormalizedTextIndex(doc: ProseNode, from: number, to: number): { text: string; positions: number[] } {
-  let text = '';
-  const positions: number[] = [];
-  let pendingSpacePosition: number | null = null;
-  let previousTextPosition: number | null = null;
-
-  doc.nodesBetween(from, to, (node, position) => {
-    if (!node.isText || !node.text) return true;
-    for (let index = 0; index < node.text.length; index += 1) {
-      const char = node.text[index];
-      const charPosition = position + index;
-      if (
-        previousTextPosition !== null
-        && charPosition > previousTextPosition + 1
-        && text
-        && !text.endsWith(' ')
-        && pendingSpacePosition === null
-      ) {
-        pendingSpacePosition = previousTextPosition + 1;
-      }
-      if (/\s/.test(char)) {
-        if (text && !text.endsWith(' ') && pendingSpacePosition === null) pendingSpacePosition = charPosition;
-        previousTextPosition = charPosition;
-        continue;
-      }
-      if (pendingSpacePosition !== null && text && !text.endsWith(' ')) {
-        text += ' ';
-        positions.push(pendingSpacePosition);
-      }
-      pendingSpacePosition = null;
-      text += char;
-      positions.push(charPosition);
-      previousTextPosition = charPosition;
-    }
-    return true;
-  });
-
-  return { text, positions };
-}
-
-function normalizeSearchText(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
-}
-
-function shortDisplayText(value: string, limit: number): string {
-  const normalized = normalizeSearchText(value);
-  return normalized.length > limit ? `${normalized.slice(0, Math.max(0, limit - 3)).trimEnd()}...` : normalized;
-}
-
-const noteCardLayoutFrames = new WeakMap<HTMLElement, number>();
-
-function scheduleNoteCardLayout(root: HTMLElement): void {
-  if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') return;
-  const pending = noteCardLayoutFrames.get(root);
-  if (pending !== undefined) window.cancelAnimationFrame(pending);
-  const frame = window.requestAnimationFrame(() => {
-    noteCardLayoutFrames.delete(root);
-    layoutNoteCards(root);
-  });
-  noteCardLayoutFrames.set(root, frame);
-}
-
-function layoutNoteCards(root: HTMLElement): void {
-  const cards = Array.from(root.querySelectorAll<HTMLElement>('.scie-md-note-card'));
-  for (const card of cards) {
-    card.style.setProperty('--note-stack-offset', '0px');
-  }
-
-  const measured = cards
-    .map((card) => ({ card, rect: card.getBoundingClientRect() }))
-    .filter((item) => item.rect.width > 0 && item.rect.height > 0)
-    .sort((left, right) => left.rect.top - right.rect.top || left.rect.left - right.rect.left);
-  if (measured.length <= 1) return;
-
-  const lanes: Array<{ left: number; right: number; bottom: number }> = [];
-  for (const item of measured) {
-    const lane = lanes.find((candidate) => item.rect.left < candidate.right && item.rect.right > candidate.left);
-    if (!lane) {
-      lanes.push({ left: item.rect.left, right: item.rect.right, bottom: item.rect.bottom });
-      continue;
-    }
-    const offset = Math.max(0, lane.bottom + 10 - item.rect.top);
-    item.card.style.setProperty('--note-stack-offset', `${Math.round(offset)}px`);
-    lane.left = Math.min(lane.left, item.rect.left);
-    lane.right = Math.max(lane.right, item.rect.right);
-    lane.bottom = Math.max(lane.bottom, item.rect.bottom + offset);
-  }
-}
-
-function topLevelNodePositions(doc: ProseNode): Array<{ node: ProseNode; offset: number }> {
-  const positions: Array<{ node: ProseNode; offset: number }> = [];
-  doc.forEach((node, offset) => positions.push({ node, offset }));
-  return positions;
-}
-
-function findNextNodeIndex(items: Array<{ node: ProseNode }>, start: number, nodeName: string): number | null {
-  for (let index = start; index < items.length; index += 1) {
-    if (items[index].node.type.name === nodeName) return index;
-  }
-  return null;
-}
-
-function findNextEditableNodeIndex(items: Array<{ node: ProseNode }>, start: number): number | null {
-  for (let index = start; index < items.length; index += 1) {
-    if (!isScieMetadataNode(items[index].node)) return index;
-  }
-  return null;
-}
-
-function findPreviousEditableNodeIndex(items: Array<{ node: ProseNode }>, start: number): number | null {
-  for (let index = start; index >= 0; index -= 1) {
-    if (!isScieMetadataNode(items[index].node)) return index;
-  }
-  return null;
-}
-
-function decorateInstructionSection(
-  items: Array<{ node: ProseNode; offset: number }>,
-  decorations: Decoration[],
-  instructionIndex: number,
-): void {
-  const first = findNextEditableNodeIndex(items, instructionIndex + 1);
-  if (first === null) return;
-  const headingLevel = headingLevelForNode(items[first].node);
-  if (!headingLevel) {
-    decorateRange(items, decorations, first, first + 1, 'llm-note-target-block');
-    return;
-  }
-  let end = first + 1;
-  while (end < items.length) {
-    const level = headingLevelForNode(items[end].node);
-    if (level && level <= headingLevel) break;
-    end += 1;
-  }
-  decorateRange(items, decorations, first, end, 'llm-note-target-block');
-}
-
-function headingLevelForNode(node: ProseNode): number | null {
-  if (node.type.name !== 'heading') return null;
-  const level = Number(node.attrs.level);
-  return Number.isFinite(level) ? level : null;
-}
-
-function decorateRange(
-  items: Array<{ node: ProseNode; offset: number }>,
-  decorations: Decoration[],
-  startIndex: number,
-  endIndexExclusive: number,
-  baseClass: string,
-): void {
-  let first = true;
-  for (let index = startIndex; index < endIndexExclusive; index += 1) {
-    if (decorations.length >= MAX_SCIE_METADATA_DECORATIONS) break;
-    const item = items[index];
-    if (!item || isScieMetadataNode(item.node)) continue;
-    decorations.push(Decoration.node(item.offset, item.offset + item.node.nodeSize, {
-      class: first ? `${baseClass} ${baseClass}-first` : baseClass,
-    }));
-    first = false;
-  }
-}
-
-function decorateMissingImages(container: HTMLElement): void {
-  for (const image of Array.from(container.querySelectorAll('img'))) {
-    attachMissingImageHandler(image);
-  }
-}
-
-function attachMissingImageHandler(image: HTMLImageElement): void {
-  image.addEventListener('error', () => {
-    const alt = image.getAttribute('alt')?.trim() || 'image';
-    const source = image.getAttribute('src') ?? '';
-    const placeholder = document.createElement('div');
-    placeholder.className = 'directive-missing-image';
-
-    const copy = document.createElement('span');
-    copy.className = 'directive-missing-image-copy';
-    copy.textContent = source
-      ? `Missing image: ${alt} (${shortImageSource(source)})`
-      : `Missing image: ${alt}`;
-
-    const actions = document.createElement('span');
-    actions.className = 'directive-missing-image-actions';
-
-    const locate = document.createElement('button');
-    locate.type = 'button';
-    locate.textContent = 'Locate file...';
-    locate.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      window.dispatchEvent(new CustomEvent('scie-md-locate-missing-image', {
-        detail: { alt, source },
-      }));
-    });
-
-    const reload = document.createElement('button');
-    reload.type = 'button';
-    reload.textContent = 'Reload';
-    reload.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const retry = image.cloneNode(false) as HTMLImageElement;
-      attachMissingImageHandler(retry);
-      placeholder.replaceWith(retry);
-      retry.src = cacheBustedImageSource(source);
-    });
-
-    actions.append(locate, reload);
-    placeholder.append(copy, actions);
-    image.replaceWith(placeholder);
-  }, { once: true });
-}
-
-function cacheBustedImageSource(source: string): string {
-  if (!source || /^(?:data|blob):/i.test(source)) return source;
-  const separator = source.includes('?') ? '&' : '?';
-  return `${source}${separator}scieReload=${Date.now()}`;
-}
-
-function shortImageSource(source: string): string {
-  const decoded = safeDecodeURIComponent(source);
-  const normalized = decoded.replace(/\\/g, '/');
-  const fileName = normalized.split('/').filter(Boolean).at(-1) ?? normalized;
-  return fileName.length > 48 ? `${fileName.slice(0, 45)}...` : fileName;
-}
-
-function safeDecodeURIComponent(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-function normalizeAudience(value: string): 'human' | 'llm' | 'both' {
-  return value === 'human' || value === 'both' ? value : 'llm';
-}
-
-function normalizeNoteKind(value: string): 'human' | 'llm' {
-  return value === 'human' ? 'human' : 'llm';
-}
-
-function normalizeTarget(value: string): 'next-block' | 'previous-block' | 'selection' | 'section' {
-  if (value === 'previous-block' || value === 'selection' || value === 'section') return value;
-  return 'next-block';
-}
-
-function escapeHtmlAttribute(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function decodeHtmlAttribute(value: string): string {
-  return value
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
 }

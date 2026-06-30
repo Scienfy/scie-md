@@ -13,8 +13,10 @@ const DIAGNOSTICS_DIR: &str = "diagnostics";
 const HEARTBEAT_FILE: &str = "renderer-heartbeat.json";
 const DIAGNOSTICS_LOG_FILE: &str = "diagnostics.jsonl";
 const RECOVERY_SNAPSHOT_FILE: &str = "latest-recovery-snapshot.json";
+const DIAGNOSTICS_BUNDLE_PREFIX: &str = "diagnostics-bundle";
 const MAX_DIAGNOSTICS_LOG_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_RECOVERY_SNAPSHOT_BYTES: usize = 64 * 1024 * 1024;
+const MAX_BUNDLE_LOG_TAIL_BYTES: usize = 512 * 1024;
 const PREVIOUS_SESSION_CRASH_WINDOW_MS: u128 = 15_000;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -30,7 +32,16 @@ pub struct RendererHeartbeatPayload {
     pub visual_atom_count: u64,
     pub warning_count: u64,
     pub error_count: u64,
+    #[serde(default)]
     pub active_background_job_count: u64,
+    #[serde(default)]
+    pub stuck_background_job_count: u64,
+    #[serde(default)]
+    pub oldest_background_job_ms: Option<u64>,
+    #[serde(default)]
+    pub background_job_labels: Vec<String>,
+    #[serde(default)]
+    pub stuck_background_job_labels: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -39,6 +50,18 @@ pub struct RendererHeartbeatStatus {
     pub previous_session_suspected_crash: bool,
     pub previous_session_last_seen_ms: Option<u128>,
     pub diagnostics_dir: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticsBundleMetadata {
+    pub path: String,
+    pub diagnostics_dir: String,
+    pub created_at_ms: u128,
+    pub event_count: u64,
+    pub log_bytes: u64,
+    pub recovery_snapshot_bytes: Option<usize>,
+    pub heartbeat_seen_at_ms: Option<u128>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -91,6 +114,37 @@ struct StoredHeartbeat {
 struct StoredDiagnosticsEvent<'a> {
     timestamp_ms: u128,
     event: &'a DiagnosticsEventPayload,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DiagnosticsBundle {
+    created_at_ms: u128,
+    app_version: &'static str,
+    diagnostics_dir: String,
+    heartbeat: Option<StoredHeartbeat>,
+    diagnostics_log: DiagnosticsLogBundle,
+    recovery_snapshot: Option<RecoverySnapshotBundle>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DiagnosticsLogBundle {
+    path: String,
+    bytes: u64,
+    tail: String,
+    tail_event_count: u64,
+    tail_truncated: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecoverySnapshotBundle {
+    path: String,
+    file_path: Option<String>,
+    updated_at_ms: u128,
+    markdown_bytes: usize,
+    markdown_omitted_reason: &'static str,
 }
 
 #[tauri::command]
@@ -168,6 +222,12 @@ pub fn append_diagnostics_event(
 }
 
 #[tauri::command]
+pub fn export_diagnostics_bundle(app: AppHandle) -> Result<DiagnosticsBundleMetadata, String> {
+    let dir = diagnostics_dir(&app)?;
+    export_diagnostics_bundle_to_dir(&dir)
+}
+
+#[tauri::command]
 pub fn write_recovery_snapshot(
     app: AppHandle,
     payload: RecoverySnapshotPayload,
@@ -220,6 +280,9 @@ pub fn clear_recovery_snapshot(app: AppHandle) -> Result<(), String> {
 }
 
 fn diagnostics_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Some(root) = std::env::var_os("SCIEMD_APP_DATA_DIR_OVERRIDE") {
+        return Ok(PathBuf::from(root).join(DIAGNOSTICS_DIR));
+    }
     let base = app
         .path()
         .app_data_dir()
@@ -236,6 +299,96 @@ fn read_heartbeat(path: &Path) -> Result<Option<StoredHeartbeat>, String> {
     let heartbeat = serde_json::from_str(&raw)
         .map_err(|error| format!("Could not parse renderer heartbeat: {error}"))?;
     Ok(Some(heartbeat))
+}
+
+fn export_diagnostics_bundle_to_dir(dir: &Path) -> Result<DiagnosticsBundleMetadata, String> {
+    fs::create_dir_all(dir)
+        .map_err(|error| format!("Could not create diagnostics dir: {error}"))?;
+    let created_at_ms = timestamp_ms();
+    let heartbeat_path = dir.join(HEARTBEAT_FILE);
+    let log_path = dir.join(DIAGNOSTICS_LOG_FILE);
+    let recovery_path = dir.join(RECOVERY_SNAPSHOT_FILE);
+    let heartbeat = read_heartbeat(&heartbeat_path).ok().flatten();
+    let diagnostics_log = read_diagnostics_log_bundle(&log_path)?;
+    let recovery_snapshot = read_recovery_snapshot_bundle(&recovery_path)?;
+    let metadata = DiagnosticsBundleMetadata {
+        path: dir
+            .join(format!("{DIAGNOSTICS_BUNDLE_PREFIX}-{created_at_ms}.json"))
+            .to_string_lossy()
+            .to_string(),
+        diagnostics_dir: dir.to_string_lossy().to_string(),
+        created_at_ms,
+        event_count: diagnostics_log.tail_event_count,
+        log_bytes: diagnostics_log.bytes,
+        recovery_snapshot_bytes: recovery_snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.markdown_bytes),
+        heartbeat_seen_at_ms: heartbeat.as_ref().map(|value| value.seen_at_ms),
+    };
+    let bundle = DiagnosticsBundle {
+        created_at_ms,
+        app_version: env!("CARGO_PKG_VERSION"),
+        diagnostics_dir: metadata.diagnostics_dir.clone(),
+        heartbeat,
+        diagnostics_log,
+        recovery_snapshot,
+    };
+    write_json_atomically(Path::new(&metadata.path), &bundle)?;
+    Ok(metadata)
+}
+
+fn read_diagnostics_log_bundle(path: &Path) -> Result<DiagnosticsLogBundle, String> {
+    let (tail, bytes, tail_truncated) = read_text_tail(path, MAX_BUNDLE_LOG_TAIL_BYTES)?;
+    let tail_event_count = tail
+        .lines()
+        .filter(|line| line.trim_start().starts_with('{'))
+        .count() as u64;
+    Ok(DiagnosticsLogBundle {
+        path: path.to_string_lossy().to_string(),
+        bytes,
+        tail,
+        tail_event_count,
+        tail_truncated,
+    })
+}
+
+fn read_recovery_snapshot_bundle(path: &Path) -> Result<Option<RecoverySnapshotBundle>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = fs::read_to_string(path)
+        .map_err(|error| format!("Could not read recovery snapshot metadata: {error}"))?;
+    let snapshot: RecoverySnapshot = serde_json::from_str(&raw)
+        .map_err(|error| format!("Could not parse recovery snapshot metadata: {error}"))?;
+    Ok(Some(RecoverySnapshotBundle {
+        path: path.to_string_lossy().to_string(),
+        file_path: snapshot.file_path,
+        updated_at_ms: snapshot.updated_at_ms,
+        markdown_bytes: snapshot.markdown_bytes,
+        markdown_omitted_reason: "Raw Markdown is stored in the recovery snapshot file and omitted from diagnostics bundles to keep bundles small.",
+    }))
+}
+
+fn read_text_tail(path: &Path, max_bytes: usize) -> Result<(String, u64, bool), String> {
+    if !path.exists() {
+        return Ok(("".into(), 0, false));
+    }
+    let bytes =
+        fs::read(path).map_err(|error| format!("Could not read diagnostics log: {error}"))?;
+    let total_bytes = bytes.len() as u64;
+    if bytes.len() <= max_bytes {
+        return Ok((
+            String::from_utf8_lossy(&bytes).to_string(),
+            total_bytes,
+            false,
+        ));
+    }
+    let start = bytes.len().saturating_sub(max_bytes);
+    let mut tail = String::from_utf8_lossy(&bytes[start..]).to_string();
+    if let Some(next_line_index) = tail.find('\n') {
+        tail = tail[next_line_index + 1..].to_string();
+    }
+    Ok((tail, total_bytes, true))
 }
 
 fn append_diagnostics_event_to_dir(
@@ -399,8 +552,9 @@ fn timestamp_ms() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_diagnostics_event_to_dir, read_heartbeat, write_json_atomically,
-        DiagnosticsEventPayload, RendererHeartbeatPayload, StoredHeartbeat,
+        append_diagnostics_event_to_dir, export_diagnostics_bundle_to_dir, read_heartbeat,
+        write_json_atomically, DiagnosticsEventPayload, RecoverySnapshot, RendererHeartbeatPayload,
+        StoredHeartbeat,
     };
     use std::{fs, path::Path};
 
@@ -453,6 +607,55 @@ mod tests {
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[test]
+    fn diagnostics_bundle_contains_events_and_recovery_metadata_without_raw_markdown() {
+        let dir = test_dir("bundle");
+        let heartbeat = StoredHeartbeat {
+            session_id: "session-bundle".into(),
+            seen_at_ms: 2345,
+            clean_shutdown: false,
+            payload: heartbeat_payload("session-bundle"),
+        };
+        write_json_atomically(&dir.join(super::HEARTBEAT_FILE), &heartbeat).unwrap();
+        append_diagnostics_event_to_dir(
+            &dir,
+            &DiagnosticsEventPayload {
+                event_type: "save-failed".into(),
+                message: "Disk write failed.".into(),
+                document_path: Some("C:/lab/paper.md".into()),
+                mode: Some("visual".into()),
+                markdown_bytes: Some(4096),
+                component_stack: None,
+            },
+        )
+        .unwrap();
+        write_json_atomically(
+            &dir.join(super::RECOVERY_SNAPSHOT_FILE),
+            &RecoverySnapshot {
+                markdown: "# private draft".into(),
+                file_path: Some("C:/lab/paper.md".into()),
+                updated_at_ms: 3456,
+                markdown_bytes: 15,
+            },
+        )
+        .unwrap();
+
+        let metadata = export_diagnostics_bundle_to_dir(&dir).unwrap();
+        let bundle = fs::read_to_string(&metadata.path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&bundle).unwrap();
+
+        assert_eq!(metadata.event_count, 1);
+        assert_eq!(metadata.recovery_snapshot_bytes, Some(15));
+        assert_eq!(parsed["heartbeat"]["sessionId"], "session-bundle");
+        assert!(parsed["diagnosticsLog"]["tail"]
+            .as_str()
+            .unwrap()
+            .contains("save-failed"));
+        assert_eq!(parsed["recoverySnapshot"]["markdownBytes"], 15);
+        assert!(!bundle.contains("# private draft"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
     fn heartbeat_payload(session_id: &str) -> RendererHeartbeatPayload {
         RendererHeartbeatPayload {
             session_id: session_id.into(),
@@ -466,6 +669,10 @@ mod tests {
             warning_count: 0,
             error_count: 0,
             active_background_job_count: 1,
+            stuck_background_job_count: 0,
+            oldest_background_job_ms: Some(250),
+            background_job_labels: vec!["Document parser".into()],
+            stuck_background_job_labels: vec![],
         }
     }
 

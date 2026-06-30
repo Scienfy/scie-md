@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createFallbackScienfyDocument, DOCUMENT_PARSE_CRASH_CODE } from '../domain/document/documentModel';
+import { createFallbackScienfyDocument, DOCUMENT_PARSE_CRASH_CODE } from '@sciemd/core';
 import { createScienfyTemplate } from '../domain/document/templates';
-import { countRenderedWords, hasRawHtml, removeFencedCodeBlocks, validateMarkdown } from './markdownValidation';
+import { countRenderedWords, hasConflictMarkers, hasRawHtml, removeFencedCodeBlocks, validateMarkdown } from './markdownValidation';
+import { visualNormalizationGoldenCases } from './roundTripGoldenCorpus';
 import { SOURCE_ONLY_FILE_BYTES } from './supportedMarkdown';
 
 describe('validateMarkdown', () => {
@@ -119,6 +120,36 @@ describe('validateMarkdown', () => {
     expect(result.issues.some((issue) => issue.code === 'internal-visual-marker')).toBe(true);
   });
 
+  it('flags unresolved conflict markers before they silently become normal visual text', () => {
+    const markdown = [
+      '# Conflict',
+      '',
+      '<<<<<<< ScieMD local edits',
+      'Local paragraph.',
+      '=======',
+      'Disk paragraph.',
+      '>>>>>>> Disk changes',
+    ].join('\n');
+    const result = validateMarkdown(markdown);
+
+    expect(hasConflictMarkers(markdown)).toBe(true);
+    expect(result.sourceOnly).toBe(false);
+    expect(result.issues.some((issue) => issue.code === 'conflict-marker' && issue.severity === 'error')).toBe(true);
+  });
+
+  it('ignores conflict-marker examples inside fenced code blocks', () => {
+    const markdown = [
+      '```diff',
+      '<<<<<<< example',
+      '=======',
+      '>>>>>>> example',
+      '```',
+    ].join('\n');
+
+    expect(hasConflictMarkers(removeFencedCodeBlocks(markdown))).toBe(false);
+    expect(validateMarkdown(markdown).issues.some((issue) => issue.code === 'conflict-marker')).toBe(false);
+  });
+
   it('reports parser fallback without blocking visual mode', () => {
     const fallback = createFallbackScienfyDocument('# Body\n', {}, new Error('boom'));
     const result = validateMarkdown('# Body\n', undefined, fallback);
@@ -128,19 +159,15 @@ describe('validateMarkdown', () => {
   });
 
   it('warns while still allowing visual mode for Markdown forms that visual mode normalizes', () => {
-    for (const markdown of [
-      'Heading\n=======\n',
-      '+ Alpha\n+ Beta\n',
-      '* Alpha\n* Beta\n',
-      '1) Alpha\n2) Beta\n',
-      'A [reference link][id].\n\n[id]: https://example.com\n',
-      'Hard break  \nnext line\n',
-      '\tIndented with a tab\n',
-    ]) {
+    for (const { markdown, warning } of visualNormalizationGoldenCases) {
       const result = validateMarkdown(markdown);
       expect(result.sourceOnly).toBe(false);
       expect(result.formattingWillNormalize).toBe(true);
-      expect(result.issues.some((issue) => issue.code === 'visual-roundtrip-risk' && issue.severity === 'warning')).toBe(true);
+      expect(result.issues.some((issue) => (
+        issue.code === 'visual-roundtrip-risk'
+        && issue.severity === 'warning'
+        && issue.message.includes(warning)
+      ))).toBe(true);
     }
   });
 

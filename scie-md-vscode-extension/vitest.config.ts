@@ -9,6 +9,8 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      '@sciemd/core': resolve(extensionRoot, '..', 'packages/core/src/index.ts'),
+      '@sciemd/core/': `${resolve(extensionRoot, '..', 'packages/core/src')}/`,
       react: resolve(extensionRoot, 'node_modules/react'),
       'react-dom': resolve(extensionRoot, 'node_modules/react-dom'),
       'react/jsx-runtime': resolve(extensionRoot, 'node_modules/react/jsx-runtime.js'),

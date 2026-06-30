@@ -1,5 +1,5 @@
-import { lineStartOffsets, offsetToLine } from './textOffsets';
-import { fencedCodeRanges } from './markdownRanges';
+import { lineStartOffsets, offsetToLine } from '@sciemd/core';
+import { fencedCodeRanges } from '@sciemd/core';
 
 export interface MermaidFenceBlock {
   raw: string;

@@ -1,44 +1,31 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, DragEvent as ReactDragEvent, SetStateAction } from 'react';
+import type { DragEvent as ReactDragEvent, SetStateAction } from 'react';
 import type { Editor } from '@milkdown/kit/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { PanelLeftOpen } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
 import type { EditorMode } from './documentState';
 import { createWindowTitle, DEFAULT_METADATA } from './documentState';
+import { useBackgroundJobTracker, type BackgroundJobSignal } from './backgroundJobs';
 import { AppOverlays } from './AppOverlays';
-import { AmbientSuggestions } from '../components/AmbientSuggestions';
-import { AppTopbar, type AppTopbarMenuId } from '../components/AppTopbar';
+import { AppWorkbench } from './AppWorkbench';
+import type { AppTopbarMenuId } from '../components/AppTopbar';
 import type { SelectionBlockType } from '../components/BlockTypeDialog';
-import type { CommandItem } from '../components/CommandPalette';
-import { EditorErrorBoundary } from '../components/EditorErrorBoundary';
 import type { ExportRenderHostHandle } from '../components/ExportRenderHost';
-import { FindReplacePanel } from '../components/FindReplacePanel';
-import { FloatingFormatToolbar } from '../components/FloatingFormatToolbar';
-import { InspectorPane } from '../components/InspectorPane';
-import { MarkdownToolbar } from '../components/MarkdownToolbar';
-import { MetadataRail } from '../components/MetadataRail';
-import { NavigationSidebar } from '../components/NavigationSidebar';
-import { QuickOutlineHover } from '../components/QuickOutlineHover';
-import { SavePill } from '../components/SavePill';
-import { StatusBar } from '../components/StatusBar';
 import type { VariableDialogState } from '../components/VariableDialog';
 import type { EditorHistoryControls } from '../components/editorControls';
 import type { EditorSelectionSnapshot } from '../components/editorSelection';
-import { SourceMarkdownEditor } from '../components/SourceMarkdownEditor';
 import type { SourceMarkdownFind, SourceMarkdownInsert, SourceMarkdownJump, SourceMarkdownSelection } from '../components/SourceMarkdownEditor';
-import { VisualMarkdownEditor } from '../components/VisualMarkdownEditor';
 import type { VisualMarkdownFind, VisualMarkdownInsert, VisualMarkdownJump, VisualMarkdownSelection } from '../components/VisualMarkdownEditor';
-import { flushVisualEditorState } from '../components/visualEditorStateSync';
+import { commitVisualEditorState, readVisualEditorState } from '../components/visualEditorStateSync';
 import { useDialogs } from './hooks/useDialogs';
 import {
   initialDocumentMarkdownForLaunch,
+  initialExplorerFallbackPathForLaunch,
   initialExplorerPathForLaunch,
   parentDirectoryForDocument,
   shouldCommitWelcomeAfterStartup,
   shouldShowAutomaticOnboardingDialog,
 } from './documentLaunch';
-import { useAppCommandRegistry } from './hooks/useAppCommandRegistry';
+import { useAppCommands } from './hooks/useAppCommands';
 import { useDocumentDropPaste } from './hooks/useDocumentDropPaste';
 import type { PasteReviewState } from './hooks/useDocumentDropPaste';
 import { useDocumentSession } from './hooks/useDocumentSession';
@@ -62,12 +49,10 @@ import { useSlashCommandMenu } from './hooks/useSlashCommandMenu';
 import { useStableRegistration } from './hooks/useStableRegistration';
 import { useToasts } from './hooks/useToasts';
 import { useWindowChrome } from './hooks/useWindowChrome';
-import { cleanupStaleTempFilesForPaths } from '../services/fileService';
-import { copyImageToAssets, defaultImageAlt, markdownImageSyntax, pickImageFile } from '../services/assetService';
-import { checkPandocAvailable } from '../services/exportService';
-import { checkInkscapeAvailable } from '../services/inkscapeService';
+import { desktopDocumentHost } from './host/desktopDocumentHost';
+import { desktopPlatformHost } from './host/desktopPlatformHost';
 import { updateRawDocumentRescue } from '../services/rawDocumentRescue';
-import { revealInFileManager } from '../services/revealService';
+import { exportDiagnosticsBundle } from '../services/nativeRecoveryService';
 import { loadSettings, normalizeSidebarWidth, updateSettings } from '../services/settingsService';
 import type { DocumentType, SidebarView, ThemeMode } from '../services/settingsService';
 import { getVisualStyleOption, nextVisualStyle } from '../services/visualStyleService';
@@ -75,20 +60,19 @@ import type { VisualStyleId } from '../services/visualStyleService';
 import type { AuthorshipMark } from '../markdown/authorship';
 import { analyzeMarkdownDocument } from '../markdown/documentIntelligence';
 import { assessManuscriptReadiness } from '../markdown/manuscriptReadiness';
-import { extractHeadings } from '../markdown/outline';
+import { extractHeadings } from '@sciemd/core';
 import { normalizeScientificTypography } from '../markdown/scientificTypography';
 import { toggleMarkdownHeadingSelection } from '../markdown/headingToggle';
-import { createSemanticBlockMarkdown } from '../markdown/semanticBlocks';
-import { insertStandaloneMarkdownBlockNearSelection, wrapMarkdownBlockSelection, wrapMarkdownSelection } from '../markdown/selectionWrapping';
-import { insertEditorNote, parseEditorComments } from '../markdown/editorComments';
-import type { EditorNoteKind } from '../markdown/editorComments';
-import { createTargetedInstructionSnippet, parseTargetedInstructions } from '../markdown/targetedInstructions';
-import { createAnchoredVariantGroupSnippet, createVariantGroupSnippet, parseVariantGroups } from '../markdown/variants';
-import { createProtectedAnchorSnippet, createProtectedBlockSnippet, detectProtectedChanges, parseProtectedBlocks } from '../markdown/protectedBlocks';
-import { syncGeneratedBibliography } from '../domain/citations/bibtex';
-import type { BibtexEntry } from '../domain/citations/bibtex';
+import { createSemanticBlockMarkdown } from '@sciemd/core';
+import { insertStandaloneMarkdownBlockNearSelection, wrapMarkdownBlockSelection, wrapMarkdownSelection } from '@sciemd/core';
+import { insertEditorNote, parseEditorComments } from '@sciemd/core';
+import type { EditorNoteKind } from '@sciemd/core';
+import { createTargetedInstructionSnippet, parseTargetedInstructions } from '@sciemd/core';
+import { createAnchoredVariantGroupSnippet, createVariantGroupSnippet, parseVariantGroups } from '@sciemd/core';
+import { createProtectedAnchorSnippet, createProtectedBlockSnippet, detectProtectedChanges, parseProtectedBlocks } from '@sciemd/core';
+import { syncGeneratedBibliography } from '@sciemd/core';
 import type { ScienfyTemplateId } from '../domain/document/templates';
-import { createVariableToken, nextVariableName, renameVariableAndUpdateUsages, upsertFrontmatterVariable, upsertScienfyVariablesFile } from '../domain/variables/variableEditing';
+import { createVariableToken, nextVariableName, renameVariableAndUpdateUsages, upsertFrontmatterVariable, upsertScienfyVariablesFile } from '@sciemd/core';
 import { captureEditorHtmlForExport } from '../export/renderCapture';
 import type { ExportLogEntry } from '../export/exportTypes';
 import { isTauriRuntime } from './runtime';
@@ -111,18 +95,6 @@ function nextReferenceLabel(prefix: string, existingLabels: string[]): string {
 }
 
 type EditorSelectionOverride = string | EditorSelectionSnapshot;
-
-function citationCommandDetail(entry: BibtexEntry | undefined): string {
-  if (!entry) return 'Previously used citation key';
-  const title = cleanBibtexCommandField(entry.fields.title) || entry.key;
-  const authors = cleanBibtexCommandField(entry.fields.author || entry.fields.editor || '');
-  const year = cleanBibtexCommandField(entry.fields.year || '');
-  return [title, [authors, year].filter(Boolean).join(', ')].filter(Boolean).join(' - ');
-}
-
-function cleanBibtexCommandField(value: string): string {
-  return value.replace(/[{}]/g, '').replace(/\\&/g, '&').replace(/\s+/g, ' ').trim();
-}
 
 function createSvgFigureSnippet(label: string): string {
   return [
@@ -155,7 +127,6 @@ function openProjectUrl(url: string): void {
 }
 
 export function App() {
-  const { t } = useTranslation();
   const [settings, setSettings] = useState(loadSettings);
   const [sidebarWidth, setSidebarWidth] = useState(settings.sidebarWidth);
   const [authorshipMarks, setAuthorshipMarks] = useState<AuthorshipMark[]>([]);
@@ -183,6 +154,7 @@ export function App() {
     saveQueueDepth,
     startupDocumentOpenPending,
     startupDocumentOpenFailed,
+    startupDocumentOpenFailure,
     documentOpenStatus,
     externalConflict,
     dirty,
@@ -190,12 +162,16 @@ export function App() {
     validateNow,
     layerTwoDocument,
     bibliographyLoading,
+    documentParsingPending,
+    validationPending,
+    linkedVariableLoading,
     reloadBibliography,
     closeDialogOpen,
     setCloseDialogOpen,
     closeWindow,
     cancelAutosave,
     saveCurrent,
+    confirmVisualRoundTripWrite,
     ensureDocumentPathForAssets,
     settleDirtyDocumentBeforeReplace,
     commitOpenedDocument,
@@ -203,8 +179,13 @@ export function App() {
     handleOpen,
     handleNew,
     handleNewFromTemplate,
+    retryStartupDocumentOpen,
+    openStartupDocumentFallbackPicker,
+    dismissStartupDocumentOpenFailure,
+    recordStartupFallbackCommitted,
     handleCloseSave,
     handleCloseDiscard,
+    handleCloseCancel,
     handleReloadFromDisk,
   } = useDocumentSession({
     initialMarkdown: initialDocumentMarkdownForLaunch({
@@ -406,7 +387,7 @@ export function App() {
 
   useEffect(() => {
     if (!isTauriRuntime() || settings.recentFiles.length === 0) return;
-    void cleanupStaleTempFilesForPaths(settings.recentFiles).catch((error) => {
+    void desktopPlatformHost.maintenance.cleanupStaleTempFilesForPaths(settings.recentFiles).catch((error) => {
       console.warn('Could not clean stale temporary files.', error);
     });
   }, [settings.recentFiles]);
@@ -423,6 +404,7 @@ export function App() {
     ensureDocumentPathForAssets,
     promptText,
     pushToast,
+    platformHost: desktopPlatformHost,
   });
 
   const suggestedVariableName = useMemo(
@@ -542,7 +524,7 @@ export function App() {
 
   const checkInkscape = useCallback(async () => {
     try {
-      const info = await checkInkscapeAvailable(settings.inkscapePath);
+      const info = await desktopPlatformHost.inkscape.checkAvailable(settings.inkscapePath);
       updateUserSettings({ inkscapePath: info.path });
       pushToast(`Inkscape ready: ${info.version}`, 'success');
     } catch (error) {
@@ -591,7 +573,7 @@ export function App() {
       return;
     }
     try {
-      const info = await checkInkscapeAvailable(trimmed);
+      const info = await desktopPlatformHost.inkscape.checkAvailable(trimmed);
       updateUserSettings({ inkscapePath: info.path });
       pushToast(`Inkscape ready: ${info.version}`, 'success');
     } catch (error) {
@@ -631,8 +613,8 @@ export function App() {
   const checkExternalTools = useCallback(async () => {
     setActiveTopbarMenu(null);
     const [inkscapeResult, pandocResult] = await Promise.allSettled([
-      checkInkscapeAvailable(settings.inkscapePath),
-      checkPandocAvailable(),
+      desktopPlatformHost.inkscape.checkAvailable(settings.inkscapePath),
+      desktopPlatformHost.export.checkPandocAvailable(),
     ]);
     const ready: string[] = [];
     const missing: string[] = [];
@@ -667,13 +649,13 @@ export function App() {
 
   const locateMissingImage = useCallback(async (source: string, alt: string) => {
     try {
-      const imagePath = await pickImageFile();
+      const imagePath = await desktopPlatformHost.assets.pickImageFile();
       if (!imagePath) return;
       const documentPath = await ensureDocumentPathForAssets();
       if (!documentPath) return;
-      const altText = alt.trim() || defaultImageAlt(imagePath);
-      const copied = await copyImageToAssets(documentPath, imagePath, altText);
-      const replacement = markdownImageSyntax(copied.altText, copied.markdownPath);
+      const altText = alt.trim() || desktopPlatformHost.assets.defaultImageAlt(imagePath);
+      const copied = await desktopPlatformHost.assets.copyImageToAssets(documentPath, imagePath, altText);
+      const replacement = desktopPlatformHost.assets.markdownImageSyntax(copied.altText, copied.markdownPath);
       commitMarkdown((current) => {
         return replaceFirstMissingImageReference(current, source, alt, replacement);
       });
@@ -706,6 +688,7 @@ export function App() {
     setAuthorshipMarks,
     setPasteReview,
     pushToast,
+    platformHost: desktopPlatformHost,
   });
 
   const {
@@ -733,8 +716,16 @@ export function App() {
     persistedExplorerRootPath: settings.explorerRootPath,
     startupDocumentOpenPending,
     startupDocumentOpenFailed,
+    startupDocumentOpenFailurePath: startupDocumentOpenFailure?.path ?? null,
     filePath,
-  }), [filePath, settings.explorerRootPath, startupDocumentOpenFailed, startupDocumentOpenPending]);
+  }), [filePath, settings.explorerRootPath, startupDocumentOpenFailed, startupDocumentOpenFailure?.path, startupDocumentOpenPending]);
+  const initialExplorerFallbackPath = useMemo(() => initialExplorerFallbackPathForLaunch({
+    persistedExplorerRootPath: settings.explorerRootPath,
+    startupDocumentOpenPending,
+    startupDocumentOpenFailed,
+    startupDocumentOpenFailurePath: startupDocumentOpenFailure?.path ?? null,
+    filePath,
+  }), [filePath, settings.explorerRootPath, startupDocumentOpenFailed, startupDocumentOpenFailure?.path, startupDocumentOpenPending]);
 
   const {
     currentPath: explorerCurrentPath,
@@ -742,13 +733,16 @@ export function App() {
     selectedImage: explorerSelectedImage,
     loading: explorerLoading,
     error: explorerError,
+    watcherMessage: explorerWatcherMessage,
     loadDirectory: loadExplorerDirectory,
     chooseFolder: chooseExplorerFolder,
     openEntry: handleOpenExplorerEntry,
   } = useFileExplorer({
     initialPath: initialExplorerPath,
+    fallbackInitialPath: initialExplorerFallbackPath,
     onPersistPath: persistExplorerPath,
     onOpenDocument: openExplorerDocument,
+    platformHost: desktopPlatformHost,
   });
 
   const syncDocumentParentToExplorer = useCallback((path: string) => {
@@ -772,13 +766,23 @@ export function App() {
       filePath,
       markdown,
     })) return;
-    commitOpenedDocument(null, welcomeMarkdown, DEFAULT_METADATA, 'visual');
+    commitOpenedDocument(
+      null,
+      welcomeMarkdown,
+      DEFAULT_METADATA,
+      'visual',
+      welcomeMarkdown,
+      { preserveStartupOpenFailure: Boolean(startupDocumentOpenFailure) },
+    );
+    recordStartupFallbackCommitted(welcomeMarkdown);
   }, [
     commitOpenedDocument,
     filePath,
     markdown,
+    recordStartupFallbackCommitted,
     settings.onboardingComplete,
     startupDocumentOpenFailed,
+    startupDocumentOpenFailure,
     startupDocumentOpenPending,
   ]);
 
@@ -992,6 +996,9 @@ export function App() {
       setExportRenderHostMounted(false);
     }
   }, [filePath, layerTwoDocument.citations.bibtexEntries, layerTwoDocument.variables.definitions]);
+  const getCurrentOutputMarkdown = useCallback(() => (
+    readVisualEditorState()?.markdown ?? markdownRef.current
+  ), []);
 
   const { copyRichText, exportHtml, exportPandoc, printPreview } = useExportActions({
     markdown,
@@ -1003,16 +1010,30 @@ export function App() {
     visualStyle: settings.visualStyle,
     fontScale: settings.fontScale,
     exportOptions: settings.exportOptions,
+    getCurrentOutputMarkdown,
     captureVisualHtml: () => captureEditorHtmlForExport(editorStageRef.current),
     renderVisualExportHtml,
     onExportLog: (entries) => exportLogSinkRef.current(entries),
     pushToast,
+    platformHost: desktopPlatformHost,
   });
 
   const runPrintPreview = useCallback(() => {
     setActiveTopbarMenu(null);
     void printPreview(settings.exportOptions);
   }, [printPreview, settings.exportOptions]);
+
+  const handleExportDiagnosticsBundle = useCallback(async () => {
+    const bundle = await exportDiagnosticsBundle();
+    if (!bundle) {
+      pushToast('Diagnostics bundle export is available in the desktop app.', 'warning');
+      return;
+    }
+    pushToast(`Diagnostics bundle exported to ${bundle.path}.`, 'success');
+    void desktopPlatformHost.reveal.revealInFileManager(bundle.path).catch((error) => {
+      console.warn('Could not reveal diagnostics bundle.', error);
+    });
+  }, [pushToast]);
 
   const exportWorkflow = useExportWorkflow({
     exportHtml,
@@ -1057,15 +1078,68 @@ export function App() {
     () => editorComments.length + targetedInstructions.length + variantGroups.length + protectedBlocks.length,
     [editorComments.length, protectedBlocks.length, targetedInstructions.length, variantGroups.length],
   );
-  const activeBackgroundJobCount = useMemo(
-    () => [
-      bibliographyLoading,
-      startupDocumentOpenPending,
-      Boolean(documentOpenStatus),
-      Boolean(exportWorkflow.activeExport),
-    ].filter(Boolean).length,
-    [bibliographyLoading, documentOpenStatus, exportWorkflow.activeExport, startupDocumentOpenPending],
-  );
+  const backgroundJobSignals = useMemo<BackgroundJobSignal[]>(() => [
+    {
+      id: 'startup-open',
+      label: 'Startup document open',
+      active: startupDocumentOpenPending,
+      stuckAfterMs: 10_000,
+    },
+    {
+      id: 'document-open',
+      label: 'Document open',
+      active: Boolean(documentOpenStatus),
+      stuckAfterMs: 20_000,
+    },
+    {
+      id: 'save-queue',
+      label: 'Save queue',
+      active: saveQueueDepth > 0,
+      stuckAfterMs: 15_000,
+    },
+    {
+      id: 'export',
+      label: exportWorkflow.activeExport
+        ? `${exportWorkflow.activeExport.format.toUpperCase()} export`
+        : 'Export',
+      active: Boolean(exportWorkflow.activeExport),
+      stuckAfterMs: 60_000,
+    },
+    {
+      id: 'document-parser',
+      label: 'Document parser',
+      active: documentParsingPending,
+      stuckAfterMs: 15_000,
+    },
+    {
+      id: 'document-validator',
+      label: 'Document validation',
+      active: validationPending,
+      stuckAfterMs: 10_000,
+    },
+    {
+      id: 'bibliography-refresh',
+      label: 'Bibliography refresh',
+      active: bibliographyLoading,
+      stuckAfterMs: 20_000,
+    },
+    {
+      id: 'linked-variable-refresh',
+      label: 'Linked variable refresh',
+      active: linkedVariableLoading,
+      stuckAfterMs: 20_000,
+    },
+  ], [
+    bibliographyLoading,
+    documentOpenStatus,
+    documentParsingPending,
+    exportWorkflow.activeExport,
+    linkedVariableLoading,
+    saveQueueDepth,
+    startupDocumentOpenPending,
+    validationPending,
+  ]);
+  const backgroundJobs = useBackgroundJobTracker(backgroundJobSignals);
   const handlePreviousRendererCrashDetected = useCallback(() => {
     pushToast(
       'Previous ScieMD session ended unexpectedly. A local diagnostics marker and raw recovery snapshot are available if needed.',
@@ -1079,7 +1153,7 @@ export function App() {
     warningCount: warnings.length,
     errorCount: errors.length,
     visualAtomCount,
-    activeBackgroundJobCount,
+    backgroundJobs,
     onPreviousSessionCrashDetected: handlePreviousRendererCrashDetected,
   });
 
@@ -1097,6 +1171,7 @@ export function App() {
     adoptReviewedDiskMerge,
     setAuthorshipMarks,
     pushToast,
+    host: desktopDocumentHost,
   });
 
   const handleSidebarViewChange = useCallback((sidebarView: SidebarView) => {
@@ -1174,19 +1249,35 @@ export function App() {
     };
     updateUserSettings({ ...defaults[documentType], documentType, onboardingComplete: true });
     setDocumentTypeDialogOpen(false);
-    if (!startupDocumentOpenPending && !startupDocumentOpenFailed && !filePath && markdownRef.current.trim() === '') {
-      commitOpenedDocument(null, welcomeMarkdown, DEFAULT_METADATA, 'visual');
+    if (!startupDocumentOpenPending && !filePath && markdownRef.current.trim() === '') {
+      commitOpenedDocument(
+        null,
+        welcomeMarkdown,
+        DEFAULT_METADATA,
+        'visual',
+        welcomeMarkdown,
+        { preserveStartupOpenFailure: Boolean(startupDocumentOpenFailure) },
+      );
+      recordStartupFallbackCommitted(welcomeMarkdown);
     }
     pushToast('Writing defaults applied', 'success');
-  }, [commitOpenedDocument, filePath, pushToast, startupDocumentOpenFailed, startupDocumentOpenPending, updateUserSettings]);
+  }, [commitOpenedDocument, filePath, pushToast, recordStartupFallbackCommitted, startupDocumentOpenFailure, startupDocumentOpenPending, updateUserSettings]);
 
   const skipDocumentType = useCallback(() => {
     updateUserSettings({ onboardingComplete: true });
     setDocumentTypeDialogOpen(false);
-    if (!startupDocumentOpenPending && !startupDocumentOpenFailed && !filePath && markdownRef.current.trim() === '') {
-      commitOpenedDocument(null, welcomeMarkdown, DEFAULT_METADATA, 'visual');
+    if (!startupDocumentOpenPending && !filePath && markdownRef.current.trim() === '') {
+      commitOpenedDocument(
+        null,
+        welcomeMarkdown,
+        DEFAULT_METADATA,
+        'visual',
+        welcomeMarkdown,
+        { preserveStartupOpenFailure: Boolean(startupDocumentOpenFailure) },
+      );
+      recordStartupFallbackCommitted(welcomeMarkdown);
     }
-  }, [commitOpenedDocument, filePath, startupDocumentOpenFailed, startupDocumentOpenPending, updateUserSettings]);
+  }, [commitOpenedDocument, filePath, recordStartupFallbackCommitted, startupDocumentOpenFailure, startupDocumentOpenPending, updateUserSettings]);
 
   const automaticDocumentTypeDialogOpen = shouldShowAutomaticOnboardingDialog({
     onboardingComplete: settings.onboardingComplete,
@@ -1245,13 +1336,16 @@ export function App() {
 
   const handleModeChange = useCallback(async (nextMode: EditorMode) => {
     if (nextMode === mode) return;
-    const flushedMarkdown = flushVisualEditorState();
-    if (flushedMarkdown !== null) {
-      commitMarkdown(flushedMarkdown);
+    if (nextMode === 'visual') {
+      const allowed = await confirmVisualRoundTripWrite(markdownRef.current, {
+        reason: 'mode-switch-to-visual',
+      });
+      if (!allowed) return;
     }
+    commitVisualEditorState(commitMarkdown);
     preserveLineForModeChange(currentLine, nextMode);
     setMode(nextMode);
-  }, [commitMarkdown, currentLine, mode, preserveLineForModeChange]);
+  }, [commitMarkdown, confirmVisualRoundTripWrite, currentLine, mode, preserveLineForModeChange]);
 
   const openLinkDialog = useCallback(() => {
     const selectedText = getSelectedEditorText();
@@ -1420,14 +1514,16 @@ export function App() {
     };
   }, [activeTopbarMenu]);
 
-  const commands = useAppCommandRegistry({
-    outlineOpen: settings.outlineOpen,
-    focusMode: settings.focusMode,
-    themeMode: settings.themeMode,
+  const { commands, dynamicCommands: commandPaletteDynamicCommands } = useAppCommands({
+    settings,
     currentVisualStyleLabel: currentVisualStyle.label,
     pasteReviewHunks: pasteReview?.hunks.length ?? null,
     recentPreviews,
     headings,
+    citationCompletionKeys,
+    citationEntries: layerTwoDocument.citations.bibtexEntries,
+    missingCitationCount: layerTwoDocument.citations.missingKeys.length,
+    missingVariableCount: layerTwoDocument.variables.missingVariables.length,
     onNew: () => void handleNew(),
     onOpen: () => void handleOpen(),
     onOpenFolder: () => void handleChooseExplorerFolder(),
@@ -1441,7 +1537,7 @@ export function App() {
     onOpenFullTutorial: () => void openFullTutorialDocument(),
     onInsertImage: () => void handleInsertImage(),
     onInsertCitation: openCitationLibrary,
-    onInsertMermaid: () => insertMarkdown('```mermaid\nflowchart LR\n  A[Question] --> B[Experiment]\n  B --> C[Result]\n```\n\n'),
+    onInsertMarkdown: insertMarkdown,
     onInsertSvgFigure: insertSvgFigure,
     onInsertVariable: openVariableInsert,
     onCheckExternalTools: () => void checkExternalTools(),
@@ -1460,16 +1556,12 @@ export function App() {
     onCopyScieMDLlmSkill: () => void copyScieMDLlmSkill(),
     onGenerateScieMDLlmSkill: () => void generateScieMDLlmSkill(),
     onCopyRichText: () => void copyRichText(),
-    onExportHtml: () => void exportWorkflow.runConfiguredExport('html', settings.exportOptions),
-    onExportPandoc: (format) => void exportWorkflow.runConfiguredExport(format, settings.exportOptions),
+    onRunConfiguredExport: (format, options) => void exportWorkflow.runConfiguredExport(format, options),
     onPrintPreview: runPrintPreview,
     onOpenPasteReview: openPasteReview,
     onToggleOutline: () => updateUserSettings({ outlineOpen: !settings.outlineOpen }),
     onToggleFocusMode: toggleFocusMode,
-    onSidebarOutline: () => handleSidebarViewChange('outline'),
-    onSidebarFiles: () => handleSidebarViewChange('files'),
-    onSidebarReferences: () => handleSidebarViewChange('references'),
-    onSidebarData: () => handleSidebarViewChange('data'),
+    onSidebarViewChange: handleSidebarViewChange,
     onCycleTheme: cycleTheme,
     onCycleVisualStyle: cycleVisualStyle,
     onSetVisualStyle: setVisualStyle,
@@ -1480,397 +1572,291 @@ export function App() {
     onOpenRecent: (recentPath) => void handleOpen(recentPath),
     onJumpToHeading: jumpToHeading,
     onNewFromTemplate: (template) => void handleNewFromTemplate(template),
-    missingCitationCount: layerTwoDocument.citations.missingKeys.length,
-    missingVariableCount: layerTwoDocument.variables.missingVariables.length,
   });
-  const commandPaletteDynamicCommands = useCallback((query: string): CommandItem[] => {
-    const trimmed = query.trim();
-    if (trimmed.startsWith('@')) {
-      const needle = trimmed.slice(1).toLowerCase();
-      const entryByKey = new Map(layerTwoDocument.citations.bibtexEntries.map((entry) => [entry.key, entry]));
-      return citationCompletionKeys
-        .filter((key) => key.toLowerCase().includes(needle))
-        .slice(0, 12)
-        .map((key) => ({
-          id: `dynamic-citation-${key}`,
-          label: `Insert citation @${key}`,
-          detail: citationCommandDetail(entryByKey.get(key)),
-          run: () => insertMarkdown(`[@${key}]`),
-        }));
-    }
-    if (trimmed.startsWith('#')) {
-      const needle = trimmed.slice(1).trim().toLowerCase();
-      return headings
-        .filter((heading) => !needle || heading.text.toLowerCase().includes(needle))
-        .slice(0, 12)
-        .map((heading) => ({
-          id: `dynamic-heading-${heading.id}-${heading.line}`,
-          label: `Go to ${'#'.repeat(Math.min(heading.level, 6))} ${heading.text}`,
-          detail: `Line ${heading.line}`,
-          run: () => jumpToHeading(heading),
-        }));
-    }
-    return [];
-  }, [citationCompletionKeys, headings, insertMarkdown, jumpToHeading, layerTwoDocument.citations.bibtexEntries]);
-  const workbenchStyle = useMemo(() => ({
-    '--outline-width': `${sidebarWidth}px`,
-  }) as CSSProperties, [sidebarWidth]);
-
   return (
-    <div className={`app-shell ${settings.focusMode ? 'focus-mode' : ''}`}>
-      <a className="skip-link" href="#editor-stage">{t('accessibility.skipToEditor')}</a>
-      <AppTopbar
-        mode={mode}
-        activeMenu={activeTopbarMenu}
-        filePath={filePath}
-        dirty={dirty}
-        outlineOpen={settings.outlineOpen}
-        inspectorOpen={settings.inspectorOpen}
-        focusMode={settings.focusMode}
-        themeMode={settings.themeMode}
-        currentVisualStyle={currentVisualStyle}
-        selectedVisualStyle={settings.visualStyle}
-        recentFiles={recentPreviews}
-        hasPasteReview={Boolean(pasteReview)}
-        onToggleMenu={(menu) => setActiveTopbarMenu((current) => current === menu ? null : menu)}
-        onCloseMenus={() => setActiveTopbarMenu(null)}
-        onNew={() => void handleNew()}
-        onOpen={() => void handleOpen()}
-        onOpenFolder={() => void handleChooseExplorerFolder()}
-        onOpenRecent={(recentPath) => void handleOpen(recentPath)}
-        onSave={() => void saveCurrent()}
-        onSaveAs={() => void saveCurrent({ forceSaveAs: true })}
-        onFind={() => setFindOpen(true)}
-        onUndo={() => runHistoryCommand('undo')}
-        onRedo={() => runHistoryCommand('redo')}
-        onCopyRichText={() => void copyRichText()}
-        onApplyScientificTypography={applyScientificTypography}
-        onInsertMarkdown={insertMarkdown}
-        onInsertImage={() => void handleInsertImage()}
-        onInsertLink={openLinkDialog}
-        onInsertCitation={openCitationLibrary}
-        onInsertVariable={openVariableInsert}
-        onInsertMermaid={() => insertMarkdown('```mermaid\nflowchart LR\n  A[Question] --> B[Experiment]\n  B --> C[Result]\n```\n\n')}
-        onInsertSvgFigure={insertSvgFigure}
-        onInsertSemanticBlock={insertSemanticBlockFromMenu}
-        onInsertProtectedBlock={() => void insertProtectedBlock()}
-        onInsertEditorComment={() => void insertEditorComment()}
-        onInsertHumanEditorComment={() => void insertHumanEditorComment()}
-        onInsertTargetedInstruction={() => void insertTargetedInstruction()}
-        onInsertVariantGroup={() => insertVariantGroup()}
-        onInsertReferencesDirective={insertReferencesDirective}
-        onReloadBibliography={reloadBibliographyFromDisk}
-        onSyncBibliography={syncBibliographySection}
-        onCopyScieMDLlmSkill={() => void copyScieMDLlmSkill()}
-        onGenerateScieMDLlmSkill={() => void generateScieMDLlmSkill()}
-        onGenerateSubmissionReadiness={() => void generateSubmissionReadiness()}
-        onOpenPasteReview={openPasteReview}
-        onOpenExportDialog={(format) => exportWorkflow.openDialog(format)}
-        onShowExportLog={exportWorkflow.openLog}
-        onPrintPreview={runPrintPreview}
-        onOpenTutorial={() => void openTutorialDocument()}
-        onOpenFullTutorial={() => void openFullTutorialDocument()}
-        onShowShortcuts={() => setShortcutDialogOpen(true)}
-        onOpenTemplates={openTemplateDialog}
-        onCheckTools={() => void checkExternalTools()}
-        onSetInkscapePath={() => void setInkscapePath()}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onShowAbout={() => setAboutOpen(true)}
-        onOpenGithub={openGithub}
-        onReportBug={reportBug}
-        onOpenCommandPalette={openCommandPalette}
-        onOpenSlashMenu={() => openSlashMenu()}
-        onModeChange={(nextMode) => void handleModeChange(nextMode)}
-        onSetVisualStyle={setVisualStyle}
-        onSetThemeMode={setThemeMode}
-        onIncreaseFont={() => adjustFontScale(0.05)}
-        onDecreaseFont={() => adjustFontScale(-0.05)}
-        onResetFont={resetFontScale}
-        onFormatHeading={formatHeadingFromMenu}
-        onFormatInline={formatInlineFromMenu}
-        onToggleOutline={() => updateUserSettings({ outlineOpen: !settings.outlineOpen })}
-        onSidebarView={handleSidebarViewChange}
-        onToggleInspector={() => updateUserSettings({ inspectorOpen: !settings.inspectorOpen })}
-        onToggleFocusMode={toggleFocusMode}
-        onWindowMinimize={handleWindowMinimize}
-        onWindowMaximize={handleWindowMaximize}
-        onWindowClose={handleWindowClose}
-        onTitlebarMouseDown={handleTitlebarMouseDown}
-        onTitlebarDoubleClick={handleTitlebarDoubleClick}
-      />
-
-      <MarkdownToolbar
-        mode={mode}
-        visualEditor={visualEditor}
-        onInsertMarkdown={insertMarkdown}
-        onInsertImage={() => void handleInsertImage()}
-        onInsertCitation={openCitationLibrary}
-        onUndo={() => runHistoryCommand('undo')}
-        onRedo={() => runHistoryCommand('redo')}
-        onInsertLink={openLinkDialog}
-        onInsertVariable={openVariableInsert}
-        onInsertLlmNote={() => void insertEditorComment()}
-        onInsertHumanNote={() => void insertHumanEditorComment()}
-        onInsertVariantGroup={() => insertVariantGroup()}
-        onOpenTablePicker={() => openSlashMenu('table')}
-        nextFigureLabel={nextFigureLabel}
-      />
-
-      {findOpen && (
-        <FindReplacePanel
-          markdown={markdown}
-          onChange={commitMarkdown}
-          onClose={() => setFindOpen(false)}
-          onNavigate={navigateToFindMatch}
-        />
-      )}
-
-      <div
-        className={`workbench ${settings.outlineOpen ? 'with-outline' : ''} ${settings.inspectorOpen ? 'with-inspector' : ''}`}
-        style={workbenchStyle}
-      >
-        {!settings.outlineOpen && (
-          <button
-            type="button"
-            className="sidebar-open-button"
-            aria-label="Open navigation sidebar"
-            data-tooltip="Open navigation sidebar"
-            onClick={openNavigationSidebar}
-          >
-            <PanelLeftOpen size={17} />
-          </button>
-        )}
-        {settings.outlineOpen && (
-          <NavigationSidebar
-            view={settings.sidebarView}
-            width={sidebarWidth}
-            outline={{ headings, activeHeadingId, onJump: jumpToHeading, onInsertHeading: insertOutlineHeading }}
-            explorer={{
-              path: explorerCurrentPath,
-              entries: explorerEntries,
-              selectedImage: explorerSelectedImage,
-              loading: explorerLoading,
-              error: explorerError,
-              onChooseFolder: handleChooseExplorerFolder,
-              onOpenPath: loadExplorerDirectory,
-              onOpenEntry: handleOpenExplorerEntry,
-            }}
-            layerTwoDocument={layerTwoDocument}
-            bibliographyLoading={bibliographyLoading}
-            onViewChange={handleSidebarViewChange}
-            onJumpToLine={jumpToLineInCurrentMode}
-            onReloadBibliography={reloadBibliographyFromDisk}
-            onManageCitations={openCitationLibrary}
-            onInsertVariable={openVariableInsert}
-            onLinkVariableFile={() => void linkVariableFile()}
-            onEditVariable={saveVariableEdit}
-            selectedVariableName={selectedVariableName}
-            onSelectVariable={selectVariableInDocument}
-            onResize={handleSidebarResize}
-            onResizeCommit={handleSidebarResizeCommit}
-            onClose={closeNavigationSidebar}
-          />
-        )}
-        <main
-          id="editor-stage"
-          ref={editorStageRef}
-          className="editor-stage"
-          tabIndex={-1}
-          onKeyDownCapture={handleEditorKeyDownCapture}
-          onPasteCapture={handlePasteCapture}
-          onDragEnterCapture={handleEditorDragEnter}
-          onDragLeaveCapture={handleEditorDragLeave}
-          onDropCapture={handleEditorDrop}
-          onDragOver={handleEditorDragOver}
-        >
-          {dropOverlayVisible && (
-            <div className="editor-drop-overlay" aria-hidden="true">
-              <div>
-                <strong>Drop into ScieMD</strong>
-                <span>Images are copied into assets. Markdown files open as documents.</span>
-              </div>
-            </div>
-          )}
-          <SavePill status={autosaveStatus} text={statusText} queueDepth={saveQueueDepth} />
-          <QuickOutlineHover headings={headings} activeHeadingId={activeHeadingId} onJump={jumpToHeading} />
-          <EditorErrorBoundary
-            resetKey={`${filePath ?? 'untitled'}:${mode}:${editorResetToken}`}
-            fallback={(error, reset) => (
-              <div className="editor-fallback">
-                <div className="editor-fallback-banner">
-                  <strong>Visual editor could not render this view.</strong>
-                  <span>{error.message || 'The visual editor failed to render this document.'}</span>
-                  <button
-                    onClick={() => {
-                      setEditorResetToken((current) => current + 1);
-                      reset();
-                    }}
-                  >
-                    Retry visual editor
-                  </button>
-                </div>
-                <textarea
-                  className="editor-fallback-raw"
-                  aria-label="Raw Markdown fallback"
-                  value={markdown}
-                  onChange={(event) => commitEditorMarkdownEdit(event.target.value)}
-                />
-              </div>
-            )}
-          >
-            {mode === 'visual' ? (
-              <VisualMarkdownEditor
-                markdown={markdown}
-                filePath={filePath}
-                onChange={commitEditorMarkdownEdit}
-                onEditorReady={setVisualEditor}
-                onInsertReady={handleVisualInsertReady}
-                onJumpReady={handleVisualJumpReady}
-                onFindReady={handleVisualFindReady}
-                onHistoryReady={handleVisualHistoryReady}
-                onSelectionTextReady={handleSelectionTextReady}
-                onCursorLineChange={handleCursorPositionChange}
-                onViewportLineChange={handleViewportLineChange}
-                outlineHeadings={navigationHeadings}
-                onLockViolation={(message) => pushToast(message, 'warning')}
-                onToast={pushToast}
-                confirmText={confirmText}
-                referenceLabels={layerTwoDocument.references.labels.map((label) => label.id)}
-                citationKeys={citationCompletionKeys}
-                citationEntries={layerTwoDocument.citations.bibtexEntries}
-                variableDefinitions={layerTwoDocument.variables.definitions}
-                highlightedVariableName={selectedVariableName}
-                onEditCitation={openCitationEditor}
-                onEditVariable={openVariableEdit}
-              />
-            ) : (
-              <SourceMarkdownEditor
-                markdown={markdown}
-                onChange={commitEditorMarkdownEdit}
-                onInsertReady={handleSourceInsertReady}
-                onJumpReady={handleSourceJumpReady}
-                onFindReady={handleSourceFindReady}
-                onHistoryReady={handleSourceHistoryReady}
-                onSelectionTextReady={handleSelectionTextReady}
-                onCursorLineChange={handleCursorPositionChange}
-                onViewportLineChange={handleViewportLineChange}
-                authorshipMarks={settings.authorshipVisible ? authorshipMarks : []}
-                citationKeys={citationCompletionKeys}
-                citationEntries={layerTwoDocument.citations.bibtexEntries}
-                crossReferenceLabels={layerTwoDocument.references.labels}
-                variableDefinitions={layerTwoDocument.variables.definitions}
-                highlightedVariableName={selectedVariableName}
-                validationIssues={validation.issues}
-                protectedBlocks={protectedBlocks}
-                onLockViolation={(message) => pushToast(message, 'warning')}
-              />
-            )}
-          </EditorErrorBoundary>
-          <FloatingFormatToolbar
-            enabled={mode === 'visual'}
-            visualEditor={visualEditor}
-            selectionRoot={editorStageRef.current?.querySelector<HTMLElement>('.visual-editor') ?? null}
-            getSelectionSnapshot={getEditorSelectionSnapshot}
-            onLockSelection={() => void insertProtectedBlock()}
-            onCommentSelection={(selection) => void insertEditorComment(selection)}
-            onHumanCommentSelection={(selection) => void insertHumanEditorComment(selection)}
-            onVariantSelection={() => insertVariantGroup()}
-            onCopySelection={() => void copySelectionFromFloatingToolbar()}
-            onHeadingSelection={convertSelectionToHeading}
-            onBlockSelection={openBlockSelectionDialog}
-          />
-          <MetadataRail
-            mode={mode}
-            document={layerTwoDocument}
-            protectedBlocks={protectedBlocks}
-            editorComments={editorComments}
-            targetedInstructions={targetedInstructions}
-            variantGroups={variantGroups}
-            currentLine={activeNavigationLine}
-            onJumpToLine={jumpToLineInCurrentMode}
-            onOpenReferences={() => handleSidebarViewChange('references')}
-            onOpenData={() => handleSidebarViewChange('data')}
-          />
-        </main>
-        <InspectorPane
-          open={settings.inspectorOpen}
-          focusSection={inspectorFocusSection}
-          data={{
-            filePath,
-            mode,
-            metadata: fileMetadata,
-            validationIssues: ambientIssues,
-            insights: documentInsights,
-            recentPreviews,
-            authorshipMarks,
-            authorshipVisible: settings.authorshipVisible,
-            missingImageCount,
-            autosaveStatus,
-            protectedBlocks,
-            editorComments,
-            targetedInstructions,
-            variantGroups,
-            visualStyle: settings.visualStyle,
-            visualStyleLabel: currentVisualStyle.label,
-            documentType: settings.documentType,
-            hasPasteReview: Boolean(pasteReview),
-            layerTwoDocument,
-            manuscriptReadiness,
-            bibliographyLoading,
-            inkscapePath: settings.inkscapePath,
-          }}
-          actions={{
-            onClose: () => updateUserSettings({ inspectorOpen: false }),
-            onOpenPasteReview: openPasteReview,
-            onGenerateSubmissionReadiness: () => void generateSubmissionReadiness(),
-            onToggleAuthorship: () => updateUserSettings({ authorshipVisible: !settings.authorshipVisible }),
-            onOpenRecent: (recentPath) => void handleOpen(recentPath),
-            onReloadBibliography: reloadBibliographyFromDisk,
-            onCheckInkscape: () => void checkInkscape(),
-            onSetInkscapePath: () => void setInkscapePath(),
-            onJumpToLine: jumpToLineInCurrentMode,
-          }}
-        />
-      </div>
-
-      <AmbientSuggestions
-        issues={ambientIssues}
-        hasPasteReview={Boolean(pasteReview)}
-        onOpenPasteReview={openPasteReview}
-      />
-
-      <StatusBar
-        autosaveStatus={autosaveStatus}
-        statusText={statusText}
-        headingPath={currentHeadingPath}
-        wordCount={validation.wordCount}
-        manuscriptScore={manuscriptReadiness.score}
-        manuscriptStatus={manuscriptReadiness.status}
-        errors={errors.map((error) => error.message)}
-        warnings={warnings.map((warning) => warning.message)}
-        externalConflict={externalConflict}
-        filePath={filePath}
-        onReviewConflict={() => void openExternalConflictReview()}
-        onSaveAnyway={() => void saveCurrent({ forceOverwrite: true })}
-        onReveal={() => filePath && void revealInFileManager(filePath)}
-        onReload={() => filePath && void handleReloadFromDisk()}
-        onSaveNow={() => void saveCurrent({ forceSaveAs: true })}
-        onJumpToHeading={jumpToHeading}
-        onOpenReadiness={() => {
+    <AppWorkbench
+      focusMode={settings.focusMode}
+      skipToEditorLabel="Skip to editor"
+      activeTopbarMenu={activeTopbarMenu}
+      onToggleTopbarMenu={(menu) => setActiveTopbarMenu((current) => current === menu ? null : menu)}
+      onCloseTopbarMenus={() => setActiveTopbarMenu(null)}
+      topbar={{
+        mode,
+        filePath,
+        dirty,
+        outlineOpen: settings.outlineOpen,
+        inspectorOpen: settings.inspectorOpen,
+        focusMode: settings.focusMode,
+        themeMode: settings.themeMode,
+        currentVisualStyle,
+        selectedVisualStyle: settings.visualStyle,
+        recentFiles: recentPreviews,
+        hasPasteReview: Boolean(pasteReview),
+        onNew: () => void handleNew(),
+        onOpen: () => void handleOpen(),
+        onOpenFolder: () => void handleChooseExplorerFolder(),
+        onOpenRecent: (recentPath) => void handleOpen(recentPath),
+        onSave: () => void saveCurrent(),
+        onSaveAs: () => void saveCurrent({ forceSaveAs: true }),
+        onFind: () => setFindOpen(true),
+        onUndo: () => runHistoryCommand('undo'),
+        onRedo: () => runHistoryCommand('redo'),
+        onCopyRichText: () => void copyRichText(),
+        onApplyScientificTypography: applyScientificTypography,
+        onInsertMarkdown: insertMarkdown,
+        onInsertImage: () => void handleInsertImage(),
+        onInsertLink: openLinkDialog,
+        onInsertCitation: openCitationLibrary,
+        onInsertVariable: openVariableInsert,
+        onInsertMermaid: () => insertMarkdown('```mermaid\nflowchart LR\n  A[Question] --> B[Experiment]\n  B --> C[Result]\n```\n\n'),
+        onInsertSvgFigure: insertSvgFigure,
+        onInsertSemanticBlock: insertSemanticBlockFromMenu,
+        onInsertProtectedBlock: () => void insertProtectedBlock(),
+        onInsertEditorComment: () => void insertEditorComment(),
+        onInsertHumanEditorComment: () => void insertHumanEditorComment(),
+        onInsertTargetedInstruction: () => void insertTargetedInstruction(),
+        onInsertVariantGroup: () => insertVariantGroup(),
+        onInsertReferencesDirective: insertReferencesDirective,
+        onReloadBibliography: reloadBibliographyFromDisk,
+        onSyncBibliography: syncBibliographySection,
+        onCopyScieMDLlmSkill: () => void copyScieMDLlmSkill(),
+        onGenerateScieMDLlmSkill: () => void generateScieMDLlmSkill(),
+        onGenerateSubmissionReadiness: () => void generateSubmissionReadiness(),
+        onOpenPasteReview: openPasteReview,
+        onOpenExportDialog: (format) => exportWorkflow.openDialog(format),
+        onShowExportLog: exportWorkflow.openLog,
+        onPrintPreview: runPrintPreview,
+        onOpenTutorial: () => void openTutorialDocument(),
+        onOpenFullTutorial: () => void openFullTutorialDocument(),
+        onShowShortcuts: () => setShortcutDialogOpen(true),
+        onOpenTemplates: openTemplateDialog,
+        onCheckTools: () => void checkExternalTools(),
+        onSetInkscapePath: () => void setInkscapePath(),
+        onExportDiagnosticsBundle: () => void handleExportDiagnosticsBundle(),
+        onOpenSettings: () => setSettingsOpen(true),
+        onShowAbout: () => setAboutOpen(true),
+        onOpenGithub: openGithub,
+        onReportBug: reportBug,
+        onOpenCommandPalette: openCommandPalette,
+        onOpenSlashMenu: () => openSlashMenu(),
+        onModeChange: (nextMode) => void handleModeChange(nextMode),
+        onSetVisualStyle: setVisualStyle,
+        onSetThemeMode: setThemeMode,
+        onIncreaseFont: () => adjustFontScale(0.05),
+        onDecreaseFont: () => adjustFontScale(-0.05),
+        onResetFont: resetFontScale,
+        onFormatHeading: formatHeadingFromMenu,
+        onFormatInline: formatInlineFromMenu,
+        onToggleOutline: () => updateUserSettings({ outlineOpen: !settings.outlineOpen }),
+        onSidebarView: handleSidebarViewChange,
+        onToggleInspector: () => updateUserSettings({ inspectorOpen: !settings.inspectorOpen }),
+        onToggleFocusMode: toggleFocusMode,
+        onWindowMinimize: handleWindowMinimize,
+        onWindowMaximize: handleWindowMaximize,
+        onWindowClose: handleWindowClose,
+        onTitlebarMouseDown: handleTitlebarMouseDown,
+        onTitlebarDoubleClick: handleTitlebarDoubleClick,
+      }}
+      toolbar={{
+        mode,
+        visualEditor,
+        onInsertMarkdown: insertMarkdown,
+        onInsertImage: () => void handleInsertImage(),
+        onInsertCitation: openCitationLibrary,
+        onUndo: () => runHistoryCommand('undo'),
+        onRedo: () => runHistoryCommand('redo'),
+        onInsertLink: openLinkDialog,
+        onInsertVariable: openVariableInsert,
+        onInsertLlmNote: () => void insertEditorComment(),
+        onInsertHumanNote: () => void insertHumanEditorComment(),
+        onInsertVariantGroup: () => insertVariantGroup(),
+        onOpenTablePicker: () => openSlashMenu('table'),
+        nextFigureLabel,
+      }}
+      findReplace={findOpen ? {
+        markdown,
+        onChange: commitMarkdown,
+        onClose: () => setFindOpen(false),
+        onNavigate: navigateToFindMatch,
+      } : null}
+      outlineOpen={settings.outlineOpen}
+      inspectorOpen={settings.inspectorOpen}
+      sidebarWidth={sidebarWidth}
+      sidebar={{
+        open: settings.outlineOpen,
+        view: settings.sidebarView,
+        width: sidebarWidth,
+        outline: { headings, activeHeadingId, onJump: jumpToHeading, onInsertHeading: insertOutlineHeading },
+        explorer: {
+          path: explorerCurrentPath,
+          entries: explorerEntries,
+          selectedImage: explorerSelectedImage,
+          loading: explorerLoading,
+          error: explorerError,
+          watcherMessage: explorerWatcherMessage,
+          onChooseFolder: handleChooseExplorerFolder,
+          onOpenPath: loadExplorerDirectory,
+          onOpenEntry: handleOpenExplorerEntry,
+        },
+        layerTwoDocument,
+        bibliographyLoading,
+        selectedVariableName,
+        onOpen: openNavigationSidebar,
+        onViewChange: handleSidebarViewChange,
+        onJumpToLine: jumpToLineInCurrentMode,
+        onReloadBibliography: reloadBibliographyFromDisk,
+        onManageCitations: openCitationLibrary,
+        onInsertVariable: openVariableInsert,
+        onLinkVariableFile: () => void linkVariableFile(),
+        onEditVariable: saveVariableEdit,
+        onSelectVariable: selectVariableInDocument,
+        onResize: handleSidebarResize,
+        onResizeCommit: handleSidebarResizeCommit,
+        onClose: closeNavigationSidebar,
+      }}
+      editorStage={{
+        editorStageRef,
+        mode,
+        filePath,
+        markdown,
+        editorResetToken,
+        dropOverlayVisible,
+        autosaveStatus,
+        statusText,
+        saveQueueDepth,
+        startupOpenFailure: startupDocumentOpenFailure,
+        headings,
+        activeHeadingId,
+        activeNavigationLine,
+        navigationHeadings,
+        visualEditor,
+        layerTwoDocument,
+        protectedBlocks,
+        editorComments,
+        targetedInstructions,
+        variantGroups,
+        citationCompletionKeys,
+        selectedVariableName,
+        authorshipMarks: settings.authorshipVisible ? authorshipMarks : [],
+        validationIssues: validation.issues,
+        onKeyDownCapture: handleEditorKeyDownCapture,
+        onPasteCapture: handlePasteCapture,
+        onDragEnterCapture: handleEditorDragEnter,
+        onDragLeaveCapture: handleEditorDragLeave,
+        onDropCapture: handleEditorDrop,
+        onDragOver: handleEditorDragOver,
+        onJumpToHeading: jumpToHeading,
+        onMarkdownChange: commitEditorMarkdownEdit,
+        onEditorReset: () => setEditorResetToken((current) => current + 1),
+        onVisualEditorReady: setVisualEditor,
+        onVisualInsertReady: handleVisualInsertReady,
+        onVisualJumpReady: handleVisualJumpReady,
+        onVisualFindReady: handleVisualFindReady,
+        onVisualHistoryReady: handleVisualHistoryReady,
+        onSourceInsertReady: handleSourceInsertReady,
+        onSourceJumpReady: handleSourceJumpReady,
+        onSourceFindReady: handleSourceFindReady,
+        onSourceHistoryReady: handleSourceHistoryReady,
+        onSelectionTextReady: handleSelectionTextReady,
+        onCursorLineChange: handleCursorPositionChange,
+        onViewportLineChange: handleViewportLineChange,
+        onLockViolation: (message) => pushToast(message, 'warning'),
+        onToast: pushToast,
+        confirmText,
+        onEditCitation: openCitationEditor,
+        onEditVariable: openVariableEdit,
+        getSelectionSnapshot: getEditorSelectionSnapshot,
+        onLockSelection: () => void insertProtectedBlock(),
+        onCommentSelection: (selection) => void insertEditorComment(selection),
+        onHumanCommentSelection: (selection) => void insertHumanEditorComment(selection),
+        onVariantSelection: () => insertVariantGroup(),
+        onCopySelection: () => void copySelectionFromFloatingToolbar(),
+        onHeadingSelection: convertSelectionToHeading,
+        onBlockSelection: openBlockSelectionDialog,
+        onJumpToLine: jumpToLineInCurrentMode,
+        onOpenReferences: () => handleSidebarViewChange('references'),
+        onOpenData: () => handleSidebarViewChange('data'),
+        onRetryStartupOpen: () => void retryStartupDocumentOpen(),
+        onOpenStartupFallbackDocument: () => void openStartupDocumentFallbackPicker(),
+        onDismissStartupOpenFailure: dismissStartupDocumentOpenFailure,
+      }}
+      inspector={{
+        open: settings.inspectorOpen,
+        focusSection: inspectorFocusSection,
+        data: {
+          filePath,
+          mode,
+          metadata: fileMetadata,
+          validationIssues: ambientIssues,
+          insights: documentInsights,
+          recentPreviews,
+          authorshipMarks,
+          authorshipVisible: settings.authorshipVisible,
+          missingImageCount,
+          autosaveStatus,
+          protectedBlocks,
+          editorComments,
+          targetedInstructions,
+          variantGroups,
+          visualStyle: settings.visualStyle,
+          visualStyleLabel: currentVisualStyle.label,
+          documentType: settings.documentType,
+          hasPasteReview: Boolean(pasteReview),
+          layerTwoDocument,
+          manuscriptReadiness,
+          bibliographyLoading,
+          inkscapePath: settings.inkscapePath,
+        },
+        actions: {
+          onClose: () => updateUserSettings({ inspectorOpen: false }),
+          onOpenPasteReview: openPasteReview,
+          onGenerateSubmissionReadiness: () => void generateSubmissionReadiness(),
+          onToggleAuthorship: () => updateUserSettings({ authorshipVisible: !settings.authorshipVisible }),
+          onOpenRecent: (recentPath) => void handleOpen(recentPath),
+          onReloadBibliography: reloadBibliographyFromDisk,
+          onCheckInkscape: () => void checkInkscape(),
+          onSetInkscapePath: () => void setInkscapePath(),
+          onJumpToLine: jumpToLineInCurrentMode,
+        },
+      }}
+      ambientSuggestions={{
+        issues: ambientIssues,
+        hasPasteReview: Boolean(pasteReview),
+        onOpenPasteReview: openPasteReview,
+      }}
+      statusBar={{
+        autosaveStatus,
+        statusText,
+        headingPath: currentHeadingPath,
+        wordCount: validation.wordCount,
+        manuscriptScore: manuscriptReadiness.score,
+        manuscriptStatus: manuscriptReadiness.status,
+        errors: errors.map((error) => error.message),
+        warnings: warnings.map((warning) => warning.message),
+        externalConflict,
+        filePath,
+        onReviewConflict: () => void openExternalConflictReview(),
+        onSaveAnyway: () => void saveCurrent({ forceOverwrite: true }),
+        onReveal: () => filePath && void desktopPlatformHost.reveal.revealInFileManager(filePath),
+        onReload: () => filePath && void handleReloadFromDisk(),
+        onSaveNow: () => void saveCurrent({ forceSaveAs: true }),
+        onJumpToHeading: jumpToHeading,
+        onOpenReadiness: () => {
           setInspectorFocusSection('readiness');
           updateUserSettings({ inspectorOpen: true });
-        }}
-        onOpenValidation={() => {
+        },
+        onOpenValidation: () => {
           setInspectorFocusSection('validation');
           updateUserSettings({ inspectorOpen: true });
-        }}
-      />
+        },
+      }}
+    >
 
       <AppOverlays
         closeDialogOpen={closeDialogOpen}
         onCloseSave={() => void handleCloseSave()}
         onCloseDiscard={() => void handleCloseDiscard()}
-        onCloseCancel={() => setCloseDialogOpen(false)}
+        onCloseCancel={handleCloseCancel}
         promptState={promptState}
         onPromptComplete={completePrompt}
         confirmState={confirmState}
@@ -1969,7 +1955,7 @@ export function App() {
         exportRenderHostMounted={exportRenderHostMounted}
         exportRenderHostRef={exportRenderHostRef}
       />
-    </div>
+    </AppWorkbench>
   );
 }
 

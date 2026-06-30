@@ -1,4 +1,4 @@
-import type { DiffHunk, DiffLine } from '../markdown/diffReview';
+import type { DiffHunk, DiffLine } from '@sciemd/core';
 
 export type DiffViewMode = 'inline' | 'side-by-side';
 

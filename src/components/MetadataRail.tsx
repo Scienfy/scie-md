@@ -1,10 +1,10 @@
 import { AlertTriangle, Database, GitBranch, LockKeyhole, MessageSquareText, Quote, Sparkles } from 'lucide-react';
 import { memo } from 'react';
-import type { ParsedScienfyDocument } from '../domain/document/documentModel';
-import type { EditorComment } from '../markdown/editorComments';
-import type { ProtectedBlock } from '../markdown/protectedBlocks';
-import type { TargetedInstruction } from '../markdown/targetedInstructions';
-import type { VariantGroup } from '../markdown/variants';
+import type { ParsedScienfyDocument } from '@sciemd/core';
+import type { EditorComment } from '@sciemd/core';
+import type { ProtectedBlock } from '@sciemd/core';
+import type { TargetedInstruction } from '@sciemd/core';
+import type { VariantGroup } from '@sciemd/core';
 
 interface MetadataRailProps {
   mode?: 'visual' | 'source';

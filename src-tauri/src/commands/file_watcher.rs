@@ -40,21 +40,11 @@ pub struct FileWatchChangeEvent {
 
 #[tauri::command]
 pub fn watch_files_for_changes(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
-    let requested_any_path = paths.iter().any(|path| !path.trim().is_empty());
-    let targets = match normalize_watch_paths(paths) {
-        Ok(targets) => targets,
-        Err(error) => {
-            if requested_any_path {
-                clear_active_watcher();
-            }
-            return Err(error);
-        }
-    };
+    let targets = normalize_watch_paths(paths)?;
     if targets.is_empty() {
         clear_active_watcher();
         return Ok(());
     }
-    clear_active_watcher();
 
     let app_for_events = app.clone();
     let event_targets = targets.clone();
@@ -91,6 +81,8 @@ pub fn watch_files_for_changes(app: AppHandle, paths: Vec<String>) -> Result<(),
             .map_err(|error| format!("Could not watch {}: {error}", path.to_string_lossy()))?;
     }
 
+    // Replace only after every new target is successfully registered. If any
+    // path fails, the existing watcher remains active.
     *watcher_state().lock() = Some(ActiveFileWatcher {
         _watcher: watcher,
         _targets: targets,
@@ -276,7 +268,9 @@ fn timestamp_ms() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::{is_relevant_event, matching_target_paths, normalize_watch_paths, same_path};
-    use crate::commands::path_grants::{grant_file_and_parent, isolate_test_path_grants};
+    use crate::commands::path_grants::{
+        grant_directory, grant_file_and_parent, isolate_test_path_grants,
+    };
     use notify::event::{DataChange, EventKind, ModifyKind};
     use std::{env, fs};
 
@@ -310,6 +304,25 @@ mod tests {
         assert!(same_path(&targets[0].watch_path, &root));
         assert!(!targets[0].is_directory);
         let _ = fs::remove_dir_all(targets[0].watch_path.clone());
+    }
+
+    #[test]
+    fn file_watcher_accepts_directory_targets_only_after_directory_grant() {
+        let _grants = isolate_test_path_grants();
+        let root = env::temp_dir().join(format!("scie-md-watch-dir-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+
+        let denied = normalize_watch_paths(vec![root.to_string_lossy().to_string()]).unwrap_err();
+        assert!(denied.contains("File access denied"));
+
+        grant_directory(&root).unwrap();
+        let targets = normalize_watch_paths(vec![root.to_string_lossy().to_string()]).unwrap();
+
+        assert_eq!(targets.len(), 1);
+        assert!(targets[0].is_directory);
+        assert!(same_path(&targets[0].path, &root));
+        assert!(same_path(&targets[0].watch_path, &root));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

@@ -1,19 +1,29 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { FileMetadata } from '../documentState';
 import { metadataChanged } from '../documentState';
-import { readTextFile, statFile } from '../../services/fileService';
-import { clearWatchedFiles, listenFileWatchChanges, updateWatchedFiles } from '../../services/fileWatchService';
 import { isTauriRuntime } from '../runtime';
+import type { DocumentHost } from '../host/documentHost';
+import { fileWatchRetryDelayMs } from '../../services/fileWatchService';
 
 interface UseExternalChangeDetectionOptions {
   filePath: string | null;
   fileMetadata: FileMetadata;
   getCurrentMarkdown: () => string;
   onConflict: () => void;
+  onSyncedExternalChange?: (path: string, content: string, metadata: FileMetadata) => void;
   onCloudPlaceholder?: (message: string) => void;
+  host: Pick<DocumentHost, 'file' | 'watcher'>;
 }
 
-export function useExternalChangeDetection({ filePath, fileMetadata, getCurrentMarkdown, onConflict, onCloudPlaceholder }: UseExternalChangeDetectionOptions) {
+export function useExternalChangeDetection({
+  filePath,
+  fileMetadata,
+  getCurrentMarkdown,
+  onConflict,
+  onSyncedExternalChange,
+  onCloudPlaceholder,
+  host,
+}: UseExternalChangeDetectionOptions) {
   const watchScopeRef = useRef(`document:${Math.random().toString(36).slice(2)}`);
   const lastCloudWarningRef = useRef('');
   const checkVersionRef = useRef(0);
@@ -21,7 +31,10 @@ export function useExternalChangeDetection({ filePath, fileMetadata, getCurrentM
   const fileMetadataRef = useRef(fileMetadata);
   const getCurrentMarkdownRef = useRef(getCurrentMarkdown);
   const onConflictRef = useRef(onConflict);
+  const onSyncedExternalChangeRef = useRef(onSyncedExternalChange);
   const onCloudPlaceholderRef = useRef(onCloudPlaceholder);
+  const checkInFlightRef = useRef(false);
+  const checkQueuedRef = useRef(false);
 
   useEffect(() => {
     checkVersionRef.current += 1;
@@ -38,10 +51,14 @@ export function useExternalChangeDetection({ filePath, fileMetadata, getCurrentM
   }, [onConflict]);
 
   useEffect(() => {
+    onSyncedExternalChangeRef.current = onSyncedExternalChange;
+  }, [onSyncedExternalChange]);
+
+  useEffect(() => {
     onCloudPlaceholderRef.current = onCloudPlaceholder;
   }, [onCloudPlaceholder]);
 
-  const checkExternalChange = useCallback(async () => {
+  const runExternalChangeCheck = useCallback(async () => {
     if (document.visibilityState === 'hidden') return;
     const currentFilePath = filePathRef.current;
     const currentFileMetadata = fileMetadataRef.current;
@@ -49,7 +66,7 @@ export function useExternalChangeDetection({ filePath, fileMetadata, getCurrentM
     const checkVersion = checkVersionRef.current;
     const isCurrentCheck = () => checkVersionRef.current === checkVersion;
     try {
-      let currentMetadata = await statFile(currentFilePath, { contentHash: false });
+      let currentMetadata = await host.file.statFile(currentFilePath, { contentHash: false });
       if (!isCurrentCheck()) return;
       if (isCloudPlaceholderState(currentMetadata.cloudState)) {
         const message = 'This document is in a cloud placeholder state. ScieMD will wait for the file to be fully available before raising disk-conflict warnings.';
@@ -60,19 +77,38 @@ export function useExternalChangeDetection({ filePath, fileMetadata, getCurrentM
         return;
       }
       if (!metadataChanged(currentFileMetadata, currentMetadata) && currentFileMetadata.contentHash) {
-        currentMetadata = await statFile(currentFilePath, { contentHash: true });
+        currentMetadata = await host.file.statFile(currentFilePath, { contentHash: true });
         if (!isCurrentCheck()) return;
       }
       if (metadataChanged(currentFileMetadata, currentMetadata)) {
-        const disk = await readTextFile(currentFilePath).catch(() => null);
+        const disk = await host.file.readTextFile(currentFilePath).catch(() => null);
         if (!isCurrentCheck()) return;
-        if (disk?.content === getCurrentMarkdownRef.current()) return;
+        if (disk?.content === getCurrentMarkdownRef.current()) {
+          onSyncedExternalChangeRef.current?.(currentFilePath, disk.content, disk.metadata);
+          return;
+        }
         onConflictRef.current();
       }
     } catch {
       if (isCurrentCheck()) onConflictRef.current();
     }
-  }, []);
+  }, [host]);
+
+  const checkExternalChange = useCallback(async () => {
+    if (checkInFlightRef.current) {
+      checkQueuedRef.current = true;
+      return;
+    }
+    checkInFlightRef.current = true;
+    try {
+      do {
+        checkQueuedRef.current = false;
+        await runExternalChangeCheck();
+      } while (checkQueuedRef.current);
+    } finally {
+      checkInFlightRef.current = false;
+    }
+  }, [runExternalChangeCheck]);
 
   useEffect(() => {
     const handler = () => {
@@ -81,37 +117,77 @@ export function useExternalChangeDetection({ filePath, fileMetadata, getCurrentM
       });
     };
     let fallbackInterval: number | null = null;
+    let retryTimer: number | null = null;
+    let watchFailureCount = 0;
     let disposed = false;
     let unlisten: (() => void) | undefined;
     const startFallbackPolling = () => {
       if (fallbackInterval !== null) return;
+      handler();
       fallbackInterval = window.setInterval(handler, 30_000);
+    };
+    const stopFallbackPolling = () => {
+      if (fallbackInterval === null) return;
+      window.clearInterval(fallbackInterval);
+      fallbackInterval = null;
+    };
+    const scheduleWatchRetry = () => {
+      if (retryTimer !== null || disposed || !filePath || !isTauriRuntime()) return;
+      watchFailureCount += 1;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        void activateWatcher();
+      }, fileWatchRetryDelayMs(watchFailureCount));
+    };
+    const activateWatcher = async () => {
+      if (disposed || !filePath || !isTauriRuntime()) return;
+      try {
+        if (!unlisten) {
+          const dispose = await host.watcher.listenFileWatchChanges((event) => {
+            if (event.paths.length === 0 || event.paths.some((path) => samePath(path, filePath))) {
+              handler();
+            }
+          });
+          if (disposed) {
+            dispose();
+            return;
+          }
+          unlisten = dispose;
+        }
+      } catch (error) {
+        console.warn('External document watcher listener failed.', error);
+        if (!disposed) {
+          startFallbackPolling();
+          scheduleWatchRetry();
+        }
+        return;
+      }
+      try {
+        const active = await host.watcher.updateWatchedFiles(watchScopeRef.current, [filePath]);
+        if (disposed) return;
+        if (active) {
+          watchFailureCount = 0;
+          stopFallbackPolling();
+          handler();
+        } else {
+          startFallbackPolling();
+          scheduleWatchRetry();
+        }
+      } catch (error) {
+        console.warn('External document watcher update failed.', error);
+        if (!disposed) {
+          startFallbackPolling();
+          scheduleWatchRetry();
+        }
+      }
     };
 
     window.addEventListener('focus', handler);
     document.addEventListener('visibilitychange', handler);
-    startFallbackPolling();
-    if (filePath && isTauriRuntime()) {
-      void listenFileWatchChanges((event) => {
-        if (event.paths.length === 0 || event.paths.some((path) => samePath(path, filePath))) {
-          handler();
-        }
-      }).then((dispose) => {
-        if (disposed) {
-          dispose();
-          return;
-        }
-        unlisten = dispose;
-      }).catch((error) => {
-        console.warn('External document watcher listener failed.', error);
-        if (!disposed) startFallbackPolling();
-      });
-      void updateWatchedFiles(watchScopeRef.current, [filePath]).then((active) => {
-        if (!active && !disposed) startFallbackPolling();
-      }).catch((error) => {
-        console.warn('External document watcher update failed.', error);
-        if (!disposed) startFallbackPolling();
-      });
+    if (!filePath || !isTauriRuntime()) {
+      startFallbackPolling();
+    } else {
+      void activateWatcher();
     }
 
     return () => {
@@ -120,11 +196,12 @@ export function useExternalChangeDetection({ filePath, fileMetadata, getCurrentM
       document.removeEventListener('visibilitychange', handler);
       unlisten?.();
       if (fallbackInterval !== null) window.clearInterval(fallbackInterval);
-      void clearWatchedFiles(watchScopeRef.current).catch((error) => {
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+      void host.watcher.clearWatchedFiles(watchScopeRef.current).catch((error) => {
         console.warn('External document watcher cleanup failed.', error);
       });
     };
-  }, [checkExternalChange, filePath]);
+  }, [checkExternalChange, filePath, host]);
 
   return checkExternalChange;
 }

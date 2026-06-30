@@ -1,4 +1,4 @@
-import type { BibtexEntry } from '../../domain/citations/bibtex';
+import type { BibtexEntry } from '@sciemd/core';
 
 type ToastTone = 'info' | 'success' | 'warning' | 'error';
 

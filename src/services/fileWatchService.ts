@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { isTauriRuntime } from '../app/runtime';
+import { appendDiagnosticsEvent } from './nativeRecoveryService';
 
 export interface FileWatchChangeEvent {
   paths: string[];
@@ -9,9 +10,29 @@ export interface FileWatchChangeEvent {
   changedAtMs: number;
 }
 
+export type FileWatchStatusMode = 'unsupported' | 'inactive' | 'active' | 'polling';
+export type FileWatchStatusReason =
+  | 'non-tauri-runtime'
+  | 'no-paths'
+  | 'registered'
+  | 'registration-recovered'
+  | 'registration-failed'
+  | 'unwatch-failed';
+
+export interface FileWatchStatus {
+  mode: FileWatchStatusMode;
+  reason: FileWatchStatusReason;
+  paths: string[];
+  message: string | null;
+  updatedAtMs: number;
+}
+
+const WATCH_RETRY_DELAYS_MS = [2_000, 10_000, 30_000];
 const watchedScopes = new Map<string, string[]>();
 let appliedWatchKey = '';
 let watcherUpdateInFlight: Promise<boolean> | null = null;
+let watcherUpdateRequested = false;
+let watcherStatus: FileWatchStatus = createWatchStatus('inactive', 'no-paths', [], null);
 
 export function listenFileWatchChanges(
   handler: (event: FileWatchChangeEvent) => void,
@@ -33,42 +54,118 @@ export function clearWatchedFiles(scope: string): Promise<boolean> {
 }
 
 function applyWatchedFiles(): Promise<boolean> {
-  const watchKey = currentWatchKey();
+  const paths = watchedPathUnion();
+  const watchKey = watchKeyForPaths(paths);
   if (watchKey === appliedWatchKey && !watcherUpdateInFlight) {
+    setWatchStatus(createWatchStatus(
+      paths.length === 0 ? 'inactive' : 'active',
+      paths.length === 0
+        ? 'no-paths'
+        : watcherStatus.mode === 'polling' ? 'registration-recovered' : 'registered',
+      paths,
+      null,
+    ));
     return Promise.resolve(true);
   }
-  if (watcherUpdateInFlight) {
-    return watcherUpdateInFlight.then(() => applyWatchedFiles());
+  watcherUpdateRequested = true;
+  if (!watcherUpdateInFlight) {
+    watcherUpdateInFlight = drainWatcherUpdates()
+      .finally(() => {
+        watcherUpdateInFlight = null;
+      });
   }
-  watcherUpdateInFlight = applyLatestWatchedFiles()
-    .finally(() => {
-      watcherUpdateInFlight = null;
-    });
   return watcherUpdateInFlight;
 }
 
+async function drainWatcherUpdates(): Promise<boolean> {
+  let result = true;
+  while (watcherUpdateRequested) {
+    watcherUpdateRequested = false;
+    result = await applyLatestWatchedFiles();
+  }
+  return result;
+}
+
 async function applyLatestWatchedFiles(): Promise<boolean> {
-  if (!isTauriRuntime()) return false;
+  if (!isTauriRuntime()) {
+    setWatchStatus(createWatchStatus(
+      'unsupported',
+      'non-tauri-runtime',
+      watchedPathUnion(),
+      'Native file watching is unavailable outside the desktop runtime.',
+    ));
+    return false;
+  }
   const paths = watchedPathUnion();
-  const watchKey = paths.map(normalizeWatchPath).sort().join('\n');
+  const watchKey = watchKeyForPaths(paths);
   if (watchKey === appliedWatchKey) return true;
   try {
     if (paths.length === 0) {
       await invoke('unwatch_files_for_changes');
+      setWatchStatus(createWatchStatus('inactive', 'no-paths', [], null));
     } else {
       await invoke('watch_files_for_changes', { paths });
+      setWatchStatus(createWatchStatus(
+        'active',
+        watcherStatus.mode === 'polling' ? 'registration-recovered' : 'registered',
+        paths,
+        null,
+      ));
     }
     appliedWatchKey = watchKey;
     return true;
   } catch (error) {
-    appliedWatchKey = '';
     console.warn('File watcher unavailable; falling back to metadata polling.', error);
+    const message = errorMessage(error);
+    void appendDiagnosticsEvent({
+      eventType: paths.length === 0 ? 'file-watch-unwatch-failed' : 'file-watch-registration-failed',
+      message,
+      documentPath: paths[0] ?? null,
+    });
+    setWatchStatus(createWatchStatus(
+      paths.length === 0 ? 'inactive' : 'polling',
+      paths.length === 0 ? 'unwatch-failed' : 'registration-failed',
+      paths,
+      message,
+    ));
     return false;
   }
 }
 
-function currentWatchKey(): string {
-  return watchedPathUnion().map(normalizeWatchPath).sort().join('\n');
+export function getFileWatchStatus(): FileWatchStatus {
+  return { ...watcherStatus, paths: watcherStatus.paths.slice() };
+}
+
+export function fileWatchRetryDelayMs(failureCount: number): number {
+  if (failureCount <= 0) return WATCH_RETRY_DELAYS_MS[0];
+  return WATCH_RETRY_DELAYS_MS[Math.min(failureCount - 1, WATCH_RETRY_DELAYS_MS.length - 1)];
+}
+
+function setWatchStatus(status: FileWatchStatus): void {
+  watcherStatus = status;
+}
+
+function createWatchStatus(
+  mode: FileWatchStatusMode,
+  reason: FileWatchStatusReason,
+  paths: string[],
+  message: string | null,
+): FileWatchStatus {
+  return {
+    mode,
+    reason,
+    paths: paths.slice(),
+    message,
+    updatedAtMs: Date.now(),
+  };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function watchKeyForPaths(paths: string[]): string {
+  return paths.map(normalizeWatchPath).sort().join('\n');
 }
 
 function watchedPathUnion(): string[] {
@@ -76,8 +173,9 @@ function watchedPathUnion(): string[] {
   const paths: string[] = [];
   for (const scopePaths of watchedScopes.values()) {
     for (const path of scopePaths) {
-      if (!seen.has(path)) {
-        seen.add(path);
+      const key = normalizeWatchPath(path);
+      if (!seen.has(key)) {
+        seen.add(key);
         paths.push(path);
       }
     }

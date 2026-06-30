@@ -88,8 +88,8 @@ describe('createAppCommands', () => {
     expect(labels).toContain('Open quick tour');
     expect(labels).toContain('Open full tutorial');
     expect(labels).toContain('Insert auto References section');
-    expect(labels).toContain('Insert Note to LLM');
-    expect(labels).toContain('Insert Note to Human');
+    expect(labels).toContain('Insert note');
+    expect(labels).toContain('Insert review note');
     expect(labels).toContain('LLM skill: copy ScieMD LLM Skill');
     expect(labels).toContain('LLM skill: generate ScieMD_LLM_skill.md');
     expect(labels).not.toContain('Copy for LLM: style guide');

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { DocumentInsights } from '../../markdown/documentIntelligence';
-import { extractHeadings, headingPathForLine } from '../../markdown/outline';
-import type { MarkdownHeading } from '../../markdown/outline';
+import { extractHeadings, headingPathForLine } from '@sciemd/core';
+import type { MarkdownHeading } from '@sciemd/core';
 import type { ValidationIssue } from '../../markdown/markdownValidation';
 
 interface UseDerivedDocumentInsightsParams {

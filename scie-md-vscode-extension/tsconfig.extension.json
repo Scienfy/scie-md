@@ -4,13 +4,17 @@
     "lib": ["ES2022"],
     "module": "Node16",
     "moduleResolution": "Node16",
-    "rootDir": "src",
+    "rootDir": "..",
     "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "types": ["node", "vscode"]
+    "types": ["node", "vscode"],
+    "paths": {
+      "@sciemd/core": ["../packages/core/src/index.ts"],
+      "@sciemd/core/*": ["../packages/core/src/*"]
+    }
   },
   "include": ["src/extension/**/*.ts", "src/shared/**/*.ts"]
 }

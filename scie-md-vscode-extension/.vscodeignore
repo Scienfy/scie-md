@@ -1,4 +1,5 @@
 assets/screenshots/**
+MANUAL_SMOKE.md
 src/**
 test/**
 scripts/**

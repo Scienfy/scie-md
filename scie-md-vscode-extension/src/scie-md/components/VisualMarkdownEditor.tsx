@@ -10,12 +10,12 @@ import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react';
 import type { EditorView } from '@milkdown/prose/view';
 import { nord } from '@milkdown/theme-nord';
 import { fromVisualImagePaths, toVisualImagePaths } from '../markdown/imagePaths';
-import { quoteAnchorPrefix, quoteAnchorSuffix } from '../markdown/quoteAnchors';
+import { quoteAnchorPrefix, quoteAnchorSuffix } from '@sciemd/core';
 import { getMarkdown, insert, replaceAll } from '@milkdown/kit/utils';
 import type { EditorHistoryControls } from './editorControls';
 import type { EditorSelectionGetter } from './editorSelection';
 import { visualSourceLineForPosition } from './visualSourceMapping';
-import { parseFrontmatter } from '../domain/document/frontmatter';
+import { parseFrontmatter } from '@sciemd/core';
 import { mathPreviewPlugin } from './mathPreviewPlugin';
 import { createVariablePreviewPlugin } from './variablePreviewPlugin';
 import { createCitationHoverPlugin } from './citationHoverPlugin';
@@ -27,10 +27,10 @@ import { flushScieMetadataNodeViews, isScieMetadataNode, scieMetadataPlugins, se
 import { setVisualEditorStateReader } from './visualEditorStateSync';
 import '@milkdown/theme-nord/style.css';
 import 'katex/dist/katex.min.css';
-import { canonicalizeVariableTokens } from '../domain/variables/variableIndex';
-import type { VariableDefinition } from '../domain/variables/variableIndex';
-import type { BibtexEntry } from '../domain/citations/bibtex';
-import type { MarkdownHeading } from '../markdown/outline';
+import { canonicalizeVariableTokens } from '@sciemd/core';
+import type { VariableDefinition } from '@sciemd/core';
+import type { BibtexEntry } from '@sciemd/core';
+import type { MarkdownHeading } from '@sciemd/core';
 
 export type VisualMarkdownInsert = (markdown: string, options?: { filePath?: string | null }) => void;
 export interface VisualMarkdownJumpTarget {
@@ -66,9 +66,10 @@ interface VisualMarkdownEditorProps {
   onEditCitation?: (key: string) => void;
   onEditVariable?: (name: string) => void;
   registerStateReader?: boolean;
+  readOnly?: boolean;
 }
 
-function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsertReady, onJumpReady, onFindReady, onHistoryReady, onSelectionTextReady, onCursorLineChange, onViewportLineChange, outlineHeadings = [], onLockViolation, onToast, confirmText, citationKeys = [], citationEntries = [], variableDefinitions = [], highlightedVariableName = null, onEditCitation, onEditVariable, registerStateReader = true }: VisualMarkdownEditorProps) {
+function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsertReady, onJumpReady, onFindReady, onHistoryReady, onSelectionTextReady, onCursorLineChange, onViewportLineChange, outlineHeadings = [], onLockViolation, onToast, confirmText, citationKeys = [], citationEntries = [], variableDefinitions = [], highlightedVariableName = null, onEditCitation, onEditVariable, registerStateReader = true, readOnly = false }: VisualMarkdownEditorProps) {
   setScieMetadataDocumentPath(filePath);
   setScieMetadataCitationEntries(citationEntries);
   const initialSplit = useRef(splitVisualMarkdown(markdown));
@@ -94,10 +95,18 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
   const initialEmissionHandled = useRef(false);
   const visualContentMutated = useRef(false);
   const visualEditorRootRef = useRef<HTMLDivElement | null>(null);
+  const readOnlyRef = useRef(readOnly);
 
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    readOnlyRef.current = readOnly;
+    editorRef.current?.action((ctx) => {
+      ctx.get(editorViewCtx).setProps({ editable: () => !readOnlyRef.current });
+    });
+  }, [readOnly]);
 
   useEffect(() => {
     onCursorLineChangeRef.current = onCursorLineChange;
@@ -191,6 +200,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
           ctx.set(defaultValueCtx, initialMarkdown.current);
           ctx.get(listenerCtx).markdownUpdated((listenerCtxValue, markdownValue) => {
             if (applyingExternalUpdate.current) return;
+            if (readOnlyRef.current) return;
             cleanupDisplayPathMap(visualPaths.current.displayToOriginal, markdownValue);
             const restored = fromVisualImagePaths(markdownValue, visualPaths.current.displayToOriginal);
             const fullMarkdown = canonicalizeVariableTokens(`${frontmatterPrefixRef.current}${restored}`);
@@ -238,6 +248,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
     }
 
     onInsertReady?.((markdownSnippet, options) => {
+      if (readOnlyRef.current) return;
       visualContentMutated.current = true;
       const visualMarkdown = markdownSnippet;
       const nextVisualPaths = toVisualImagePaths(visualMarkdown, options?.filePath ?? filePathRef.current);
@@ -364,9 +375,11 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
     editor.action((ctx) => {
       const view = ctx.get(editorViewCtx);
       const markMutation = () => {
+        if (readOnlyRef.current) return;
         visualContentMutated.current = true;
       };
       const markKeyMutation = (event: KeyboardEvent) => {
+        if (readOnlyRef.current) return;
         if (
           event.key.length === 1
           || event.key === 'Backspace'
@@ -389,7 +402,9 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
       };
     });
     editor.action((ctx) => {
-      appendWritableTailIfNeeded(ctx.get(editorViewCtx));
+      const view = ctx.get(editorViewCtx);
+      view.setProps({ editable: () => !readOnlyRef.current });
+      appendWritableTailIfNeeded(view);
     });
     let idleSyncHandle: number | null = null;
     let timeoutSyncHandle: ReturnType<typeof setTimeout> | null = null;
@@ -410,10 +425,18 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
         return null;
       }
     };
+    const flushPendingMetadataEditsForRead = (): boolean => {
+      if (applyingExternalUpdate.current) return false;
+      const pendingMetadataChanged = flushScieMetadataNodeViews();
+      if (pendingMetadataChanged) visualContentMutated.current = true;
+      return pendingMetadataChanged;
+    };
     const synchronizeEditorState = (force = false) => {
       idleSyncHandle = null;
       timeoutSyncHandle = null;
       if (!force && (document.visibilityState === 'hidden' || !document.hasFocus())) return;
+      if (readOnlyRef.current) return;
+      flushPendingMetadataEditsForRead();
       if (!visualContentMutated.current) return;
       const fullMarkdown = readFullMarkdownFromEditor();
       if (fullMarkdown === null || equivalentVisualMarkdown(fullMarkdown, lastEmittedMarkdown.current)) return;
@@ -426,6 +449,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
       }
     };
     const disposeStateReader = registerStateReader ? setVisualEditorStateReader(() => {
+      flushPendingMetadataEditsForRead();
       if (!visualContentMutated.current) return sourceMarkdownRef.current;
       const fullMarkdown = readFullMarkdownFromEditor();
       if (fullMarkdown === null) return null;
@@ -491,6 +515,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
   }, [filePath, loading, markdown]);
 
   const handleVisualEditorMouseDown = (event: MouseEvent<HTMLDivElement>) => {
+    if (readOnlyRef.current) return;
     if (event.button !== 0) return;
     const target = event.target as HTMLElement | null;
     if (!target) return;
@@ -503,7 +528,7 @@ function MilkdownSurface({ markdown, filePath, onChange, onEditorReady, onInsert
   };
 
   return (
-    <div ref={visualEditorRootRef} className="visual-editor" spellCheck={false} onMouseDown={handleVisualEditorMouseDown}>
+    <div ref={visualEditorRootRef} className="visual-editor" data-readonly={readOnly ? 'true' : undefined} spellCheck={false} onMouseDown={handleVisualEditorMouseDown}>
       <Milkdown />
     </div>
   );

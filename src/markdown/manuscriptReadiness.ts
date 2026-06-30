@@ -1,9 +1,9 @@
-import type { ParsedScienfyDocument } from '../domain/document/documentModel';
-import type { VariableDefinition } from '../domain/variables/variableIndex';
+import type { ParsedScienfyDocument } from '@sciemd/core';
+import type { VariableDefinition } from '@sciemd/core';
 import type { DocumentInsights } from './documentIntelligence';
-import { extractHeadings } from './outline';
-import type { MarkdownHeading } from './outline';
-import { resolveInstructionTargets } from './targetedInstructions';
+import { extractHeadings } from '@sciemd/core';
+import type { MarkdownHeading } from '@sciemd/core';
+import { resolveInstructionTargets } from '@sciemd/core';
 
 export type ReadinessSeverity = 'pass' | 'warning' | 'error';
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   initialDocumentMarkdownForLaunch,
+  initialExplorerFallbackPathForLaunch,
   initialExplorerPathForLaunch,
   parentDirectoryForDocument,
   shouldCommitWelcomeAfterStartup,
@@ -34,17 +35,24 @@ describe('document launch helpers', () => {
     expect(shouldShowAutomaticOnboardingDialog({
       onboardingComplete: false,
       startupDocumentOpenPending: false,
-      startupDocumentOpenFailed: true,
-      filePath: null,
+      startupDocumentOpenFailed: false,
+      filePath: 'C:\\Users\\amin_\\paper.md',
       markdown: '',
     })).toBe(false);
   });
 
-  it('shows automatic onboarding only for an empty untitled first-run surface', () => {
+  it('shows automatic onboarding for an empty untitled first-run or failed-startup surface', () => {
     expect(shouldShowAutomaticOnboardingDialog({
       onboardingComplete: false,
       startupDocumentOpenPending: false,
       startupDocumentOpenFailed: false,
+      filePath: null,
+      markdown: '',
+    })).toBe(true);
+    expect(shouldShowAutomaticOnboardingDialog({
+      onboardingComplete: false,
+      startupDocumentOpenPending: false,
+      startupDocumentOpenFailed: true,
       filePath: null,
       markdown: '',
     })).toBe(true);
@@ -64,23 +72,53 @@ describe('document launch helpers', () => {
     })).toBe(false);
   });
 
-  it('does not eagerly load the saved explorer folder while a launched document is opening', () => {
+  it('does not eagerly load the saved explorer folder while a launched document is opening or active', () => {
     expect(initialExplorerPathForLaunch({
       persistedExplorerRootPath: 'C:\\Users\\amin_\\Downloads',
       startupDocumentOpenPending: true,
       startupDocumentOpenFailed: false,
+      startupDocumentOpenFailurePath: null,
       filePath: null,
     })).toBeNull();
     expect(initialExplorerPathForLaunch({
       persistedExplorerRootPath: 'C:\\Users\\amin_\\Downloads',
       startupDocumentOpenPending: false,
       startupDocumentOpenFailed: false,
+      startupDocumentOpenFailurePath: null,
       filePath: 'C:\\Users\\amin_\\paper.md',
     })).toBeNull();
+  });
+
+  it('prefers the failed startup document folder and keeps the saved folder as fallback', () => {
     expect(initialExplorerPathForLaunch({
       persistedExplorerRootPath: 'C:\\Users\\amin_\\Downloads',
       startupDocumentOpenPending: false,
       startupDocumentOpenFailed: true,
+      startupDocumentOpenFailurePath: 'C:\\Users\\amin_\\Research\\missing.md',
+      filePath: null,
+    })).toBe('C:\\Users\\amin_\\Research');
+    expect(initialExplorerFallbackPathForLaunch({
+      persistedExplorerRootPath: 'C:\\Users\\amin_\\Downloads',
+      startupDocumentOpenPending: false,
+      startupDocumentOpenFailed: true,
+      startupDocumentOpenFailurePath: 'C:\\Users\\amin_\\Research\\missing.md',
+      filePath: null,
+    })).toBe('C:\\Users\\amin_\\Downloads');
+  });
+
+  it('falls back to the saved explorer folder when a failed startup path has no parent', () => {
+    expect(initialExplorerPathForLaunch({
+      persistedExplorerRootPath: 'C:\\Users\\amin_\\Downloads',
+      startupDocumentOpenPending: false,
+      startupDocumentOpenFailed: true,
+      startupDocumentOpenFailurePath: 'missing.md',
+      filePath: null,
+    })).toBe('C:\\Users\\amin_\\Downloads');
+    expect(initialExplorerFallbackPathForLaunch({
+      persistedExplorerRootPath: 'C:\\Users\\amin_\\Downloads',
+      startupDocumentOpenPending: false,
+      startupDocumentOpenFailed: true,
+      startupDocumentOpenFailurePath: 'missing.md',
       filePath: null,
     })).toBeNull();
   });
@@ -90,12 +128,14 @@ describe('document launch helpers', () => {
       persistedExplorerRootPath: 'C:\\Users\\amin_\\Downloads',
       startupDocumentOpenPending: false,
       startupDocumentOpenFailed: false,
+      startupDocumentOpenFailurePath: null,
       filePath: null,
     })).toBe('C:\\Users\\amin_\\Downloads');
     expect(initialExplorerPathForLaunch({
       persistedExplorerRootPath: '   ',
       startupDocumentOpenPending: false,
       startupDocumentOpenFailed: false,
+      startupDocumentOpenFailurePath: null,
       filePath: null,
     })).toBeNull();
   });
@@ -113,7 +153,7 @@ describe('document launch helpers', () => {
     })).toBe('# Welcome');
   });
 
-  it('commits the welcome document only after a clean no-file startup', () => {
+  it('commits the welcome document after a clean no-file startup or failed startup fallback', () => {
     expect(shouldCommitWelcomeAfterStartup({
       onboardingComplete: true,
       startupDocumentOpenPending: false,
@@ -134,7 +174,7 @@ describe('document launch helpers', () => {
       startupDocumentOpenFailed: true,
       filePath: null,
       markdown: '',
-    })).toBe(false);
+    })).toBe(true);
     expect(shouldCommitWelcomeAfterStartup({
       onboardingComplete: true,
       startupDocumentOpenPending: false,

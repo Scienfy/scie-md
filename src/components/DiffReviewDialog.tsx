@@ -1,8 +1,7 @@
 import { Check, ChevronDown, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { DiffHunk } from '../markdown/diffReview';
-import type { ProtectedChange } from '../markdown/protectedBlocks';
-import type { ReviewPlan, ReviewUnit } from '../markdown/reviewPlan';
+import type { DiffHunk, ReviewPlan, ReviewUnit } from '@sciemd/core';
+import type { ProtectedChange } from '@sciemd/core';
 import { ModalShell } from './ModalShell';
 import { ReviewUnitBody } from './ReviewUnitBody';
 

@@ -1,6 +1,6 @@
 import type { CommandItem } from '../components/CommandPalette';
 import type { RecentFilePreview } from '../markdown/documentIntelligence';
-import type { MarkdownHeading } from '../markdown/outline';
+import type { MarkdownHeading } from '@sciemd/core';
 import type { ThemeMode } from '../services/settingsService';
 import type { VisualStyleId } from '../services/visualStyleService';
 import { VISUAL_STYLE_OPTIONS } from '../services/visualStyleService';
@@ -112,8 +112,8 @@ export function createAppCommands(context: AppCommandContext): CommandItem[] {
     { id: 'reload-bibliography', label: 'Reload bibliography from disk', detail: 'Refresh loaded .bib files without reopening the document', run: context.onReloadBibliography },
     { id: 'sync-bibliography', label: 'Sync generated bibliography', detail: 'Append or refresh managed References section', run: context.onSyncBibliography },
     { id: 'insert-references-directive', label: 'Insert auto References section', detail: '`:::references` renders the cited keys from loaded .bib files', run: context.onInsertReferencesDirective },
-    { id: 'insert-note-to-llm', label: 'Insert Note to LLM', detail: 'Anchored author guidance for external LLM revision', run: context.onInsertEditorComment },
-    { id: 'insert-note-to-human', label: 'Insert Note to Human', detail: 'Anchored review note for the author', run: context.onInsertHumanEditorComment },
+    { id: 'insert-note-to-llm', label: 'Insert note', detail: 'Anchored author guidance for external LLM revision', run: context.onInsertEditorComment },
+    { id: 'insert-note-to-human', label: 'Insert review note', detail: 'Anchored review note for the author', run: context.onInsertHumanEditorComment },
     { id: 'apply-scientific-typography', label: 'Apply scientific typography', detail: 'Normalize minus signs, micro units, and value-unit spacing', run: context.onApplyScientificTypography },
     { id: 'copy-sciemd-llm-skill', label: 'LLM skill: copy ScieMD LLM Skill', detail: 'Teach another LLM to resolve Note to LLM markers safely', run: context.onCopyScieMDLlmSkill },
     { id: 'generate-sciemd-llm-skill', label: 'LLM skill: generate ScieMD_LLM_skill.md', detail: 'Create ScieMD_LLM_skill.md beside the current document', run: context.onGenerateScieMDLlmSkill },

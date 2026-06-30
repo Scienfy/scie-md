@@ -1,0 +1,412 @@
+/*
+ * ScieMD app styles: lock and note annotation anchors, cards, and actions.
+ * Import order is owned by app.css and mirrored by appCssBundle.ts for HTML export.
+ */
+.scie-md-lock-boundary,
+.scie-md-note-boundary {
+  position: relative;
+  height: 0;
+  min-height: 0;
+  margin: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.scie-md-lock-boundary.selected,
+.scie-md-note-boundary.selected {
+  outline: 1px solid color-mix(in srgb, var(--accent), transparent 30%);
+}
+
+.locked-range-block {
+  position: relative;
+}
+
+.locked-range-block::before {
+  content: "";
+  position: absolute;
+  top: -0.18em;
+  bottom: -0.18em;
+  left: -2.35rem;
+  width: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent), var(--border) 16%);
+  opacity: 0.86;
+  pointer-events: none;
+}
+
+.locked-range-first::after {
+  content: "\1F512";
+  position: absolute;
+  top: 0.05em;
+  left: -2.95rem;
+  z-index: 2;
+  display: grid;
+  width: 1.28rem;
+  height: 1.28rem;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 28%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface), transparent 2%);
+  color: var(--accent);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--shadow), transparent 46%);
+  font-family: "Scie Sans", sans-serif;
+  font-size: 0.74rem;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.scie-md-lock-unlock {
+  position: absolute;
+  top: 0.05rem;
+  left: -5.25rem;
+  z-index: 7;
+  min-height: 24px;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 34%);
+  border-radius: 999px;
+  padding: 0 9px;
+  background: color-mix(in srgb, var(--surface), transparent 2%);
+  color: var(--accent);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--shadow), transparent 48%);
+  font: 700 11px/1 var(--ui-font);
+  opacity: 0;
+  pointer-events: auto;
+  transform: translateY(-2px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.scie-md-lock-start:hover .scie-md-lock-unlock,
+.scie-md-lock-start:focus-within .scie-md-lock-unlock,
+.locked-range-block:hover + .scie-md-lock-start .scie-md-lock-unlock {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.llm-note-target-block,
+.human-note-target-block {
+  position: relative;
+  border-radius: 4px;
+}
+
+.llm-note-target-block {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, #7c4dff 10%, transparent), transparent 70%);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, #7c4dff, var(--accent) 18%);
+}
+
+.human-note-target-block {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, #0f8b6f 12%, transparent), transparent 70%);
+  box-shadow: inset 2px 0 0 #0f8b6f;
+}
+
+.llm-note-target-block-first::after,
+.human-note-target-block-first::after {
+  content: "";
+  position: absolute;
+  top: 0.6em;
+  right: -2.2rem;
+  width: 1.8rem;
+  height: 1px;
+  pointer-events: none;
+}
+
+.llm-note-target-block-first::after {
+  background: color-mix(in srgb, #7c4dff, var(--border) 28%);
+}
+
+.human-note-target-block-first::after {
+  background: color-mix(in srgb, #0f8b6f, var(--border) 28%);
+}
+
+.llm-note-target-quote,
+.human-note-target-quote {
+  border-radius: 3px;
+}
+
+.llm-note-target-quote {
+  background: color-mix(in srgb, #7c4dff 18%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #7c4dff 28%, transparent),
+    inset 0 -0.18em 0 color-mix(in srgb, #7c4dff 22%, transparent);
+}
+
+.human-note-target-quote {
+  background: color-mix(in srgb, #0f8b6f 18%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #0f8b6f 32%, transparent),
+    inset 0 -0.18em 0 color-mix(in srgb, #0f8b6f 24%, transparent);
+}
+
+.llm-note-target-quote:has(.human-note-target-quote),
+.human-note-target-quote:has(.llm-note-target-quote),
+.llm-note-target-quote .human-note-target-quote,
+.human-note-target-quote .llm-note-target-quote {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, #7c4dff 24%, transparent) 0 6px,
+      color-mix(in srgb, #0f8b6f 24%, transparent) 6px 12px
+    );
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #7c4dff 26%, #0f8b6f 26%),
+    inset 0 -0.18em 0 color-mix(in srgb, #0f8b6f 28%, transparent);
+}
+
+.llm-note-target-block.human-note-target-block {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, #7c4dff 13%, transparent) 0 8px,
+      color-mix(in srgb, #0f8b6f 13%, transparent) 8px 16px
+    );
+  box-shadow:
+    inset 2px 0 0 #7c4dff,
+    inset 5px 0 0 #0f8b6f;
+}
+
+.locked-range-quote {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent),
+    inset 0 -0.2em 0 color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.variant-target-quote {
+  border-radius: 3px;
+  background: color-mix(in srgb, #0f8b6f 16%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #0f8b6f 28%, transparent),
+    inset 0 -0.18em 0 color-mix(in srgb, #0f8b6f 22%, transparent);
+}
+
+.scie-md-note-anchor {
+  position: relative;
+  z-index: 8;
+  height: 0;
+  min-height: 0;
+  margin: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.scie-md-lock-anchor {
+  position: relative;
+  z-index: 8;
+  height: 0;
+  min-height: 0;
+  margin: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.scie-md-note-card {
+  position: absolute;
+  top: -0.1rem;
+  left: calc(100% + 2rem);
+  display: grid;
+  box-sizing: border-box;
+  width: min(320px, calc(100vw - 3rem));
+  min-width: 0;
+  max-width: calc(100vw - 3rem);
+  gap: 7px;
+  border: 1px solid color-mix(in srgb, #7c4dff, var(--border) 42%);
+  border-left: 4px solid color-mix(in srgb, #7c4dff, var(--accent) 18%);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: color-mix(in srgb, var(--surface), #7c4dff 5%);
+  box-shadow: 0 12px 34px color-mix(in srgb, var(--shadow), transparent 36%);
+  color: var(--text);
+  font-family: var(--ui-font);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: auto;
+}
+
+.scie-md-lock-card {
+  position: absolute;
+  top: -0.1rem;
+  left: calc(100% + 2rem);
+  display: grid;
+  box-sizing: border-box;
+  width: min(300px, calc(100vw - 3rem));
+  min-width: 0;
+  max-width: calc(100vw - 3rem);
+  gap: 7px;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 42%);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: color-mix(in srgb, var(--surface), var(--accent) 5%);
+  box-shadow: 0 12px 34px color-mix(in srgb, var(--shadow), transparent 36%);
+  color: var(--text);
+  font-family: var(--ui-font);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: auto;
+  transform: translateY(var(--note-stack-offset, 0px));
+  transition: transform 120ms ease;
+  z-index: 1;
+}
+
+.scie-md-note-anchor:hover,
+.scie-md-note-anchor:focus-within {
+  z-index: 20;
+}
+
+.scie-md-note-anchor:hover .scie-md-note-card,
+.scie-md-note-anchor:focus-within .scie-md-note-card {
+  z-index: 4;
+}
+
+.scie-md-lock-card::before {
+  content: "";
+  position: absolute;
+  top: 15px;
+  left: -2rem;
+  width: 2rem;
+  height: 1px;
+  background: color-mix(in srgb, var(--accent), var(--border) 30%);
+}
+
+.scie-md-lock-card header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: color-mix(in srgb, var(--accent), var(--text-strong) 35%);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.scie-md-lock-card header span {
+  min-width: 0;
+  max-width: 58%;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scie-md-lock-card p {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.scie-md-note-card::before {
+  content: "";
+  position: absolute;
+  top: 15px;
+  left: -2rem;
+  width: 2rem;
+  height: 1px;
+  background: color-mix(in srgb, #7c4dff, var(--border) 30%);
+}
+
+.scie-md-note-card.is-human-note {
+  border-color: color-mix(in srgb, #0f8b6f, var(--border) 45%);
+  border-left-color: #0f8b6f;
+  background: color-mix(in srgb, var(--surface), #0f8b6f 7%);
+}
+
+.scie-md-note-card.is-human-note::before {
+  background: color-mix(in srgb, #0f8b6f, var(--border) 30%);
+}
+
+.scie-md-note-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  color: color-mix(in srgb, #7c4dff, var(--text-strong) 35%);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.scie-md-note-card.is-human-note header {
+  color: color-mix(in srgb, #0f8b6f, var(--text-strong) 35%);
+}
+
+.scie-md-note-card header span {
+  min-width: 0;
+  max-width: 58%;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scie-md-note-card p {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.scie-md-note-card label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.scie-md-note-card textarea {
+  width: 100%;
+  min-height: 84px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: 12px/1.4 var(--ui-font);
+}
+
+.scie-md-note-actions {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.scie-md-note-actions button {
+  min-height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+}
+
+.scie-md-note-actions button:first-child {
+  border-color: color-mix(in srgb, #7c4dff, var(--border) 36%);
+  color: color-mix(in srgb, #7c4dff, var(--text-strong) 36%);
+  font-weight: 700;
+}
+
+.scie-md-note-card.is-human-note .scie-md-note-actions button:first-child {
+  border-color: color-mix(in srgb, #0f8b6f, var(--border) 36%);
+  color: color-mix(in srgb, #0f8b6f, var(--text-strong) 36%);
+}
+
+.scie-md-note-actions button.danger,
+.scie-md-visual-atom-actions button.danger,
+.scie-md-visual-atom-delete {
+  border-color: color-mix(in srgb, var(--error), var(--border) 45%);
+  color: var(--error);
+}

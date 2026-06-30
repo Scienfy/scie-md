@@ -1,4 +1,9 @@
 import type { FileMetadata } from '../app/documentState';
+import {
+  clearNativeRecoverySnapshot,
+  readNativeRecoverySnapshot,
+  writeNativeRecoverySnapshot,
+} from './nativeRecoveryService';
 
 export interface UntitledDraft {
   markdown: string;
@@ -52,6 +57,16 @@ export function saveUntitledDraft(markdown: string, savedAt = Date.now()): void 
   persistDraft(UNTITLED_DRAFT_KEY, { markdown, savedAt });
 }
 
+export async function saveUntitledDraftAsync(markdown: string, savedAt = Date.now()): Promise<void> {
+  if (!markdown.trim()) {
+    await clearUntitledDraftAsync();
+    return;
+  }
+  saveUntitledDraft(markdown, savedAt);
+  await drainIndexedDraftOperations();
+  await writeNativeDraftSnapshot({ markdown, filePath: null, savedAt });
+}
+
 export function clearUntitledDraft(): void {
   memoryDrafts.delete(UNTITLED_DRAFT_KEY);
   try {
@@ -60,6 +75,12 @@ export function clearUntitledDraft(): void {
     // Ignore storage failures; the saved document state remains authoritative.
   }
   void queueIndexedDraftDelete(UNTITLED_DRAFT_KEY);
+}
+
+export async function clearUntitledDraftAsync(): Promise<void> {
+  clearUntitledDraft();
+  await drainIndexedDraftOperations();
+  await clearNativeDraftSnapshotIf((snapshot) => snapshot.filePath === null);
 }
 
 export function loadFileDraft(filePath: string, now = Date.now()): UntitledDraft | null {
@@ -96,6 +117,16 @@ export function saveFileDraft(filePath: string, markdown: string, savedAt = Date
   });
 }
 
+export async function saveFileDraftAsync(filePath: string, markdown: string, savedAt = Date.now(), baseMetadata?: FileMetadata | null): Promise<void> {
+  if (!markdown.trim()) {
+    await clearFileDraftAsync(filePath);
+    return;
+  }
+  saveFileDraft(filePath, markdown, savedAt, baseMetadata);
+  await drainIndexedDraftOperations();
+  await writeNativeDraftSnapshot({ markdown, filePath, savedAt });
+}
+
 export function clearFileDraft(filePath: string): void {
   const key = fileDraftKey(filePath);
   const legacyKeys = legacyFileDraftKeys(filePath);
@@ -111,15 +142,28 @@ export function clearFileDraft(filePath: string): void {
   for (const legacyKey of legacyKeys) void queueIndexedDraftDelete(legacyKey);
 }
 
+export async function clearFileDraftAsync(filePath: string): Promise<void> {
+  clearFileDraft(filePath);
+  await drainIndexedDraftOperations();
+  const normalizedPath = normalizeDraftPath(filePath);
+  await clearNativeDraftSnapshotIf((snapshot) => (
+    typeof snapshot.filePath === 'string'
+    && normalizeDraftPath(snapshot.filePath) === normalizedPath
+  ));
+}
+
 export async function loadUntitledDraftAsync(now = Date.now()): Promise<UntitledDraft | null> {
-  return loadUntitledDraft(now) ?? await loadIndexedDraft(UNTITLED_DRAFT_KEY, now);
+  return loadUntitledDraft(now)
+    ?? await loadIndexedDraft(UNTITLED_DRAFT_KEY, now)
+    ?? await loadNativeUntitledDraft(now);
 }
 
 export async function loadFileDraftAsync(filePath: string, now = Date.now()): Promise<UntitledDraft | null> {
   const legacyKeys = legacyFileDraftKeys(filePath);
   return loadFileDraft(filePath, now)
     ?? await loadIndexedDraft(fileDraftKey(filePath), now)
-    ?? await loadFirstIndexedDraft(legacyKeys, now);
+    ?? await loadFirstIndexedDraft(legacyKeys, now)
+    ?? await loadNativeFileDraft(filePath, now);
 }
 
 export function shouldPersistUntitledDraft(markdown: string, initialMarkdown: string, options: { suppressBundledWelcome?: boolean } = {}): boolean {
@@ -305,6 +349,50 @@ async function loadFirstIndexedDraft(keys: string[], now: number): Promise<Untit
   return null;
 }
 
+async function loadNativeUntitledDraft(now: number): Promise<UntitledDraft | null> {
+  const snapshot = await readNativeRecoverySnapshot();
+  if (!snapshot || snapshot.filePath !== null) return null;
+  return nativeSnapshotToDraft(snapshot.markdown, snapshot.updatedAtMs, now);
+}
+
+async function loadNativeFileDraft(filePath: string, now: number): Promise<UntitledDraft | null> {
+  const snapshot = await readNativeRecoverySnapshot();
+  if (!snapshot?.filePath) return null;
+  if (normalizeDraftPath(snapshot.filePath) !== normalizeDraftPath(filePath)) return null;
+  return nativeSnapshotToDraft(snapshot.markdown, snapshot.updatedAtMs, now);
+}
+
+function nativeSnapshotToDraft(markdown: string, savedAt: number, now: number): UntitledDraft | null {
+  if (!markdown.trim() || now - savedAt > MAX_DRAFT_AGE_MS) return null;
+  return { markdown, savedAt };
+}
+
+async function writeNativeDraftSnapshot({
+  markdown,
+  filePath,
+  savedAt,
+}: {
+  markdown: string;
+  filePath: string | null;
+  savedAt: number;
+}): Promise<void> {
+  if (!markdown.trim()) return;
+  // Desktop recovery lives in the Tauri app-data diagnostics directory via
+  // latest-recovery-snapshot.json. Browser storage remains the fallback path.
+  await writeNativeRecoverySnapshot({
+    markdown,
+    filePath,
+    updatedAtMs: savedAt,
+  });
+}
+
+async function clearNativeDraftSnapshotIf(predicate: (snapshot: { filePath: string | null }) => boolean): Promise<void> {
+  const snapshot = await readNativeRecoverySnapshot();
+  if (snapshot && predicate(snapshot)) {
+    await clearNativeRecoverySnapshot();
+  }
+}
+
 function byteLength(value: string): number {
   if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(value).byteLength;
   return unescape(encodeURIComponent(value)).length;
@@ -477,10 +565,14 @@ function listIndexedFileDraftCandidates(db: IDBDatabase): Promise<Array<{ key: s
   });
 }
 
-export async function flushDraftRecoveryForTests(): Promise<void> {
+async function drainIndexedDraftOperations(): Promise<void> {
   while (indexedDraftOperations.size > 0) {
     await Promise.all(Array.from(indexedDraftOperations.values()));
   }
+}
+
+export async function flushDraftRecoveryForTests(): Promise<void> {
+  await drainIndexedDraftOperations();
 }
 
 export function resetDraftRecoveryForTests(): void {

@@ -3,8 +3,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { findTextMatches, replaceTextMatch, replaceTextMatches } from '../markdown/findReplace';
 import type { TextMatch } from '../markdown/findReplace';
-import { parseProtectedBlocks } from '../markdown/protectedBlocks';
-import type { OffsetRange } from '../markdown/markdownRanges';
+import { parseProtectedBlocks } from '@sciemd/core';
+import type { OffsetRange } from '@sciemd/core';
 
 interface FindReplacePanelProps {
   markdown: string;

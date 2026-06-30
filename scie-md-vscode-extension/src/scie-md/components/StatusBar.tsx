@@ -1,6 +1,6 @@
 import { RotateCcw } from 'lucide-react';
 import type { AutosaveStatus } from '../app/documentState';
-import type { MarkdownHeading } from '../markdown/outline';
+import type { MarkdownHeading } from '@sciemd/core';
 
 interface StatusBarProps {
   autosaveStatus: AutosaveStatus;

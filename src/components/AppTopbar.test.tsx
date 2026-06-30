@@ -65,6 +65,7 @@ describe('AppTopbar menu architecture', () => {
     expect(menuText()).toContain('Check External Tools');
     expect(menuText()).toContain('Set Inkscape Path');
     expect(menuText()).toContain('Show Last Export Log');
+    expect(menuText()).toContain('Export Diagnostics Bundle');
   });
 
   it('keeps quick actions focused on insert, search, and command palette', () => {
@@ -239,6 +240,7 @@ function renderTopbar(
         onOpenTemplates={noop}
         onCheckTools={noop}
         onSetInkscapePath={noop}
+        onExportDiagnosticsBundle={noop}
         onOpenSettings={noop}
         onShowAbout={noop}
         onOpenGithub={noop}

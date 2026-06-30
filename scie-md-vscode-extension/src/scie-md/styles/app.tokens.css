@@ -1,0 +1,1556 @@
+/*
+ * ScieMD app styles: tokens, font faces, themes, and visual-style variables.
+ * Import order is owned by app.css and mirrored by appCssBundle.ts for HTML export.
+ */
+@font-face {
+  font-family: "Scie Sans";
+  src: url("./fonts/scie-sans/ScieSans-Light.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 300;
+}
+
+@font-face {
+  font-family: "Scie Sans";
+  src: url("./fonts/scie-sans/ScieSans-LightItalic.woff2") format("woff2");
+  font-display: swap;
+  font-style: italic;
+  font-weight: 300;
+}
+
+@font-face {
+  font-family: "Scie Sans";
+  src: url("./fonts/scie-sans/ScieSans-Regular.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Scie Sans";
+  src: url("./fonts/scie-sans/ScieSans-Italic.woff2") format("woff2");
+  font-display: swap;
+  font-style: italic;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Scie Sans";
+  src: url("./fonts/scie-sans/ScieSans-Medium.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 500;
+}
+
+@font-face {
+  font-family: "Scie Sans";
+  src: url("./fonts/scie-sans/ScieSans-MediumItalic.woff2") format("woff2");
+  font-display: swap;
+  font-style: italic;
+  font-weight: 500;
+}
+
+@font-face {
+  font-family: "Scie Sans";
+  src: url("./fonts/scie-sans/ScieSans-Bold.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 700;
+}
+
+@font-face {
+  font-family: "Scie Sans";
+  src: url("./fonts/scie-sans/ScieSans-BoldItalic.woff2") format("woff2");
+  font-display: swap;
+  font-style: italic;
+  font-weight: 700;
+}
+
+@font-face {
+  font-family: "Scie Sans Compact";
+  src: url("./fonts/scie-sans/compact-v1.320/ScieSansCompact-Light.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 300;
+}
+
+@font-face {
+  font-family: "Scie Sans Compact";
+  src: url("./fonts/scie-sans/compact-v1.320/ScieSansCompact-Regular.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Scie Sans Compact";
+  src: url("./fonts/scie-sans/compact-v1.320/ScieSansCompact-Medium.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 500;
+}
+
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("./fonts/vendor/source-serif-4/source-serif-4-latin-400-normal.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("./fonts/vendor/source-serif-4/source-serif-4-latin-400-italic.woff2") format("woff2");
+  font-display: swap;
+  font-style: italic;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("./fonts/vendor/source-serif-4/source-serif-4-latin-600-normal.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 600;
+}
+
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("./fonts/vendor/source-serif-4/source-serif-4-latin-700-normal.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 700;
+}
+
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("./fonts/vendor/source-serif-4/source-serif-4-latin-800-normal.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 800;
+}
+
+@font-face {
+  font-family: "Lora";
+  src: url("./fonts/vendor/lora/lora-latin-400-normal.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Lora";
+  src: url("./fonts/vendor/lora/lora-latin-400-italic.woff2") format("woff2");
+  font-display: swap;
+  font-style: italic;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Lora";
+  src: url("./fonts/vendor/lora/lora-latin-600-normal.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 600;
+}
+
+@font-face {
+  font-family: "Lora";
+  src: url("./fonts/vendor/lora/lora-latin-700-normal.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 700;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("./fonts/vendor/ibm-plex-sans/ibm-plex-sans-latin-400-normal.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("./fonts/vendor/ibm-plex-sans/ibm-plex-sans-latin-400-italic.woff2") format("woff2");
+  font-display: swap;
+  font-style: italic;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("./fonts/vendor/ibm-plex-sans/ibm-plex-sans-latin-500-normal.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 500;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("./fonts/vendor/ibm-plex-sans/ibm-plex-sans-latin-600-normal.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 600;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("./fonts/vendor/ibm-plex-sans/ibm-plex-sans-latin-700-normal.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 700;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./fonts/vendor/jetbrains-mono/jetbrains-mono-latin-400-normal.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./fonts/vendor/jetbrains-mono/jetbrains-mono-latin-400-italic.woff2") format("woff2");
+  font-display: swap;
+  font-style: italic;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./fonts/vendor/jetbrains-mono/jetbrains-mono-latin-500-normal.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 500;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./fonts/vendor/jetbrains-mono/jetbrains-mono-latin-700-normal.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 700;
+}
+
+:root {
+  color-scheme: light;
+  font-family: "Scie Sans", sans-serif;
+  --ui-font: "Scie Sans", sans-serif;
+  --font-ui: var(--ui-font);
+  --bg: #eef2f0;
+  --surface: #ffffff;
+  --surface-soft: #f5f8f7;
+  --app-bg: var(--bg);
+  --surface-muted: var(--surface-soft);
+  --editor-bg: #fbfcfc;
+  --text: #1f2933;
+  --text-strong: #111827;
+  --text-muted: #55645f;
+  --focus-ring: #1d7f62;
+  --border: #d7dfdc;
+  --border-strong: #c9d2ce;
+  --button-bg: #f9fbfa;
+  --button-hover: #edf5f1;
+  --button-radius: 6px;
+  --accent: #173f35;
+  --accent-soft: #8eb6a5;
+  --accent-contrast: #ffffff;
+  --error: #b42318;
+  --warning: #9a5b13;
+  --shadow: rgba(15, 23, 42, 0.16);
+  --shadow-lg: 0 18px 48px rgba(15, 23, 42, 0.2);
+  --link: var(--visual-link-color);
+  --doc-font: "Source Serif 4", serif;
+  --mono-font: "JetBrains Mono", monospace;
+  --document-body-size: 16px;
+  --document-h1-size: 34px;
+  --document-h2-size: 24px;
+  --document-h3-size: 19px;
+  --document-h4-size: 16.5px;
+  --document-table-size: 15px;
+  --document-code-size: 0.9em;
+  --visual-padding-scale: 1;
+  --visual-block-scale: 1;
+  --visual-heading-gap-scale: 1;
+  --visual-table-scale: 1;
+  --visual-heading-weight: 760;
+  --directive-label-weight: 760;
+  --visual-body-letter-spacing: 0;
+  --visual-heading-border: 0;
+  --visual-code-bg: var(--text-strong);
+  --visual-code-color: var(--surface);
+  --visual-link-color: #0969da;
+  --visual-inline-code-bg: var(--surface-soft);
+  --visual-inline-code-color: var(--text-strong);
+  --visual-inline-code-radius: 4px;
+  --visual-inline-code-pad-y: 2px;
+  --visual-inline-code-pad-x: 5px;
+  --visual-hr-color: var(--border);
+  --scienfy-reading-dot-space: 18px;
+  --scienfy-reading-dot-color: color-mix(in srgb, var(--accent), transparent 92%);
+  --scienfy-reading-dot-focus-color: color-mix(in srgb, var(--accent), transparent 88%);
+  --scienfy-reading-frame-color: color-mix(in srgb, var(--border-strong), transparent 38%);
+  --scienfy-reading-stage-dot-color: color-mix(in srgb, var(--text), transparent 94%);
+  --table-bg: var(--surface);
+  --table-alt-bg: var(--surface-soft);
+  --table-head-bg: var(--surface-soft);
+  --table-text: var(--text);
+  --table-head-text: var(--text-strong);
+  --table-border: var(--border-strong);
+  --ui-pad-y: 10px;
+  --ui-pad-x: 14px;
+  --control-height: 32px;
+  --control-pad-x: 10px;
+  --toast-duration: 4500ms;
+  --topbar-min-height: 46px;
+  --toolbar-gap: 6px;
+  --note-stack-offset: 0px;
+  --toolbar-min-height: 42px;
+  --statusbar-min-height: 38px;
+  --outline-width: 260px;
+  --outline-pad-y: 14px;
+  --outline-pad-x: 10px;
+  --outline-item-height: 28px;
+  --inspector-pad-y: 13px;
+  --inspector-pad-x: 12px;
+  --document-pad-y: 36px;
+  --document-pad-x: 48px;
+  --document-pad-bottom: 72px;
+  --source-pad-y: 24px;
+  --source-pad-x: 40px;
+  --document-block-gap: 18px;
+  --document-h1-bottom: 22px;
+  --document-h2-top: 32px;
+  --document-h2-bottom: 14px;
+  --document-h3-top: 26px;
+  --document-h3-bottom: 10px;
+  --blockquote-pad-x: 16px;
+  --code-block-pad: 14px;
+  --table-cell-pad-y: 8px;
+  --table-cell-pad-x: 10px;
+  --editor-line-height: 1.62;
+  --font-scale: 1;
+  --content-width: 980px;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121715;
+  --surface: #1b2220;
+  --surface-soft: #202a27;
+  --editor-bg: #151b19;
+  --text: #d8e4df;
+  --text-strong: #f1f7f4;
+  --text-muted: #9cafaa;
+  --focus-ring: #8ed8ba;
+  --border: #31403b;
+  --border-strong: #41544d;
+  --button-bg: #222c29;
+  --button-hover: #293732;
+  --accent: #8ed8ba;
+  --accent-soft: #5c8f7b;
+  --accent-contrast: #0d1713;
+  --error: #ffb3a8;
+  --warning: #f4c37f;
+  --shadow: rgba(0, 0, 0, 0.34);
+  --table-bg: #151b19;
+  --table-alt-bg: #1b2421;
+  --table-head-bg: #202a27;
+  --table-text: #eef7f3;
+  --table-head-text: #ffffff;
+  --table-border: #4f635b;
+}
+
+:root[data-theme="sepia"] {
+  color-scheme: light;
+  --bg: #f1eadc;
+  --surface: #fff8ec;
+  --surface-soft: #f7efdf;
+  --editor-bg: #fffaf1;
+  --text: #3a3024;
+  --text-strong: #251e16;
+  --text-muted: #726552;
+  --focus-ring: #6f4f1d;
+  --border: #ddd0b8;
+  --border-strong: #c9b99d;
+  --button-bg: #fffaf1;
+  --button-hover: #f2e6d0;
+  --accent: #4a6b58;
+  --accent-soft: #8aa28f;
+  --error: #9f2e20;
+  --warning: #8a5a14;
+  --shadow: rgba(75, 53, 29, 0.16);
+  --table-bg: #fffaf1;
+  --table-alt-bg: #f7efdf;
+  --table-head-bg: #f2e6d0;
+  --table-text: #3a3024;
+  --table-head-text: #251e16;
+  --table-border: #c9b99d;
+}
+
+:root[data-visual-style="scientific-draft"] {
+  --ui-pad-y: 10px;
+  --ui-pad-x: 14px;
+  --control-height: 32px;
+  --control-pad-x: 10px;
+  --topbar-min-height: 46px;
+  --toolbar-gap: 6px;
+  --toolbar-min-height: 42px;
+  --statusbar-min-height: 38px;
+  --outline-width: 260px;
+  --outline-pad-y: 14px;
+  --outline-pad-x: 10px;
+  --outline-item-height: 28px;
+  --inspector-pad-y: 13px;
+  --inspector-pad-x: 12px;
+  --doc-font: "Source Serif 4", serif;
+  --document-body-size: 16px;
+  --document-h1-size: 34px;
+  --document-h2-size: 24px;
+  --document-h3-size: 19px;
+  --document-table-size: 15px;
+  --document-pad-y: 36px;
+  --document-pad-x: 48px;
+  --document-pad-bottom: 72px;
+  --source-pad-y: 24px;
+  --source-pad-x: 40px;
+  --document-block-gap: 18px;
+  --document-h1-bottom: 22px;
+  --document-h2-top: 32px;
+  --document-h2-bottom: 14px;
+  --document-h3-top: 26px;
+  --document-h3-bottom: 10px;
+  --blockquote-pad-x: 16px;
+  --code-block-pad: 14px;
+  --table-cell-pad-y: 8px;
+  --table-cell-pad-x: 10px;
+  --editor-line-height: 1.62;
+  --visual-padding-scale: 1;
+  --visual-block-scale: 1;
+  --visual-heading-gap-scale: 1;
+  --visual-table-scale: 1;
+  --visual-heading-weight: 760;
+  --visual-heading-border: 0;
+}
+
+:root[data-visual-style="journal-manuscript"] {
+  --ui-pad-y: 11px;
+  --ui-pad-x: 16px;
+  --control-height: 32px;
+  --control-pad-x: 10px;
+  --topbar-min-height: 48px;
+  --toolbar-gap: 6px;
+  --toolbar-min-height: 44px;
+  --statusbar-min-height: 39px;
+  --outline-width: 264px;
+  --outline-pad-y: 14px;
+  --outline-pad-x: 10px;
+  --outline-item-height: 29px;
+  --inspector-pad-y: 14px;
+  --inspector-pad-x: 12px;
+  --doc-font: "Source Serif 4", serif;
+  --document-body-size: 16.5px;
+  --document-h1-size: 31px;
+  --document-h2-size: 22px;
+  --document-h3-size: 18px;
+  --document-table-size: 14.5px;
+  --document-pad-y: 44px;
+  --document-pad-x: 56px;
+  --document-pad-bottom: 84px;
+  --source-pad-y: 28px;
+  --source-pad-x: 42px;
+  --document-block-gap: 20px;
+  --document-h1-bottom: 24px;
+  --document-h2-top: 36px;
+  --document-h2-bottom: 14px;
+  --document-h3-top: 28px;
+  --document-h3-bottom: 10px;
+  --blockquote-pad-x: 18px;
+  --code-block-pad: 14px;
+  --table-cell-pad-y: 7px;
+  --table-cell-pad-x: 9px;
+  --editor-line-height: 1.72;
+  --visual-padding-scale: 1.08;
+  --visual-block-scale: 1.08;
+  --visual-heading-gap-scale: 1.05;
+  --visual-table-scale: 0.94;
+  --visual-heading-weight: 720;
+  --visual-heading-border: 1px solid var(--border);
+}
+
+:root[data-visual-style="lab-notebook"] {
+  --ui-pad-y: 5px;
+  --ui-pad-x: 9px;
+  --control-height: 28px;
+  --control-pad-x: 8px;
+  --topbar-min-height: 38px;
+  --toolbar-gap: 4px;
+  --toolbar-min-height: 34px;
+  --statusbar-min-height: 30px;
+  --outline-width: 232px;
+  --outline-pad-y: 8px;
+  --outline-pad-x: 8px;
+  --outline-item-height: 23px;
+  --inspector-pad-y: 9px;
+  --inspector-pad-x: 10px;
+  --doc-font: "IBM Plex Sans", sans-serif;
+  --document-body-size: 15px;
+  --document-h1-size: 27px;
+  --document-h2-size: 20px;
+  --document-h3-size: 16.5px;
+  --document-table-size: 13.5px;
+  --document-pad-y: 20px;
+  --document-pad-x: 30px;
+  --document-pad-bottom: 48px;
+  --source-pad-y: 16px;
+  --source-pad-x: 28px;
+  --document-block-gap: 10px;
+  --document-h1-bottom: 14px;
+  --document-h2-top: 22px;
+  --document-h2-bottom: 9px;
+  --document-h3-top: 18px;
+  --document-h3-bottom: 7px;
+  --blockquote-pad-x: 10px;
+  --code-block-pad: 10px;
+  --table-cell-pad-y: 5px;
+  --table-cell-pad-x: 7px;
+  --editor-line-height: 1.42;
+  --visual-padding-scale: 0.82;
+  --visual-block-scale: 0.78;
+  --visual-heading-gap-scale: 0.78;
+  --visual-table-scale: 0.8;
+  --visual-heading-weight: 800;
+  --visual-heading-border: 1px dashed var(--border);
+}
+
+:root[data-theme="dark"][data-visual-style="lab-notebook"] {
+  --bg: #1a130b;
+  --editor-bg: #1d140c;
+  --surface: #261a0f;
+  --surface-soft: #2f2114;
+  --border: #4b3622;
+  --border-strong: #654a2e;
+  --button-bg: #2b1f13;
+  --button-hover: #3a2b1a;
+  --accent: #f0754f;
+  --accent-soft: #9a5c45;
+  --text: #ddd9d0;
+  --text-strong: #f2eee5;
+  --text-muted: #aaa59b;
+  --error: #ff8b72;
+  --warning: #d8a35f;
+  --visual-link-color: #f28b63;
+  --visual-inline-code-bg: #3a2a1a;
+  --visual-inline-code-color: #eee8dd;
+  --visual-code-bg: #150f09;
+  --visual-code-color: #f3eee6;
+  --visual-hr-color: #6f522f;
+  --table-bg: #1f160d;
+  --table-alt-bg: #291d11;
+  --table-head-bg: #342515;
+  --table-text: #e3dfd6;
+  --table-head-text: #f4efe5;
+  --table-border: #5c4329;
+}
+
+:root[data-visual-style="technical-code"] {
+  --ui-pad-y: 6px;
+  --ui-pad-x: 10px;
+  --control-height: 30px;
+  --control-pad-x: 8px;
+  --topbar-min-height: 40px;
+  --toolbar-gap: 4px;
+  --toolbar-min-height: 36px;
+  --statusbar-min-height: 32px;
+  --outline-width: 248px;
+  --outline-pad-y: 10px;
+  --outline-pad-x: 8px;
+  --outline-item-height: 24px;
+  --inspector-pad-y: 10px;
+  --inspector-pad-x: 10px;
+  --doc-font: "IBM Plex Sans", sans-serif;
+  --document-body-size: 15.5px;
+  --document-h1-size: 30px;
+  --document-h2-size: 21px;
+  --document-h3-size: 17px;
+  --document-table-size: 14px;
+  --document-code-size: 0.92em;
+  --document-pad-y: 24px;
+  --document-pad-x: 34px;
+  --document-pad-bottom: 52px;
+  --source-pad-y: 16px;
+  --source-pad-x: 28px;
+  --document-block-gap: 12px;
+  --document-h1-bottom: 16px;
+  --document-h2-top: 24px;
+  --document-h2-bottom: 10px;
+  --document-h3-top: 20px;
+  --document-h3-bottom: 8px;
+  --blockquote-pad-x: 12px;
+  --code-block-pad: 12px;
+  --table-cell-pad-y: 5px;
+  --table-cell-pad-x: 7px;
+  --editor-line-height: 1.5;
+  --visual-padding-scale: 0.92;
+  --visual-block-scale: 0.88;
+  --visual-heading-gap-scale: 0.9;
+  --visual-table-scale: 0.86;
+  --visual-heading-weight: 780;
+  --visual-heading-border: 1px solid var(--border);
+  --visual-code-bg: #121a17;
+  --visual-code-color: #e8f3ee;
+}
+
+:root[data-visual-style="codex"] {
+  --ui-pad-y: 6px;
+  --ui-pad-x: 10px;
+  --control-height: 30px;
+  --control-pad-x: 8px;
+  --topbar-min-height: 40px;
+  --toolbar-gap: 4px;
+  --toolbar-min-height: 36px;
+  --statusbar-min-height: 32px;
+  --outline-width: 248px;
+  --outline-pad-y: 10px;
+  --outline-pad-x: 8px;
+  --outline-item-height: 24px;
+  --inspector-pad-y: 10px;
+  --inspector-pad-x: 10px;
+  --doc-font: "Scie Sans", sans-serif;
+  --document-body-size: 17px;
+  --document-h1-size: 31px;
+  --document-h2-size: 26px;
+  --document-h3-size: 22px;
+  --document-h4-size: 19px;
+  --document-table-size: 16px;
+  --document-code-size: 0.86em;
+  --document-pad-y: 18px;
+  --document-pad-x: 16px;
+  --document-pad-bottom: 64px;
+  --source-pad-y: 16px;
+  --source-pad-x: 18px;
+  --document-block-gap: 14px;
+  --document-h1-bottom: 18px;
+  --document-h2-top: 25px;
+  --document-h2-bottom: 12px;
+  --document-h3-top: 21px;
+  --document-h3-bottom: 9px;
+  --blockquote-pad-x: 18px;
+  --code-block-pad: 14px;
+  --table-cell-pad-y: 7px;
+  --table-cell-pad-x: 8px;
+  --editor-line-height: 1.44;
+  --content-width: 72vw;
+  --visual-padding-scale: 1;
+  --visual-block-scale: 1;
+  --visual-heading-gap-scale: 1;
+  --visual-table-scale: 1;
+  --visual-heading-weight: 760;
+  --visual-heading-border: 0;
+  --visual-code-bg: #0d1117;
+  --visual-code-color: #f0f6fc;
+  --visual-link-color: #0969da;
+  --visual-inline-code-bg: #f6f8fa;
+  --visual-inline-code-color: #24292f;
+  --visual-inline-code-radius: 6px;
+  --visual-inline-code-pad-y: 2px;
+  --visual-inline-code-pad-x: 6px;
+  --visual-hr-color: #d8dee4;
+}
+
+:root[data-theme="light"][data-visual-style="codex"] {
+  --bg: #ffffff;
+  --editor-bg: #ffffff;
+  --surface-soft: #f6f8fa;
+  --border: #d8dee4;
+  --border-strong: #d0d7de;
+  --text: #0d1117;
+  --text-strong: #0b0f14;
+  --text-muted: #57606a;
+}
+
+:root[data-theme="dark"][data-visual-style="codex"] {
+  --visual-link-color: #58a6ff;
+  --visual-inline-code-bg: #2d333b;
+  --visual-inline-code-color: #adbac7;
+  --visual-hr-color: #444c56;
+  --table-bg: #0d1117;
+  --table-alt-bg: #161b22;
+  --table-head-bg: #21262d;
+  --table-text: #f0f6fc;
+  --table-head-text: #ffffff;
+  --table-border: #444c56;
+}
+
+:root[data-visual-style="amin"] {
+  --ui-pad-y: 6px;
+  --ui-pad-x: 10px;
+  --control-height: 30px;
+  --control-pad-x: 8px;
+  --topbar-min-height: 40px;
+  --toolbar-gap: 4px;
+  --toolbar-min-height: 36px;
+  --statusbar-min-height: 32px;
+  --outline-width: 248px;
+  --outline-pad-y: 10px;
+  --outline-pad-x: 8px;
+  --outline-item-height: 24px;
+  --inspector-pad-y: 10px;
+  --inspector-pad-x: 10px;
+  --doc-font: "Scie Sans Compact", "Scie Sans", sans-serif;
+  --document-body-size: 18px;
+  --document-h1-size: 38px;
+  --document-h2-size: 27px;
+  --document-h3-size: 22px;
+  --document-h4-size: 19px;
+  --document-table-size: 16px;
+  --document-code-size: 0.9em;
+  --document-pad-y: 30px;
+  --document-pad-x: 40px;
+  --document-pad-bottom: 78px;
+  --source-pad-y: 18px;
+  --source-pad-x: 24px;
+  --document-block-gap: 24px;
+  --document-h1-bottom: 28px;
+  --document-h2-top: 56px;
+  --document-h2-bottom: 18px;
+  --document-h3-top: 38px;
+  --document-h3-bottom: 14px;
+  --blockquote-pad-x: 18px;
+  --code-block-pad: 14px;
+  --table-cell-pad-y: 9px;
+  --table-cell-pad-x: 8px;
+  --editor-line-height: 1.36;
+  --content-width: 72vw;
+  --visual-padding-scale: 1;
+  --visual-block-scale: 1;
+  --visual-heading-gap-scale: 1;
+  --visual-table-scale: 1;
+  --visual-heading-weight: 700;
+  --visual-body-letter-spacing: 0;
+  --visual-heading-border: 0;
+  --visual-code-bg: #15182f;
+  --visual-code-color: #f6f7fb;
+  --visual-link-color: #3f4482;
+  --visual-inline-code-bg: #f2f3f7;
+  --visual-inline-code-color: #1b1f33;
+  --visual-inline-code-radius: 6px;
+  --visual-inline-code-pad-y: 2px;
+  --visual-inline-code-pad-x: 6px;
+  --visual-hr-color: #2f3440;
+}
+
+:root:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) {
+  --ui-pad-y: 6px;
+  --ui-pad-x: 10px;
+  --control-height: 30px;
+  --control-pad-x: 8px;
+  --topbar-min-height: 40px;
+  --toolbar-gap: 4px;
+  --toolbar-min-height: 36px;
+  --statusbar-min-height: 32px;
+  --outline-width: 248px;
+  --outline-pad-y: 10px;
+  --outline-pad-x: 8px;
+  --outline-item-height: 24px;
+  --inspector-pad-y: 10px;
+  --inspector-pad-x: 10px;
+  --ui-font: "Scie Sans";
+  --font-ui: var(--ui-font);
+  --doc-font: "Scie Sans";
+  --mono-font: "Scie Sans";
+  --document-body-size: 18px;
+  --document-h1-size: 38px;
+  --document-h2-size: 28px;
+  --document-h3-size: 22px;
+  --document-h4-size: 18px;
+  --document-table-size: 16px;
+  --document-code-size: 0.92em;
+  --document-pad-y: 30px;
+  --document-pad-x: 40px;
+  --document-pad-bottom: 78px;
+  --source-pad-y: 18px;
+  --source-pad-x: 24px;
+  --document-block-gap: 22px;
+  --document-h1-bottom: 26px;
+  --document-h2-top: 46px;
+  --document-h2-bottom: 16px;
+  --document-h3-top: 34px;
+  --document-h3-bottom: 12px;
+  --blockquote-pad-x: 18px;
+  --code-block-pad: 14px;
+  --table-cell-pad-y: 8px;
+  --table-cell-pad-x: 8px;
+  --editor-line-height: 1.42;
+  --content-width: 72vw;
+  --visual-padding-scale: 1;
+  --visual-block-scale: 1;
+  --visual-heading-gap-scale: 1;
+  --visual-table-scale: 1;
+  --visual-heading-weight: 700;
+  --visual-body-letter-spacing: 0;
+  --visual-heading-border: 0;
+  --visual-code-bg: #102027;
+  --visual-code-color: #f7fbfd;
+  --visual-link-color: #315f72;
+  --visual-inline-code-bg: #eef4f6;
+  --visual-inline-code-color: #13242b;
+  --visual-inline-code-radius: 6px;
+  --visual-inline-code-pad-y: 2px;
+  --visual-inline-code-pad-x: 6px;
+  --visual-hr-color: #cfd8dc;
+}
+
+:root[data-visual-style="scie-sans-compact"] {
+  --ui-font: "Scie Sans";
+  --font-ui: var(--ui-font);
+  --doc-font: "Scie Sans Compact";
+  --mono-font: "JetBrains Mono", "Scie Sans";
+  --document-body-weight: 400;
+  --content-width: 76vw;
+}
+
+:root[data-visual-style="scienfy"] {
+  --content-width: 61.2vw;
+  --editor-line-height: 1.52;
+  --visual-heading-weight: 730;
+}
+
+:root[data-theme="light"]:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) {
+  --bg: #ffffff;
+  --editor-bg: #ffffff;
+  --surface-soft: #f5f8fa;
+  --border: #d9e1e4;
+  --border-strong: #c2cdd2;
+  --button-hover: #eef4f6;
+  --accent: #315f72;
+  --accent-soft: #83a9b8;
+  --text: #111a20;
+  --text-strong: #123341;
+  --text-muted: #56666e;
+  --error: #c8222f;
+  --warning: #9b6716;
+}
+
+/*
+ * Scienfy dark theme — neutralized backgrounds (more grey, less blue/teal).
+ * Previously: blue/red channel gap of 8-20 across surfaces (felt teal).
+ * Now: gap closed to 2-4 — feels like neutral grey with the slightest cool hint.
+ * Accent (--accent) and link color stay teal-toned so Scienfy identity remains.
+ */
+:root[data-theme="dark"]:is([data-visual-style="scie-sans"], [data-visual-style="scie-sans-compact"], [data-visual-style="scienfy"]) {
+  --bg: #16191a;             /* was #111719 — R22 G25 B26 (was R17 G23 B25) */
+  --editor-bg: #1a1d1e;      /* was #151c1f — R26 G29 B30 (was R21 G28 B31) */
+  --surface: #202325;        /* was #1b2427 — R32 G35 B37 (was R27 G36 B39) */
+  --surface-soft: #282b2e;   /* was #223036 — R40 G43 B46 (was R34 G48 B54) */
+  --border: #3a3d40;         /* was #344247 — R58 G61 B64 (was R52 G66 B71) */
+  --border-strong: #4d5054;  /* was #46585f — R77 G80 B84 (was R70 G88 B95) */
+  --button-bg: #282b2e;      /* was #223036 — matches new surface-soft */
+  --button-hover: #32353a;   /* was #2b3b42 — R50 G53 B58 (was R43 G59 B66) */
+  --accent: #9fcbd8;
+  --accent-soft: #568798;
+  --text: #e1e6e8;           /* was #dfebef — R225 G230 B232 (was R223 G235 B239) */
+  --text-strong: #f3f6f7;    /* was #f5fbfd — R243 G246 B247 (was R245 G251 B253) */
+  --text-muted: #aab1b4;     /* was #a8bbc2 — R170 G177 B180 (was R168 G187 B194) */
+  --error: #ff9ca3;
+  --warning: #ecc474;
+  --visual-link-color: #a8d8e8;
+  --visual-inline-code-bg: #2c3033;  /* was #26373d — more grey, less teal */
+  --visual-inline-code-color: #e9eef0;
+  --visual-code-bg: #131516;         /* was #0d1416 — more grey */
+  --visual-code-color: #f1f4f5;
+  --visual-hr-color: #44474a;        /* was #405257 — more grey */
+  --table-bg: #1a1d1e;
+  --table-alt-bg: #22252a;
+  --table-head-bg: #2a2d31;
+  --table-text: #ecf0f1;
+  --table-head-text: #ffffff;
+  --table-border: #44474a;
+}
+
+:root[data-visual-style="science"] {
+  --ui-pad-y: 7px;
+  --ui-pad-x: 12px;
+  --control-height: 31px;
+  --control-pad-x: 9px;
+  --topbar-min-height: 42px;
+  --toolbar-gap: 5px;
+  --toolbar-min-height: 38px;
+  --statusbar-min-height: 34px;
+  --outline-width: 260px;
+  --outline-pad-y: 12px;
+  --outline-pad-x: 9px;
+  --outline-item-height: 26px;
+  --inspector-pad-y: 12px;
+  --inspector-pad-x: 11px;
+  --doc-font: "Lora", serif;
+  --document-body-size: 19.25px;
+  --document-h1-size: 48px;
+  --document-h2-size: 29px;
+  --document-h3-size: 21.5px;
+  --document-h4-size: 17px;
+  --document-table-size: 16px;
+  --document-code-size: 0.78em;
+  --document-pad-y: 50px;
+  --document-pad-x: 46px;
+  --document-pad-bottom: 92px;
+  --source-pad-y: 24px;
+  --source-pad-x: 36px;
+  --document-block-gap: 23px;
+  --document-h1-bottom: 34px;
+  --document-h2-top: 44px;
+  --document-h2-bottom: 14px;
+  --document-h3-top: 30px;
+  --document-h3-bottom: 12px;
+  --blockquote-pad-x: 24px;
+  --code-block-pad: 16px;
+  --table-cell-pad-y: 8px;
+  --table-cell-pad-x: 10px;
+  --editor-line-height: 1.5;
+  --content-width: 980px;
+  --visual-padding-scale: 1;
+  --visual-block-scale: 1;
+  --visual-heading-gap-scale: 1;
+  --visual-table-scale: 1;
+  --visual-heading-weight: 800;
+  --visual-body-letter-spacing: 0;
+  --visual-heading-border: 0;
+  --visual-code-bg: #111111;
+  --visual-code-color: #ffffff;
+  --visual-link-color: #b82024;
+  --visual-inline-code-bg: #eeeeec;
+  --visual-inline-code-color: #171717;
+  --visual-inline-code-radius: 2px;
+  --visual-inline-code-pad-y: 1px;
+  --visual-inline-code-pad-x: 5px;
+  --visual-hr-color: #d6d2ce;
+}
+
+:root[data-theme="light"][data-visual-style="science"] {
+  --bg: #f7f6f4;
+  --editor-bg: #ffffff;
+  --surface: #ffffff;
+  --surface-soft: #f1f0ee;
+  --border: #dedbd6;
+  --border-strong: #c8c2bb;
+  --button-hover: #f0efec;
+  --accent: #b82024;
+  --accent-soft: #d65a52;
+  --text: #202020;
+  --text-strong: #0d0d0d;
+  --text-muted: #5f5f5f;
+  --error: #c91515;
+  --warning: #98620f;
+  --table-head-bg: #eceae7;
+  --table-alt-bg: #faf9f7;
+  --table-border: #d6d2ce;
+}
+
+:root[data-theme="dark"][data-visual-style="science"] {
+  --bg: #111111;
+  --editor-bg: #151515;
+  --surface: #191919;
+  --surface-soft: #232323;
+  --border: #3a3a3a;
+  --border-strong: #535353;
+  --button-bg: #222222;
+  --button-hover: #2d2d2d;
+  --accent: #ff6b65;
+  --accent-soft: #b94a46;
+  --text: #eeeeee;
+  --text-strong: #ffffff;
+  --text-muted: #b7b7b7;
+  --visual-link-color: #ff7770;
+  --visual-inline-code-bg: #2b2b2b;
+  --visual-inline-code-color: #f6f6f6;
+  --visual-code-bg: #050505;
+  --visual-code-color: #ffffff;
+  --visual-hr-color: #4a4a4a;
+  --table-bg: #151515;
+  --table-alt-bg: #1d1d1d;
+  --table-head-bg: #252525;
+  --table-text: #f2f2f2;
+  --table-head-text: #ffffff;
+  --table-border: #5c5c5c;
+}
+
+:root[data-visual-style="nature"] {
+  --ui-pad-y: 7px;
+  --ui-pad-x: 12px;
+  --control-height: 31px;
+  --control-pad-x: 9px;
+  --topbar-min-height: 42px;
+  --toolbar-gap: 5px;
+  --toolbar-min-height: 38px;
+  --statusbar-min-height: 34px;
+  --outline-width: 268px;
+  --outline-pad-y: 12px;
+  --outline-pad-x: 9px;
+  --outline-item-height: 27px;
+  --inspector-pad-y: 12px;
+  --inspector-pad-x: 11px;
+  --doc-font: "Source Serif 4", serif;
+  --document-body-size: 18.5px;
+  --document-h1-size: 42px;
+  --document-h2-size: 25px;
+  --document-h3-size: 20.5px;
+  --document-h4-size: 17px;
+  --document-table-size: 15.5px;
+  --document-code-size: 0.82em;
+  --document-pad-y: 52px;
+  --document-pad-x: 42px;
+  --document-pad-bottom: 90px;
+  --source-pad-y: 24px;
+  --source-pad-x: 34px;
+  --document-block-gap: 21px;
+  --document-h1-bottom: 28px;
+  --document-h2-top: 46px;
+  --document-h2-bottom: 13px;
+  --document-h3-top: 30px;
+  --document-h3-bottom: 10px;
+  --blockquote-pad-x: 20px;
+  --code-block-pad: 15px;
+  --table-cell-pad-y: 8px;
+  --table-cell-pad-x: 9px;
+  --editor-line-height: 1.6;
+  --content-width: 920px;
+  --visual-padding-scale: 1;
+  --visual-block-scale: 1;
+  --visual-heading-gap-scale: 1;
+  --visual-table-scale: 1;
+  --visual-heading-weight: 800;
+  --visual-body-letter-spacing: 0;
+  --visual-heading-border: 1px solid var(--border);
+  --visual-code-bg: #111111;
+  --visual-code-color: #ffffff;
+  --visual-link-color: #006f9f;
+  --visual-inline-code-bg: #f0f0f0;
+  --visual-inline-code-color: #111111;
+  --visual-inline-code-radius: 2px;
+  --visual-inline-code-pad-y: 1px;
+  --visual-inline-code-pad-x: 5px;
+  --visual-hr-color: #d2d2cf;
+}
+
+:root[data-theme="light"][data-visual-style="nature"] {
+  --bg: #f7f7f5;
+  --editor-bg: #ffffff;
+  --surface: #ffffff;
+  --surface-soft: #f4f4f1;
+  --border: #d8d8d4;
+  --border-strong: #b9b9b4;
+  --button-hover: #f4f4f4;
+  --accent: #006f9f;
+  --accent-soft: #8ebfd2;
+  --text: #111111;
+  --text-strong: #000000;
+  --text-muted: #575757;
+  --error: #b42318;
+  --warning: #8a5a14;
+  --table-head-bg: #ffffff;
+  --table-alt-bg: #fbfbf9;
+  --table-border: #d2d2cf;
+}
+
+:root[data-theme="dark"][data-visual-style="nature"] {
+  --bg: #111111;
+  --editor-bg: #151515;
+  --surface: #1b1b1b;
+  --surface-soft: #242424;
+  --border: #3c3c3c;
+  --border-strong: #565656;
+  --button-bg: #242424;
+  --button-hover: #303030;
+  --accent: #61b7e2;
+  --accent-soft: #3b7897;
+  --text: #efefef;
+  --text-strong: #ffffff;
+  --text-muted: #b8b8b8;
+  --visual-link-color: #7dccf4;
+  --visual-inline-code-bg: #303030;
+  --visual-inline-code-color: #ffffff;
+  --visual-code-bg: #050505;
+  --visual-code-color: #ffffff;
+  --visual-hr-color: #505050;
+  --table-bg: #151515;
+  --table-alt-bg: #1f1f1f;
+  --table-head-bg: #252525;
+  --table-text: #f1f1f1;
+  --table-head-text: #ffffff;
+  --table-border: #5b5b5b;
+}
+
+/*
+ * Claude style — Anthropic Claude desktop-inspired warm-dark reading surface.
+ * Uses bundled OFL-licensed fonts only (Scie Sans for UI/body, JetBrains Mono for code).
+ * Signature: warm coral (#D97757) accent, warm near-black backgrounds, subtle warm-grey rhythm.
+ */
+:root[data-visual-style="claude"] {
+  --ui-pad-y: 6px;
+  --ui-pad-x: 11px;
+  --control-height: 30px;
+  --control-pad-x: 8px;
+  --topbar-min-height: 40px;
+  --toolbar-gap: 4px;
+  --toolbar-min-height: 36px;
+  --statusbar-min-height: 32px;
+  --outline-width: 252px;
+  --outline-pad-y: 10px;
+  --outline-pad-x: 8px;
+  --outline-item-height: 26px;
+  --inspector-pad-y: 11px;
+  --inspector-pad-x: 11px;
+  --doc-font: "Scie Sans", sans-serif;
+  /* Flatter typographic hierarchy matching Claude desktop's actual sizes */
+  --document-body-size: 15px;
+  --document-h1-size: 24px;
+  --document-h2-size: 19px;
+  --document-h3-size: 16px;
+  --document-h4-size: 14.5px;
+  --document-table-size: 14px;
+  --document-code-size: 0.88em;
+  --document-pad-y: 32px;
+  --document-pad-x: 40px;
+  --document-pad-bottom: 72px;
+  --source-pad-y: 22px;
+  --source-pad-x: 32px;
+  /* Tighter block spacing — Claude is denser than my v1 */
+  --document-block-gap: 10px;
+  --document-h1-bottom: 14px;
+  --document-h2-top: 26px;
+  --document-h2-bottom: 8px;
+  --document-h3-top: 18px;
+  --document-h3-bottom: 6px;
+  --blockquote-pad-x: 16px;
+  --code-block-pad: 14px;
+  --table-cell-pad-y: 7px;
+  --table-cell-pad-x: 11px;
+  /* Tighter line-height — Claude is 1.55, not 1.65 */
+  --editor-line-height: 1.55;
+  --content-width: 897px;
+  --visual-padding-scale: 1;
+  --visual-block-scale: 1;
+  --visual-heading-gap-scale: 1;
+  --visual-table-scale: 1;
+  /* Lighter heading weight — Claude uses 600, not 720 */
+  --visual-heading-weight: 600;
+  --visual-body-letter-spacing: 0;
+  --visual-heading-border: 0;
+  --visual-inline-code-radius: 4px;
+  --visual-inline-code-pad-y: 1px;
+  --visual-inline-code-pad-x: 5px;
+}
+
+/*
+ * Claude light theme — Claude.ai's warm cream "Bone" background (#FAF9F5)
+ * Coral accent reserved for primary actions only (not body content).
+ */
+:root[data-theme="light"][data-visual-style="claude"] {
+  --bg: #faf9f5;
+  --editor-bg: #faf9f5;
+  --surface: #ffffff;
+  --surface-soft: #f0eee6;
+  --border: #e8e6dc;
+  --border-strong: #d4d1c4;
+  --button-bg: #ffffff;
+  --button-hover: #f0eee6;
+  --accent: #d97757;        /* Claude coral - used SPARINGLY for primary actions */
+  --accent-soft: #c66645;
+  --text: #1f1e1d;          /* Near-black warm */
+  --text-strong: #141413;
+  --text-muted: #61605c;
+  --error: #b42318;
+  --warning: #9a5a14;
+  --visual-link-color: #5a6e8a;     /* Muted slate-blue, NOT coral */
+  --visual-inline-code-bg: #f0eee6; /* Neutral subtle, NOT coral */
+  --visual-inline-code-color: #1f1e1d;
+  --visual-code-bg: #1f1e1d;
+  --visual-code-color: #f0eee6;
+  --visual-hr-color: #e0ddd1;
+  --table-bg: #ffffff;
+  --table-alt-bg: #faf9f5;
+  --table-head-bg: #f0eee6;
+  --table-text: #1f1e1d;
+  --table-head-text: #141413;
+  --table-border: #d4d1c4;
+}
+
+/*
+ * Claude dark theme — Claude.ai's neutral dark gray (#262624)
+ * NOT a brown warm-tinted dark. Coral accent appears ONLY in 2-3 strategic spots:
+ * primary buttons, focused element outlines, selection highlight.
+ * Body text, links, inline code, list markers stay NEUTRAL (warm-white on dark).
+ */
+:root[data-theme="dark"][data-visual-style="claude"] {
+  --bg: #262624;             /* Claude.ai exact dark background */
+  --editor-bg: #262624;
+  --surface: #30302e;        /* Cards / dialogs */
+  --surface-soft: #3a3a37;   /* Subtle insets */
+  --border: #3a3a37;         /* Subtle hairline */
+  --border-strong: #4a4a47;
+  --button-bg: #30302e;
+  --button-hover: #3a3a37;
+  --accent: #d97757;         /* Coral - SPARSE usage only */
+  --accent-soft: #b65f44;
+  --text: #f0eee6;           /* Warm off-white but neutral, not yellow */
+  --text-strong: #ffffff;
+  --text-muted: #9b9892;
+  --error: #e87f6e;
+  --warning: #e0a05c;
+  --visual-link-color: #b8c4d8;     /* Muted slate-blue, NOT coral */
+  --visual-inline-code-bg: #1f1f1d; /* Subtle dark pill, NOT coral tint */
+  --visual-inline-code-color: #f0eee6; /* WHITE text, NOT coral */
+  --visual-code-bg: #1a1a18;
+  --visual-code-color: #f0eee6;
+  --visual-hr-color: #3a3a37;
+  --table-bg: #262624;
+  --table-alt-bg: #2c2c2a;
+  --table-head-bg: #30302e;
+  --table-text: #f0eee6;
+  --table-head-text: #ffffff;
+  --table-border: #3a3a37;
+}
+
+/*
+ * ====================================================
+ * Claude app-shell chrome (sidebar, topbar, statusbar)
+ * Makes the whole app frame feel like Claude desktop,
+ * not just the document content area.
+ * ====================================================
+ */
+
+/*
+ * Topbar — Claude desktop's thin chrome:
+ * - No border, no shadow, just a subtle background
+ * - Minimal height (38px)
+ * - Buttons have NO visible chrome until hovered
+ */
+:root[data-visual-style="claude"] .app-topbar {
+  background: var(--bg);
+  border-bottom: 1px solid transparent;  /* Hidden hairline */
+  box-shadow: none;
+  min-height: 38px;
+  padding: 0 8px;
+}
+
+/* Subtle border-bottom only on scroll (Claude does this) */
+:root[data-visual-style="claude"] .editor-stage.is-scrolled ~ .app-topbar,
+:root[data-visual-style="claude"] .app-topbar.is-scrolled {
+  border-bottom-color: var(--border);
+}
+
+/* Topbar buttons — invisible until hovered, Claude's signature minimal style */
+:root[data-visual-style="claude"] .app-topbar button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 4px 10px;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+:root[data-visual-style="claude"] .app-topbar button:hover {
+  background: var(--button-hover);
+  color: var(--text);
+}
+
+:root[data-visual-style="claude"] .app-topbar button.is-active,
+:root[data-visual-style="claude"] .app-topbar button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--text-strong);
+}
+
+/* The mode toggle (Visual/Source) — pill-shaped like Claude's segmented controls */
+:root[data-visual-style="claude"] .app-topbar [role="tablist"],
+:root[data-visual-style="claude"] .app-topbar .mode-toggle {
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+:root[data-visual-style="claude"] .app-topbar [role="tab"] {
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+:root[data-visual-style="claude"] .app-topbar [role="tab"][aria-selected="true"] {
+  background: var(--bg);
+  color: var(--text-strong);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Window controls (min/max/close) — neutral */
+:root[data-visual-style="claude"] .window-controls button {
+  color: var(--text-muted);
+  border-radius: 4px;
+}
+
+:root[data-visual-style="claude"] .window-controls button:hover {
+  background: var(--button-hover);
+  color: var(--text);
+}
+
+:root[data-visual-style="claude"] .window-controls button.close:hover {
+  background: var(--error);
+  color: #ffffff;
+}
+
+/* Navigation sidebar — slightly different from main bg, Claude desktop pattern */
+:root[data-visual-style="claude"] .navigation-sidebar-container,
+:root[data-visual-style="claude"] aside.navigation-sidebar-container {
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+}
+
+/* Sidebar tab buttons */
+:root[data-visual-style="claude"] .sidebar-tabs button {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  border-radius: 6px;
+  font-weight: 500;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+:root[data-visual-style="claude"] .sidebar-tabs button:hover {
+  background: var(--button-hover);
+  color: var(--text);
+}
+
+:root[data-visual-style="claude"] .sidebar-tabs button.is-active,
+:root[data-visual-style="claude"] .sidebar-tabs button[aria-selected="true"] {
+  background: var(--surface);
+  color: var(--text-strong);
+}
+
+/* Sidebar rows (file list, outline, recent items) — Claude's "Recents" pattern */
+:root[data-visual-style="claude"] .navigation-sidebar button,
+:root[data-visual-style="claude"] .outline-row,
+:root[data-visual-style="claude"] .file-explorer-row {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text-muted);
+  font-weight: 500;
+  transition: background 0.1s ease, color 0.1s ease;
+  position: relative;
+}
+
+:root[data-visual-style="claude"] .navigation-sidebar button:hover,
+:root[data-visual-style="claude"] .outline-row:hover,
+:root[data-visual-style="claude"] .file-explorer-row:hover {
+  background: var(--button-hover);
+  color: var(--text);
+}
+
+/* Active row — Claude desktop uses a VERY subtle neutral background change
+ * PLUS a small coral dot indicator (not a coral background tint on the whole row).
+ * The dot lives in ::before and the row only shifts to surface bg.
+ */
+:root[data-visual-style="claude"] .outline-row.is-active,
+:root[data-visual-style="claude"] .outline-row[aria-current="true"],
+:root[data-visual-style="claude"] .file-explorer-row.is-active,
+:root[data-visual-style="claude"] .file-explorer-row[aria-current="true"] {
+  background: var(--surface);
+  color: var(--text-strong);
+  position: relative;
+}
+
+/* Coral DOT indicator (4px) — Claude's actual active-item signal */
+:root[data-visual-style="claude"] .outline-row.is-active::before,
+:root[data-visual-style="claude"] .outline-row[aria-current="true"]::before,
+:root[data-visual-style="claude"] .file-explorer-row.is-active::before,
+:root[data-visual-style="claude"] .file-explorer-row[aria-current="true"]::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Make sure active rows have room for the dot */
+:root[data-visual-style="claude"] .outline-row,
+:root[data-visual-style="claude"] .file-explorer-row {
+  padding-left: 14px;
+}
+
+/* Inspector pane — neutral surface, no harsh shadow */
+:root[data-visual-style="claude"] .inspector-pane {
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  box-shadow: none;
+}
+
+/* Status bar — flat, subtle border */
+:root[data-visual-style="claude"] .statusbar,
+:root[data-visual-style="claude"] footer.statusbar {
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Save pill — neutral, no harsh colors except for error */
+:root[data-visual-style="claude"] .save-pill {
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+:root[data-visual-style="claude"] .save-pill.saving {
+  color: var(--accent);
+}
+
+/* Toolbar (markdown editing toolbar) — subtle, integrated */
+:root[data-visual-style="claude"] .markdown-toolbar {
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+}
+
+:root[data-visual-style="claude"] .markdown-toolbar button {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+:root[data-visual-style="claude"] .markdown-toolbar button:hover {
+  background: var(--button-hover);
+  color: var(--text);
+}
+
+/* Command palette + slash menu — Claude-like overlay */
+:root[data-visual-style="claude"] .command-palette,
+:root[data-visual-style="claude"] .slash-command-menu {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-visual-style="claude"] .command-palette input,
+:root[data-visual-style="claude"] .slash-command-menu input {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 15px;
+  padding: 12px 16px;
+}
+
+:root[data-visual-style="claude"] .command-palette input::placeholder,
+:root[data-visual-style="claude"] .slash-command-menu input::placeholder {
+  color: var(--text-muted);
+}
+
+:root[data-visual-style="claude"] .command-palette li,
+:root[data-visual-style="claude"] .slash-command-menu li {
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text);
+}
+
+:root[data-visual-style="claude"] .command-palette li[aria-selected="true"],
+:root[data-visual-style="claude"] .slash-command-menu li[aria-selected="true"] {
+  background: color-mix(in srgb, var(--accent), transparent 85%);
+  color: var(--text-strong);
+}
+
+/* Primary buttons (Save, Apply, Insert) — Claude coral signature */
+:root[data-visual-style="claude"] button.primary,
+:root[data-visual-style="claude"] .dialog-actions button.primary {
+  background: var(--accent);
+  color: #ffffff;
+  border: 0;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 8px 16px;
+  transition: background 0.12s ease;
+}
+
+:root[data-visual-style="claude"] button.primary:hover,
+:root[data-visual-style="claude"] .dialog-actions button.primary:hover {
+  background: var(--accent-soft);
+}
+
+/* Light theme primary buttons (white text on coral) */
+:root[data-theme="light"][data-visual-style="claude"] button.primary {
+  color: #ffffff;
+}
+
+/* Focus rings — Claude coral */
+:root[data-visual-style="claude"] :where(button, input, textarea, select, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Dialog backgrounds */
+:root[data-visual-style="claude"] .dialog,
+:root[data-visual-style="claude"] .modal-shell {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+
+/* Toast notifications — match Claude aesthetic */
+:root[data-visual-style="claude"] .toast {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+:root[data-visual-style="claude"] .toast.error {
+  border-left: 3px solid var(--error);
+}
+
+:root[data-visual-style="claude"] .toast.warning {
+  border-left: 3px solid var(--warning);
+}
+
+:root[data-visual-style="claude"] .toast.success {
+  border-left: 3px solid var(--accent);
+}
+
+/* Editor stage — subtle on dark, brighter on light */
+:root[data-visual-style="claude"] .editor-stage {
+  background: var(--editor-bg);
+}
+
+/* Scrollbar styling — neutral, subtle (Claude has very minimal scrollbars) */
+:root[data-visual-style="claude"] ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+:root[data-visual-style="claude"] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:root[data-visual-style="claude"] ::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+
+:root[data-visual-style="claude"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}

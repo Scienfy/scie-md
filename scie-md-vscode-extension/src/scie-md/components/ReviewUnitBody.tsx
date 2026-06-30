@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { ReviewUnit } from '../markdown/reviewPlan';
+import type { ReviewUnit } from '@sciemd/core';
 
 interface ReviewUnitBodyProps {
   unit: ReviewUnit;

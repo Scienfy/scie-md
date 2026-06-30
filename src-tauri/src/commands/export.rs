@@ -1,12 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
-    io::{Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::atomic::{AtomicU64, Ordering},
     thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 
 use super::{
@@ -14,12 +12,29 @@ use super::{
     path_utils::{external_safe_path, external_safe_path_string},
     process::{output_quiet, spawn_quiet, terminate_child_tree},
 };
-use regex::Regex;
-use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
-static TEMP_EXPORT_COUNTER: AtomicU64 = AtomicU64::new(0);
-const TEMP_EXPORT_PREFIX: &str = ".scie-md-pandoc-";
-const TEMP_BROWSER_PROFILE_PREFIX: &str = ".scie-md-browser-profile-";
+mod browser_pdf;
+mod native_docx;
+mod output_files;
+mod temp_artifacts;
+
+#[cfg(test)]
+use browser_pdf::parse_chromium_major_version;
+use browser_pdf::{
+    browser_headless_arg, html_document_title, path_to_file_url, resolve_browser_executable,
+    validate_browser_pdf_output,
+};
+use native_docx::write_native_docx_from_html;
+#[cfg(test)]
+use output_files::create_conflict_output_path;
+use output_files::{
+    create_temp_output_path, reject_directory_output, replace_export_output, validate_export_output,
+};
+use temp_artifacts::{
+    cleanup_stale_export_temp_files, create_temp_browser_profile_path, create_temp_export_path,
+    create_temp_html_path, create_temp_markdown_path, write_temp_markdown, write_temp_text,
+    TempPathGuard,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,35 +76,19 @@ pub fn export_with_pandoc(
     }
 
     let temp_path = create_temp_markdown_path(&working_dir);
+    let _temp_guard = TempPathGuard::file(temp_path.clone());
     write_temp_markdown(&temp_path, &markdown)?;
 
     let pandoc_path = resolve_pandoc_executable()?;
     let pandoc_options = PandocRunOptions::new(citation_style_path, extra_args)?;
-    let result = run_pandoc(
+    run_pandoc(
         &pandoc_path,
         &temp_path,
         &output,
         target,
         &working_dir,
         &pandoc_options,
-    );
-    let cleanup_result = fs::remove_file(&temp_path);
-
-    match result {
-        Ok(response) => {
-            if let Err(error) = cleanup_result {
-                eprintln!(
-                    "Could not clean Pandoc temporary file {:?}: {error}",
-                    temp_path
-                );
-            }
-            Ok(response)
-        }
-        Err(error) => {
-            let _ = cleanup_result;
-            Err(error)
-        }
-    }
+    )
 }
 
 #[tauri::command]
@@ -120,11 +119,12 @@ pub fn export_html_with_pandoc(
     }
 
     let temp_path = create_temp_html_path(&working_dir);
+    let _temp_guard = TempPathGuard::file(temp_path.clone());
     write_temp_text(&temp_path, &html, "HTML")?;
 
     let pandoc_path = resolve_pandoc_executable()?;
     let pandoc_options = PandocRunOptions::new(citation_style_path, extra_args)?;
-    let result = run_pandoc_with_source(
+    run_pandoc_with_source(
         &pandoc_path,
         &temp_path,
         &output,
@@ -132,24 +132,7 @@ pub fn export_html_with_pandoc(
         target,
         &working_dir,
         &pandoc_options,
-    );
-    let cleanup_result = fs::remove_file(&temp_path);
-
-    match result {
-        Ok(response) => {
-            if let Err(error) = cleanup_result {
-                eprintln!(
-                    "Could not clean Pandoc temporary file {:?}: {error}",
-                    temp_path
-                );
-            }
-            Ok(response)
-        }
-        Err(error) => {
-            let _ = cleanup_result;
-            Err(error)
-        }
-    }
+    )
 }
 
 #[tauri::command]
@@ -168,27 +151,12 @@ pub fn export_styled_html_to_pdf(
     cleanup_stale_export_temp_files(parent, Duration::from_secs(60 * 60));
 
     let temp_path = create_temp_html_path(parent);
+    let _temp_guard = TempPathGuard::file(temp_path.clone());
     write_temp_text(&temp_path, &html, "HTML")?;
 
     let expected_title = html_document_title(&html);
-    let result = run_browser_pdf_export(&temp_path, &output, expected_title.as_deref())
-        .map_err(|error| format!("ScieMD browser PDF export failed: {error}"));
-    let cleanup_result = fs::remove_file(&temp_path);
-    match result {
-        Ok(response) => {
-            if let Err(error) = cleanup_result {
-                eprintln!(
-                    "Could not clean PDF temporary file {:?}: {error}",
-                    temp_path
-                );
-            }
-            Ok(response)
-        }
-        Err(error) => {
-            let _ = cleanup_result;
-            Err(error)
-        }
-    }
+    run_browser_pdf_export(&temp_path, &output, expected_title.as_deref())
+        .map_err(|error| format!("ScieMD browser PDF export failed: {error}"))
 }
 
 fn run_browser_pdf_export(
@@ -197,12 +165,14 @@ fn run_browser_pdf_export(
     expected_title: Option<&str>,
 ) -> Result<PandocExportResponse, String> {
     let temp_output = create_temp_output_path(output_path, "pdf")?;
+    let _temp_output_guard = TempPathGuard::file(temp_output.clone());
     let stderr_path = create_temp_export_path(
         output_path
             .parent()
             .ok_or_else(|| "Could not determine PDF export directory.".to_string())?,
         "log",
     );
+    let _stderr_guard = TempPathGuard::file(stderr_path.clone());
     let stderr_file = fs::File::create(&stderr_path)
         .map_err(|error| format!("Could not create browser PDF log file: {error}"))?;
     let browser_path = resolve_browser_executable()?;
@@ -211,6 +181,7 @@ fn run_browser_pdf_export(
             .parent()
             .ok_or_else(|| "Could not determine PDF export directory.".to_string())?,
     );
+    let _browser_profile_guard = TempPathGuard::dir(browser_profile.clone());
     fs::create_dir_all(&browser_profile)
         .map_err(|error| format!("Could not prepare browser PDF profile: {error}"))?;
 
@@ -240,9 +211,6 @@ fn run_browser_pdf_export(
     let mut child = match spawn_quiet(&mut command) {
         Ok(child) => child,
         Err(error) => {
-            let _ = fs::remove_file(&temp_output);
-            let _ = fs::remove_file(&stderr_path);
-            let _ = fs::remove_dir_all(&browser_profile);
             return Err(format!(
                 "Could not start browser PDF renderer at {}: {error}",
                 external_safe_path_string(&browser_path)
@@ -252,13 +220,10 @@ fn run_browser_pdf_export(
 
     let status = wait_for_child(&mut child, Duration::from_secs(90), "Browser PDF renderer");
     let stderr = read_process_log(&stderr_path);
-    let _ = fs::remove_file(&stderr_path);
-    let _ = fs::remove_dir_all(&browser_profile);
 
     match status {
         Ok(status) if status.success() => {}
         Ok(status) => {
-            let _ = fs::remove_file(&temp_output);
             return Err(if stderr.is_empty() {
                 format!("Browser PDF renderer failed with status {status}.")
             } else {
@@ -266,32 +231,14 @@ fn run_browser_pdf_export(
             });
         }
         Err(error) => {
-            let _ = fs::remove_file(&temp_output);
             return Err(error);
         }
     }
 
-    if let Err(error) =
-        wait_for_stable_output_file(&temp_output, Duration::from_secs(10), "Browser PDF output")
-    {
-        let _ = fs::remove_file(&temp_output);
-        return Err(error);
-    }
-    if let Err(error) = validate_export_output(&temp_output, "pdf") {
-        let _ = fs::remove_file(&temp_output);
-        return Err(error);
-    }
-    if let Err(error) = validate_browser_pdf_output(&temp_output, expected_title) {
-        let _ = fs::remove_file(&temp_output);
-        return Err(error);
-    }
-    let final_output = match replace_export_output(&temp_output, output_path) {
-        Ok(final_output) => final_output,
-        Err(error) => {
-            let _ = fs::remove_file(&temp_output);
-            return Err(error);
-        }
-    };
+    wait_for_stable_output_file(&temp_output, Duration::from_secs(10), "Browser PDF output")?;
+    validate_export_output(&temp_output, "pdf")?;
+    validate_browser_pdf_output(&temp_output, expected_title)?;
+    let final_output = replace_export_output(&temp_output, output_path)?;
     let mut stderr = if stderr.is_empty() {
         "PDF exported with the ScieMD browser renderer.".to_string()
     } else {
@@ -325,21 +272,10 @@ pub fn export_html_to_docx_native(
         .map_err(|error| format!("Could not prepare DOCX output directory: {error}"))?;
 
     let temp_output = create_temp_output_path(&output, "docx")?;
-    if let Err(error) = write_native_docx_from_html(&html, &temp_output) {
-        let _ = fs::remove_file(&temp_output);
-        return Err(error);
-    }
-    if let Err(error) = validate_export_output(&temp_output, "docx") {
-        let _ = fs::remove_file(&temp_output);
-        return Err(error);
-    }
-    let final_output = match replace_export_output(&temp_output, &output) {
-        Ok(final_output) => final_output,
-        Err(error) => {
-            let _ = fs::remove_file(&temp_output);
-            return Err(error);
-        }
-    };
+    let _temp_output_guard = TempPathGuard::file(temp_output.clone());
+    write_native_docx_from_html(&html, &temp_output)?;
+    validate_export_output(&temp_output, "docx")?;
+    let final_output = replace_export_output(&temp_output, &output)?;
 
     Ok(PandocExportResponse {
         output_path: external_safe_path_string(&final_output),
@@ -499,12 +435,14 @@ fn run_pandoc_with_source(
 ) -> Result<PandocExportResponse, String> {
     preflight_pandoc_target(target, &options.extra_args)?;
     let temp_output = create_temp_output_path(output_path, target)?;
+    let _temp_output_guard = TempPathGuard::file(temp_output.clone());
     let stderr_path = create_temp_export_path(
         output_path
             .parent()
             .ok_or_else(|| "Could not determine export output directory.".to_string())?,
         "log",
     );
+    let _stderr_guard = TempPathGuard::file(stderr_path.clone());
     let stderr_file = fs::File::create(&stderr_path)
         .map_err(|error| format!("Could not create Pandoc log file: {error}"))?;
     let mut command = Command::new(external_safe_path(pandoc_path));
@@ -532,26 +470,15 @@ fn run_pandoc_with_source(
 
     let status = wait_for_child(&mut child, Duration::from_secs(120), "Pandoc")?;
     let stderr = read_process_log(&stderr_path);
-    let _ = fs::remove_file(&stderr_path);
     if !status.success() {
-        let _ = fs::remove_file(&temp_output);
         return Err(if stderr.is_empty() {
             format!("Pandoc export failed with status {status}.")
         } else {
             format!("Pandoc export failed: {stderr}")
         });
     }
-    if let Err(error) = validate_export_output(&temp_output, target) {
-        let _ = fs::remove_file(&temp_output);
-        return Err(error);
-    }
-    let final_output = match replace_export_output(&temp_output, output_path) {
-        Ok(final_output) => final_output,
-        Err(error) => {
-            let _ = fs::remove_file(&temp_output);
-            return Err(error);
-        }
-    };
+    validate_export_output(&temp_output, target)?;
+    let final_output = replace_export_output(&temp_output, output_path)?;
 
     Ok(PandocExportResponse {
         output_path: external_safe_path_string(&final_output),
@@ -628,152 +555,6 @@ fn truncate_process_output(output: &str) -> String {
     let mut truncated = trimmed.chars().take(MAX_OUTPUT_CHARS).collect::<String>();
     truncated.push_str("\n[output truncated]");
     truncated
-}
-
-fn browser_headless_arg(browser_path: &Path) -> &'static str {
-    let mut command = Command::new(browser_path);
-    command
-        .arg("--version")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-    let Ok(output) = output_quiet(&mut command) else {
-        return "--headless";
-    };
-    if !output.status.success() {
-        return "--headless";
-    }
-    let version = String::from_utf8_lossy(&output.stdout);
-    match parse_chromium_major_version(&version) {
-        Some(major) if major >= 109 => "--headless=new",
-        _ => "--headless",
-    }
-}
-
-fn parse_chromium_major_version(output: &str) -> Option<u32> {
-    output
-        .split_whitespace()
-        .find_map(|token| token.split('.').next()?.parse::<u32>().ok())
-}
-
-fn resolve_browser_executable() -> Result<PathBuf, String> {
-    #[cfg(windows)]
-    {
-        let candidates = [
-            std::env::var_os("ProgramFiles(x86)").map(|root| {
-                PathBuf::from(root)
-                    .join("Microsoft")
-                    .join("Edge")
-                    .join("Application")
-                    .join("msedge.exe")
-            }),
-            std::env::var_os("ProgramFiles").map(|root| {
-                PathBuf::from(root)
-                    .join("Microsoft")
-                    .join("Edge")
-                    .join("Application")
-                    .join("msedge.exe")
-            }),
-            std::env::var_os("LOCALAPPDATA").map(|root| {
-                PathBuf::from(root)
-                    .join("Microsoft")
-                    .join("Edge")
-                    .join("Application")
-                    .join("msedge.exe")
-            }),
-            std::env::var_os("ProgramFiles").map(|root| {
-                PathBuf::from(root)
-                    .join("Google")
-                    .join("Chrome")
-                    .join("Application")
-                    .join("chrome.exe")
-            }),
-            std::env::var_os("ProgramFiles(x86)").map(|root| {
-                PathBuf::from(root)
-                    .join("Google")
-                    .join("Chrome")
-                    .join("Application")
-                    .join("chrome.exe")
-            }),
-            std::env::var_os("LOCALAPPDATA").map(|root| {
-                PathBuf::from(root)
-                    .join("Google")
-                    .join("Chrome")
-                    .join("Application")
-                    .join("chrome.exe")
-            }),
-        ];
-        for candidate in candidates.into_iter().flatten() {
-            if candidate.is_file() {
-                return Ok(candidate);
-            }
-        }
-
-        for executable in ["msedge.exe", "chrome.exe"] {
-            let mut command = Command::new("where.exe");
-            command
-                .arg(executable)
-                .stdin(Stdio::null())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::null());
-            let output = output_quiet(&mut command).ok();
-            let Some(output) = output else {
-                continue;
-            };
-            if !output.status.success() {
-                continue;
-            }
-            for line in String::from_utf8_lossy(&output.stdout).lines() {
-                let candidate = PathBuf::from(line.trim());
-                if candidate.is_absolute() && candidate.is_file() {
-                    return Ok(candidate);
-                }
-            }
-        }
-    }
-
-    #[cfg(not(windows))]
-    {
-        #[cfg(target_os = "macos")]
-        {
-            for candidate in [
-                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-                "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-                "/Applications/Chromium.app/Contents/MacOS/Chromium",
-            ] {
-                let candidate = PathBuf::from(candidate);
-                if candidate.is_file() {
-                    return Ok(candidate);
-                }
-            }
-        }
-
-        for executable in [
-            "microsoft-edge",
-            "google-chrome",
-            "chromium",
-            "chromium-browser",
-        ] {
-            let mut command = Command::new("which");
-            command
-                .arg(executable)
-                .stdin(Stdio::null())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::null());
-            let output = output_quiet(&mut command).ok();
-            let Some(output) = output else {
-                continue;
-            };
-            if output.status.success() {
-                let candidate = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
-                if candidate.is_absolute() && candidate.is_file() {
-                    return Ok(candidate);
-                }
-            }
-        }
-    }
-
-    Err("Could not find Microsoft Edge, Google Chrome, or Chromium for PDF export.".to_string())
 }
 
 fn resolve_pandoc_executable() -> Result<PathBuf, String> {
@@ -972,612 +753,6 @@ fn working_directory(document_path: Option<&str>, output_path: &Path) -> Result<
         .ok_or_else(|| "Could not determine export working directory.".to_string())
 }
 
-fn create_temp_markdown_path(directory: &Path) -> PathBuf {
-    create_temp_export_path(directory, "md")
-}
-
-fn create_temp_html_path(directory: &Path) -> PathBuf {
-    create_temp_export_path(directory, "html")
-}
-
-fn create_temp_browser_profile_path(directory: &Path) -> PathBuf {
-    directory.join(create_temp_export_stem("browser-profile"))
-}
-
-fn create_temp_export_path(directory: &Path, extension: &str) -> PathBuf {
-    let stem = create_temp_export_stem("pandoc");
-    directory.join(format!("{stem}.{extension}"))
-}
-
-fn create_temp_export_stem(label: &str) -> String {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or(0);
-    let counter = TEMP_EXPORT_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let process_id = std::process::id();
-    format!(".scie-md-{label}-{timestamp}-{process_id}-{counter}")
-}
-
-fn validate_browser_pdf_output(path: &Path, expected_title: Option<&str>) -> Result<(), String> {
-    let bytes = fs::read(path).map_err(|error| format!("Could not inspect PDF output: {error}"))?;
-    let pdf_text = String::from_utf8_lossy(&bytes);
-    if pdf_text.contains("/Title (New tab)") || pdf_text.contains("ntp.msn.com") {
-        return Err(
-            "PDF export produced the browser New Tab page instead of the ScieMD document."
-                .to_string(),
-        );
-    }
-
-    if let Some(title) = expected_title
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-    {
-        if !pdf_contains_plain_title(&bytes, title) {
-            eprintln!(
-                "ScieMD PDF validation warning: expected title was not visible as plain PDF bytes ({title}). Continuing because Chromium may encode text streams."
-            );
-        }
-    }
-    Ok(())
-}
-
-fn pdf_contains_plain_title(bytes: &[u8], title: &str) -> bool {
-    bytes
-        .windows(title.len())
-        .any(|window| window == title.as_bytes())
-}
-
-fn html_document_title(html: &str) -> Option<String> {
-    let lower = html.to_ascii_lowercase();
-    let start = lower.find("<title>")? + "<title>".len();
-    let end = lower[start..].find("</title>")? + start;
-    let title = decode_basic_html_entities(&html[start..end])
-        .trim()
-        .to_string();
-    (!title.is_empty()).then_some(title)
-}
-
-fn decode_basic_html_entities(value: &str) -> String {
-    value
-        .replace("&quot;", "\"")
-        .replace("&#34;", "\"")
-        .replace("&#39;", "'")
-        .replace("&apos;", "'")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&amp;", "&")
-}
-
-fn escape_xml(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
-}
-
-fn write_native_docx_from_html(html: &str, output_path: &Path) -> Result<(), String> {
-    let blocks = html_to_docx_blocks(html);
-    let theme = docx_theme_from_html(html);
-    let document_xml = build_docx_document_xml(&blocks, &theme);
-
-    let file = fs::File::create(output_path)
-        .map_err(|error| format!("Could not create DOCX export: {error}"))?;
-    let mut zip = ZipWriter::new(file);
-    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-
-    write_zip_entry(&mut zip, "[Content_Types].xml", DOCX_CONTENT_TYPES, options)?;
-    write_zip_entry(&mut zip, "_rels/.rels", DOCX_ROOT_RELS, options)?;
-    write_zip_entry(&mut zip, "word/document.xml", &document_xml, options)?;
-    write_zip_entry(
-        &mut zip,
-        "word/_rels/document.xml.rels",
-        DOCX_DOCUMENT_RELS,
-        options,
-    )?;
-    write_zip_entry(&mut zip, "word/settings.xml", DOCX_SETTINGS, options)?;
-    let file = zip
-        .finish()
-        .map_err(|error| format!("Could not finalize DOCX export: {error}"))?;
-    file.sync_all()
-        .map_err(|error| format!("Could not flush DOCX export: {error}"))
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum DocxBlockKind {
-    Title,
-    Heading1,
-    Heading2,
-    Heading3,
-    Paragraph,
-    ListItem,
-    Caption,
-}
-
-#[derive(Clone, Debug)]
-struct DocxBlock {
-    kind: DocxBlockKind,
-    text: String,
-}
-
-#[derive(Clone, Debug)]
-struct DocxTheme {
-    background: &'static str,
-    text: &'static str,
-    muted: &'static str,
-    font: &'static str,
-}
-
-fn html_to_docx_blocks(html: &str) -> Vec<DocxBlock> {
-    let body = html_body(html);
-    let block_pattern = Regex::new(
-        r"(?is)<(h1|h2|h3|p|li|figcaption|th|td)[^>]*>(.*?)</(?:h1|h2|h3|p|li|figcaption|th|td)>",
-    )
-    .expect("DOCX HTML block regex should compile");
-    let mut blocks = Vec::new();
-    for capture in block_pattern.captures_iter(body) {
-        let tag = capture
-            .get(1)
-            .map(|value| value.as_str().to_ascii_lowercase())
-            .unwrap_or_default();
-        let text = capture
-            .get(2)
-            .map(|value| html_fragment_to_text(value.as_str()))
-            .unwrap_or_default();
-        if text.is_empty() {
-            continue;
-        }
-        let kind = match tag.as_str() {
-            "h1" if blocks.is_empty() => DocxBlockKind::Title,
-            "h1" => DocxBlockKind::Heading1,
-            "h2" => DocxBlockKind::Heading2,
-            "h3" => DocxBlockKind::Heading3,
-            "li" => DocxBlockKind::ListItem,
-            "figcaption" => DocxBlockKind::Caption,
-            _ => DocxBlockKind::Paragraph,
-        };
-        if blocks
-            .last()
-            .is_some_and(|last: &DocxBlock| last.kind == kind && last.text == text)
-        {
-            continue;
-        }
-        blocks.push(DocxBlock { kind, text });
-    }
-
-    if blocks.is_empty() {
-        let text = html_fragment_to_text(body);
-        if !text.is_empty() {
-            blocks.push(DocxBlock {
-                kind: DocxBlockKind::Paragraph,
-                text,
-            });
-        }
-    }
-
-    blocks
-}
-
-fn html_body(html: &str) -> &str {
-    let lower = html.to_ascii_lowercase();
-    let start = lower
-        .find("<body")
-        .and_then(|index| lower[index..].find('>').map(|offset| index + offset + 1))
-        .unwrap_or(0);
-    let end = lower[start..]
-        .find("</body>")
-        .map(|offset| start + offset)
-        .unwrap_or(html.len());
-    &html[start..end]
-}
-
-fn html_fragment_to_text(fragment: &str) -> String {
-    let without_svg = Regex::new(r"(?is)<svg\b[\s\S]*?</svg>")
-        .expect("SVG strip regex should compile")
-        .replace_all(fragment, "[SVG figure]");
-    let with_breaks = Regex::new(r"(?is)<br\s*/?>")
-        .expect("HTML break regex should compile")
-        .replace_all(&without_svg, "\n");
-    let no_tags = Regex::new(r"(?is)<[^>]+>")
-        .expect("HTML tag regex should compile")
-        .replace_all(&with_breaks, " ");
-    let decoded = decode_html_text(&no_tags);
-    decoded.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-fn decode_html_text(value: &str) -> String {
-    let mut output = decode_basic_html_entities(value);
-    let decimal_pattern = Regex::new(r"&#([0-9]+);").expect("decimal entity regex should compile");
-    output = decimal_pattern
-        .replace_all(&output, |capture: &regex::Captures<'_>| {
-            capture
-                .get(1)
-                .and_then(|digits| digits.as_str().parse::<u32>().ok())
-                .and_then(char::from_u32)
-                .map(|character| character.to_string())
-                .unwrap_or_else(|| capture[0].to_string())
-        })
-        .to_string();
-    let hex_pattern = Regex::new(r"&#x([0-9a-fA-F]+);").expect("hex entity regex should compile");
-    hex_pattern
-        .replace_all(&output, |capture: &regex::Captures<'_>| {
-            capture
-                .get(1)
-                .and_then(|digits| u32::from_str_radix(digits.as_str(), 16).ok())
-                .and_then(char::from_u32)
-                .map(|character| character.to_string())
-                .unwrap_or_else(|| capture[0].to_string())
-        })
-        .to_string()
-}
-
-fn docx_theme_from_html(html: &str) -> DocxTheme {
-    let dark = html.contains("data-theme=\"dark\"") || html.contains("data-theme='dark'");
-    if dark {
-        DocxTheme {
-            background: "111817",
-            text: "EAF1EF",
-            muted: "A7B7B3",
-            font: "Scie Sans",
-        }
-    } else {
-        DocxTheme {
-            background: "FFFFFF",
-            text: "102A33",
-            muted: "5B6B73",
-            font: "Scie Sans",
-        }
-    }
-}
-
-fn build_docx_document_xml(blocks: &[DocxBlock], theme: &DocxTheme) -> String {
-    let body = if blocks.is_empty() {
-        docx_paragraph_xml(
-            &DocxBlock {
-                kind: DocxBlockKind::Paragraph,
-                text: "ScieMD export".to_string(),
-            },
-            theme,
-        )
-    } else {
-        blocks
-            .iter()
-            .map(|block| docx_paragraph_xml(block, theme))
-            .collect::<Vec<_>>()
-            .join("")
-    };
-
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:background w:color="{background}"/>
-  <w:body>
-    {body}
-    <w:sectPr>
-      <w:pgSz w:w="12240" w:h="15840"/>
-      <w:pgMar w:top="1080" w:right="1260" w:bottom="1080" w:left="1260" w:header="720" w:footer="720" w:gutter="0"/>
-    </w:sectPr>
-  </w:body>
-</w:document>"#,
-        background = theme.background,
-    )
-}
-
-fn docx_paragraph_xml(block: &DocxBlock, theme: &DocxTheme) -> String {
-    let (size, bold, italic, before, after, color, prefix) = match block.kind {
-        DocxBlockKind::Title => (44, false, false, 160, 260, theme.text, ""),
-        DocxBlockKind::Heading1 => (34, true, false, 360, 160, theme.text, ""),
-        DocxBlockKind::Heading2 => (28, true, false, 280, 120, theme.text, ""),
-        DocxBlockKind::Heading3 => (24, true, false, 220, 100, theme.text, ""),
-        DocxBlockKind::ListItem => (22, false, false, 60, 80, theme.text, "- "),
-        DocxBlockKind::Caption => (20, false, true, 60, 160, theme.muted, ""),
-        DocxBlockKind::Paragraph => (22, false, false, 100, 120, theme.text, ""),
-    };
-    let bold_xml = if bold { "<w:b/>" } else { "" };
-    let italic_xml = if italic { "<w:i/>" } else { "" };
-    let indent_xml = if block.kind == DocxBlockKind::ListItem {
-        r#"<w:ind w:left="360" w:hanging="180"/>"#
-    } else {
-        ""
-    };
-    let text = format!("{prefix}{}", block.text);
-    format!(
-        r#"<w:p>
-  <w:pPr>
-    <w:spacing w:before="{before}" w:after="{after}" w:line="300" w:lineRule="auto"/>
-    <w:shd w:val="clear" w:color="auto" w:fill="{background}"/>
-    {indent_xml}
-  </w:pPr>
-  <w:r>
-    <w:rPr>
-      <w:rFonts w:ascii="{font}" w:hAnsi="{font}" w:cs="{font}"/>
-      <w:color w:val="{color}"/>
-      <w:sz w:val="{size}"/>
-      {bold_xml}{italic_xml}
-    </w:rPr>
-    <w:t xml:space="preserve">{text}</w:t>
-  </w:r>
-</w:p>"#,
-        background = theme.background,
-        font = escape_xml(theme.font),
-        text = escape_xml(&text),
-    )
-}
-
-fn write_zip_entry(
-    zip: &mut ZipWriter<fs::File>,
-    name: &str,
-    content: &str,
-    options: SimpleFileOptions,
-) -> Result<(), String> {
-    zip.start_file(name, options)
-        .map_err(|error| format!("Could not write DOCX entry {name}: {error}"))?;
-    zip.write_all(content.as_bytes())
-        .map_err(|error| format!("Could not write DOCX entry {name}: {error}"))
-}
-
-const DOCX_CONTENT_TYPES: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-  <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
-</Types>"#;
-
-const DOCX_ROOT_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-</Relationships>"#;
-
-const DOCX_DOCUMENT_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="settings" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
-</Relationships>"#;
-
-const DOCX_SETTINGS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:displayBackgroundShape/>
-</w:settings>"#;
-
-fn create_temp_output_path(output_path: &Path, target: &str) -> Result<PathBuf, String> {
-    let parent = output_path
-        .parent()
-        .ok_or_else(|| "Could not determine export output directory.".to_string())?;
-    fs::create_dir_all(parent)
-        .map_err(|error| format!("Could not prepare export output directory: {error}"))?;
-    cleanup_stale_export_temp_files(parent, Duration::from_secs(60 * 60));
-    let extension = output_path
-        .extension()
-        .and_then(|value| value.to_str())
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or(target);
-    Ok(create_temp_export_path(parent, extension))
-}
-
-fn reject_directory_output(output_path: &Path, target: &str) -> Result<(), String> {
-    if output_path.is_dir() {
-        Err(format!(
-            "Choose a file name for the {} export, not a folder.",
-            target.to_uppercase()
-        ))
-    } else {
-        Ok(())
-    }
-}
-
-fn cleanup_stale_export_temp_files(directory: &Path, max_age: Duration) {
-    let Ok(entries) = fs::read_dir(directory) else {
-        return;
-    };
-    let now = SystemTime::now();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
-            continue;
-        };
-        if !is_export_temp_artifact(file_name) {
-            continue;
-        }
-        let Ok(metadata) = entry.metadata() else {
-            continue;
-        };
-        let Ok(modified) = metadata.modified() else {
-            continue;
-        };
-        if now.duration_since(modified).unwrap_or_default() <= max_age {
-            continue;
-        }
-        if metadata.is_dir() {
-            let _ = fs::remove_dir_all(path);
-        } else {
-            let _ = fs::remove_file(path);
-        }
-    }
-}
-
-fn is_export_temp_artifact(file_name: &str) -> bool {
-    file_name.starts_with(TEMP_EXPORT_PREFIX) || file_name.starts_with(TEMP_BROWSER_PROFILE_PREFIX)
-}
-
-fn validate_export_output(path: &Path, target: &str) -> Result<(), String> {
-    let metadata = fs::metadata(path).map_err(|error| {
-        format!("Export finished but the output could not be inspected: {error}")
-    })?;
-    if !metadata.is_file() || metadata.len() == 0 {
-        return Err("Export finished but produced an empty output file.".to_string());
-    }
-
-    let mut file = fs::File::open(path)
-        .map_err(|error| format!("Could not validate export output: {error}"))?;
-    let mut signature = [0_u8; 8];
-    let read = file
-        .read(&mut signature)
-        .map_err(|error| format!("Could not read export output signature: {error}"))?;
-    match target {
-        "pdf" if !signature[..read].starts_with(b"%PDF") => {
-            Err("PDF export did not produce a valid PDF file.".to_string())
-        }
-        "docx" | "epub" | "odt" if !signature[..read].starts_with(b"PK") => Err(format!(
-            "{} export did not produce a valid archive file.",
-            target.to_uppercase()
-        )),
-        _ => Ok(()),
-    }
-}
-
-fn replace_export_output(temp_output: &Path, output_path: &Path) -> Result<PathBuf, String> {
-    let final_output;
-    if output_path.exists() {
-        let backup_path = create_temp_export_path(
-            output_path
-                .parent()
-                .ok_or_else(|| "Could not determine export output directory.".to_string())?,
-            "previous",
-        );
-        match fs::rename(output_path, &backup_path) {
-            Ok(()) => {
-                if let Err(error) = rename_or_copy_output(temp_output, output_path) {
-                    let _ = fs::rename(&backup_path, output_path);
-                    return Err(error);
-                }
-                let _ = fs::remove_file(backup_path);
-                final_output = output_path.to_path_buf();
-            }
-            Err(preserve_error) => {
-                let conflict_path = create_conflict_output_path(output_path)?;
-                fs::rename(temp_output, &conflict_path).map_err(|move_error| {
-                    format!(
-                        "Could not replace the selected export because it appears to be open or locked: {preserve_error}. ScieMD also could not save the new export as {}: {move_error}",
-                        external_safe_path_string(&conflict_path)
-                    )
-                })?;
-                final_output = conflict_path;
-            }
-        }
-    } else {
-        rename_or_copy_output(temp_output, output_path)?;
-        final_output = output_path.to_path_buf();
-    }
-    sync_file_best_effort(&final_output);
-    if let Some(parent) = final_output.parent() {
-        if let Ok(directory) = fs::File::open(parent) {
-            let _ = directory.sync_all();
-        }
-    }
-    Ok(final_output)
-}
-
-fn rename_or_copy_output(temp_output: &Path, output_path: &Path) -> Result<(), String> {
-    match fs::rename(temp_output, output_path) {
-        Ok(()) => Ok(()),
-        Err(error) if is_cross_device_error(&error) => {
-            fs::copy(temp_output, output_path)
-                .map_err(|copy_error| format!("Could not copy export output into place after cross-device rename failed: {copy_error}"))?;
-            sync_file_best_effort(output_path);
-            fs::remove_file(temp_output).map_err(|remove_error| {
-                format!("Could not remove temporary export after cross-device copy: {remove_error}")
-            })?;
-            Ok(())
-        }
-        Err(error) => Err(format!("Could not move export output into place: {error}")),
-    }
-}
-
-fn is_cross_device_error(error: &std::io::Error) -> bool {
-    error.kind() == std::io::ErrorKind::CrossesDevices || is_platform_cross_device_error(error)
-}
-
-#[cfg(unix)]
-fn is_platform_cross_device_error(error: &std::io::Error) -> bool {
-    error.raw_os_error() == Some(libc::EXDEV)
-}
-
-#[cfg(not(unix))]
-fn is_platform_cross_device_error(error: &std::io::Error) -> bool {
-    error.raw_os_error() == Some(17)
-}
-
-fn sync_file_best_effort(path: &Path) {
-    if let Ok(file) = fs::File::open(path) {
-        let _ = file.sync_all();
-    }
-}
-
-fn create_conflict_output_path(output_path: &Path) -> Result<PathBuf, String> {
-    let parent = output_path
-        .parent()
-        .ok_or_else(|| "Could not determine export output directory.".to_string())?;
-    let stem = output_path
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or("export");
-    let extension = output_path
-        .extension()
-        .and_then(|value| value.to_str())
-        .filter(|value| !value.trim().is_empty());
-    for index in 1..=999 {
-        let suffix = if index == 1 {
-            "exported copy".to_string()
-        } else {
-            format!("exported copy {index}")
-        };
-        let file_name = match extension {
-            Some(extension) => format!("{stem} ({suffix}).{extension}"),
-            None => format!("{stem} ({suffix})"),
-        };
-        let candidate = parent.join(file_name);
-        if !candidate.exists() {
-            return Ok(candidate);
-        }
-    }
-    Err("Could not choose a non-conflicting export filename.".to_string())
-}
-
-fn write_temp_markdown(path: &Path, markdown: &str) -> Result<(), String> {
-    write_temp_text(path, markdown, "Pandoc")
-}
-
-fn write_temp_text(path: &Path, text: &str, label: &str) -> Result<(), String> {
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-        .map_err(|error| format!("Could not create {label} temporary file: {error}"))?;
-    file.write_all(text.as_bytes())
-        .map_err(|error| format!("Could not write {label} temporary file: {error}"))?;
-    file.sync_all()
-        .map_err(|error| format!("Could not flush {label} temporary file: {error}"))
-}
-
-fn path_to_file_url(path: &Path) -> String {
-    let absolute = external_safe_path(&path.canonicalize().unwrap_or_else(|_| path.to_path_buf()))
-        .to_string_lossy()
-        .to_string();
-    let absolute = absolute.replace('\\', "/");
-    let encoded = percent_encode_file_path(&absolute);
-    if encoded.starts_with('/') {
-        format!("file://{encoded}")
-    } else {
-        format!("file:///{encoded}")
-    }
-}
-
-fn percent_encode_file_path(path: &str) -> String {
-    let mut output = String::with_capacity(path.len());
-    for byte in path.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b':' | b'-' | b'_' | b'.' | b'~' => {
-                output.push(byte as char);
-            }
-            _ => output.push_str(&format!("%{byte:02X}")),
-        }
-    }
-    output
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1585,7 +760,7 @@ mod tests {
         create_temp_output_path, html_document_title, pandoc_pdf_engine, pandoc_target_format,
         parse_chromium_major_version, path_to_file_url, reject_directory_output,
         replace_export_output, validate_browser_pdf_output, validate_export_output,
-        validate_extra_pandoc_args, working_directory, write_native_docx_from_html,
+        validate_extra_pandoc_args, working_directory, write_native_docx_from_html, TempPathGuard,
     };
     use std::fs;
     use std::io::Read;
@@ -1870,6 +1045,29 @@ mod tests {
 
         assert!(!stale.exists());
         assert!(keep.exists());
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn temp_path_guard_cleans_files_and_directories_on_drop() {
+        let directory = std::env::temp_dir().join(format!(
+            "scie-md-export-guard-cleanup-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let file = directory.join(".scie-md-pandoc-guard.html");
+        let profile = directory.join(".scie-md-browser-profile-guard");
+        fs::write(&file, b"temporary html").unwrap();
+        fs::create_dir_all(&profile).unwrap();
+        fs::write(profile.join("Profile Lock"), b"lock").unwrap();
+
+        {
+            let _file_guard = TempPathGuard::file(file.clone());
+            let _profile_guard = TempPathGuard::dir(profile.clone());
+        }
+
+        assert!(!file.exists());
+        assert!(!profile.exists());
         let _ = fs::remove_dir_all(directory);
     }
 

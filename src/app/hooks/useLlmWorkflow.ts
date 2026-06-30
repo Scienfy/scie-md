@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
+import { createScieMDLlmSkill } from '@sciemd/core';
 import { DEFAULT_METADATA, basename } from '../documentState';
-import { statFile, writeTextFileCreateNew } from '../../services/fileService';
-import { createScieMDLlmSkill } from '../../markdown/llm';
+import { createGeneratedSiblingArtifact } from '../../services/fileService';
 import { createSubmissionReadinessReport } from '../../markdown/manuscriptReadiness';
 import type { ManuscriptReadiness } from '../../markdown/manuscriptReadiness';
 
@@ -36,9 +36,8 @@ export function useLlmWorkflow({
         pushToast('Save the document first to create ScieMD_LLM_skill.md beside it. ScieMD LLM skill copied instead.', 'warning');
         return;
       }
-      const targetPath = await nextAvailableSiblingPath(skillPathForDocument(filePath));
-      await writeTextFileCreateNew(targetPath, skill, DEFAULT_METADATA);
-      pushToast(`ScieMD LLM skill generated: ${fileNameFromPath(targetPath)}`, 'success');
+      const artifact = await createGeneratedSiblingArtifact(filePath, 'llm-skill', skill, DEFAULT_METADATA);
+      pushToast(`ScieMD LLM skill generated: ${fileNameFromPath(artifact.path)}`, 'success');
     } catch (error) {
       pushToast(error instanceof Error ? error.message : 'Could not generate ScieMD LLM skill.', 'error');
     }
@@ -52,8 +51,8 @@ export function useLlmWorkflow({
         pushToast('Submission readiness report copied', 'success');
         return;
       }
-      await writeTextFileCreateNew(await nextAvailableSiblingPath(submissionReportPathForDocument(filePath)), report, DEFAULT_METADATA);
-      pushToast('Submission readiness report generated', 'success');
+      const artifact = await createGeneratedSiblingArtifact(filePath, 'submission-readiness', report, DEFAULT_METADATA);
+      pushToast(`Submission readiness report generated: ${fileNameFromPath(artifact.path)}`, 'success');
     } catch (error) {
       pushToast(error instanceof Error ? error.message : 'Could not generate submission readiness report.', 'error');
     }
@@ -66,42 +65,6 @@ export function useLlmWorkflow({
   };
 }
 
-function submissionReportPathForDocument(path: string): string {
-  const separator = path.includes('\\') ? '\\' : '/';
-  const directory = path.replace(/[/\\][^/\\]*$/, '');
-  return `${directory}${separator}SCIENFY_SUBMISSION_READINESS.md`;
-}
-
-function skillPathForDocument(path: string): string {
-  const separator = path.includes('\\') ? '\\' : '/';
-  const directory = path.replace(/[/\\][^/\\]*$/, '');
-  return `${directory}${separator}ScieMD_LLM_skill.md`;
-}
-
 function fileNameFromPath(path: string): string {
   return path.split(/[/\\]/).pop() ?? path;
-}
-
-async function nextAvailableSiblingPath(path: string): Promise<string> {
-  if (!(await pathExists(path))) return path;
-  const separator = path.includes('\\') ? '\\' : '/';
-  const directory = path.replace(/[/\\][^/\\]*$/, '');
-  const fileName = path.slice(directory.length + 1);
-  const dot = fileName.lastIndexOf('.');
-  const stem = dot > 0 ? fileName.slice(0, dot) : fileName;
-  const extension = dot > 0 ? fileName.slice(dot) : '';
-  for (let index = 2; index < 1000; index += 1) {
-    const candidate = `${directory}${separator}${stem}-${index}${extension}`;
-    if (!(await pathExists(candidate))) return candidate;
-  }
-  return `${directory}${separator}${stem}-${Date.now()}${extension}`;
-}
-
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await statFile(path, { contentHash: false });
-    return true;
-  } catch {
-    return false;
-  }
 }

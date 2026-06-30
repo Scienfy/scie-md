@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseScienfyDocument } from '../domain/document/documentModel';
-import { parseEditorComments } from '../markdown/editorComments';
+import { parseScienfyDocument } from '@sciemd/core';
+import { parseEditorComments } from '@sciemd/core';
 import { validateMarkdown } from '../markdown/markdownValidation';
 import welcomeMarkdown from './welcome.md?raw';
 

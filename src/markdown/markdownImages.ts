@@ -1,5 +1,5 @@
-import { lineStartOffsets, offsetToLine } from './textOffsets';
-import { fencedCodeRanges, inlineCodeRanges, isOffsetInsideRanges, mergeRanges } from './markdownRanges';
+import { lineStartOffsets, offsetToLine } from '@sciemd/core';
+import { fencedCodeRanges, inlineCodeRanges, isOffsetInsideRanges, mergeRanges } from '@sciemd/core';
 
 export interface MarkdownImageMatch {
   raw: string;

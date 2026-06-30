@@ -1,11 +1,15 @@
-import { createVariableToken, upsertFrontmatterVariable, VARIABLE_NAME_PATTERN } from '../shared/domain/variables/variableEditing';
-import { createProtectedAnchorSnippet, createProtectedBlockSnippet } from '../shared/markdown/protectedBlocks';
-import { createSemanticBlockMarkdown } from '../shared/markdown/semanticBlocks';
-import type { SemanticBlockType } from '../shared/markdown/semanticBlocks';
-import { insertStandaloneMarkdownBlockNearSelection, wrapMarkdownBlockSelection } from '../shared/markdown/selectionWrapping';
-import type { MarkdownSelectionSnapshot } from '../shared/markdown/selectionWrapping';
-import { createTargetedInstructionSnippet } from '../shared/markdown/targetedInstructions';
-import { createAnchoredVariantGroupSnippet, createVariantGroupSnippet } from '../shared/markdown/variants';
+import { createVariableToken, upsertFrontmatterVariable, VARIABLE_NAME_PATTERN } from '@sciemd/core';
+import {
+  createAnchoredVariantGroupSnippet,
+  createProtectedAnchorSnippet,
+  createProtectedBlockSnippet,
+  createSemanticBlockMarkdown,
+  createTargetedInstructionSnippet,
+  createVariantGroupSnippet,
+  insertStandaloneMarkdownBlockNearSelection,
+  wrapMarkdownBlockSelection,
+} from '@sciemd/core';
+import type { MarkdownSelectionSnapshot, SemanticBlockType } from '@sciemd/core';
 
 export interface SourceSelection extends MarkdownSelectionSnapshot {
   from: number;

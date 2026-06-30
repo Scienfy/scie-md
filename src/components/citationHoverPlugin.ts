@@ -2,7 +2,7 @@ import { $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey } from '@milkdown/prose/state';
 import type { Node as ProseNode } from '@milkdown/prose/model';
 import { Decoration, DecorationSet } from '@milkdown/prose/view';
-import type { BibtexEntry } from '../domain/citations/bibtex';
+import type { BibtexEntry } from '@sciemd/core';
 
 export interface CitationHoverRange {
   from: number;

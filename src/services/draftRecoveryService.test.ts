@@ -1,15 +1,58 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const nativeRecovery = vi.hoisted(() => ({
+  snapshot: null as null | {
+    markdown: string;
+    filePath: string | null;
+    updatedAtMs: number;
+    markdownBytes: number;
+  },
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(async (command: string, args?: { payload?: { markdown: string; filePath: string | null; updatedAtMs: number } }) => {
+    if (command === 'write_recovery_snapshot') {
+      const payload = args?.payload;
+      if (!payload) throw new Error('missing recovery payload');
+      nativeRecovery.snapshot = {
+        markdown: payload.markdown,
+        filePath: payload.filePath,
+        updatedAtMs: payload.updatedAtMs,
+        markdownBytes: payload.markdown.length,
+      };
+      return {
+        updatedAtMs: payload.updatedAtMs,
+        markdownBytes: payload.markdown.length,
+        path: 'C:\\Users\\amin_\\AppData\\Roaming\\ScieMD\\diagnostics\\latest-recovery-snapshot.json',
+      };
+    }
+    if (command === 'read_recovery_snapshot') {
+      return nativeRecovery.snapshot;
+    }
+    if (command === 'clear_recovery_snapshot') {
+      nativeRecovery.snapshot = null;
+      return undefined;
+    }
+    throw new Error(`unexpected invoke: ${command}`);
+  }),
+}));
+
 import {
   clearFileDraft,
+  clearFileDraftAsync,
   clearUntitledDraft,
+  clearUntitledDraftAsync,
   flushDraftRecoveryForTests,
   resetDraftRecoveryForTests,
   isBundledWelcomeMarkdown,
   loadFileDraftAsync,
   loadFileDraft,
   loadUntitledDraft,
+  loadUntitledDraftAsync,
   saveFileDraft,
+  saveFileDraftAsync,
   saveUntitledDraft,
+  saveUntitledDraftAsync,
   shouldOfferFileDraftRestore,
   shouldPersistUntitledDraft,
 } from './draftRecoveryService';
@@ -22,7 +65,9 @@ describe('draftRecoveryService', () => {
   beforeEach(() => {
     localStorage.clear();
     resetDraftRecoveryForTests();
+    nativeRecovery.snapshot = null;
     originalIndexedDb = globalThis.indexedDB;
+    delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   });
 
   afterEach(() => {
@@ -218,6 +263,71 @@ describe('draftRecoveryService', () => {
     expect(await loadFileDraftAsync('C:\\docs\\blocked-db.md', 1500)).toEqual({
       markdown: largeDraft,
       savedAt: 1000,
+    });
+  });
+
+  it('writes a desktop-native file draft snapshot that can recover after browser stores are gone', async () => {
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+    const largeDraft = `${'native recovery '.repeat(90_000)}\n`;
+
+    await saveFileDraftAsync('C:\\docs\\native.md', largeDraft, 2000, fileMetadata({ lastKnownMtimeMs: 1500 }));
+    localStorage.clear();
+    resetDraftRecoveryForTests();
+
+    expect(nativeRecovery.snapshot).toMatchObject({
+      filePath: 'C:\\docs\\native.md',
+      updatedAtMs: 2000,
+      markdownBytes: largeDraft.length,
+    });
+    expect(await loadFileDraftAsync('c:/docs/native.md', 2500)).toEqual({
+      markdown: largeDraft,
+      savedAt: 2000,
+    });
+  });
+
+  it('writes and clears a desktop-native untitled draft snapshot independently of file drafts', async () => {
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+
+    await saveUntitledDraftAsync('# Untitled native draft\n', 3000);
+    localStorage.clear();
+    resetDraftRecoveryForTests();
+
+    expect(await loadUntitledDraftAsync(3500)).toEqual({
+      markdown: '# Untitled native draft\n',
+      savedAt: 3000,
+    });
+
+    await clearUntitledDraftAsync();
+    expect(nativeRecovery.snapshot).toBeNull();
+  });
+
+  it('expires stale desktop-native snapshots on async load', async () => {
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+    await saveFileDraftAsync('C:\\docs\\stale-native.md', '# Stale native\n', 1000);
+    localStorage.clear();
+    resetDraftRecoveryForTests();
+
+    expect(await loadFileDraftAsync('C:\\docs\\stale-native.md', 16 * 24 * 60 * 60 * 1000)).toBeNull();
+  });
+
+  it('clears a matching desktop-native file snapshot when an async save receives blank markdown', async () => {
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+    await saveFileDraftAsync('C:\\docs\\blank.md', '# Draft\n', 5000);
+
+    await saveFileDraftAsync('C:\\docs\\blank.md', '   \n', 6000);
+
+    expect(nativeRecovery.snapshot).toBeNull();
+  });
+
+  it('does not clear a native snapshot for another active file draft', async () => {
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+
+    await saveFileDraftAsync('C:\\docs\\other.md', '# Other\n', 4000);
+    await clearFileDraftAsync('C:\\docs\\current.md');
+
+    expect(nativeRecovery.snapshot).toMatchObject({
+      filePath: 'C:\\docs\\other.md',
+      markdown: '# Other\n',
     });
   });
 

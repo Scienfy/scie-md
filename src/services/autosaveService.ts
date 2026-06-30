@@ -1,4 +1,5 @@
 export const AUTOSAVE_DELAY_MS = 5000;
+export const AUTOSAVE_MAX_WAIT_MS = 30_000;
 export const BACKUP_INTERVAL_MS = 10 * 60 * 1000;
 
 export interface BackupScheduleState {

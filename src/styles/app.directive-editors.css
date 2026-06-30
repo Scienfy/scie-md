@@ -1,0 +1,161 @@
+/*
+ * ScieMD app styles: directive, Mermaid, and math inline edit controls.
+ * Import order is owned by app.css and mirrored by appCssBundle.ts for HTML export.
+ */
+.directive-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.directive-editor-header strong {
+  color: var(--text-strong);
+}
+
+.mermaid-card {
+  border-left: 4px solid var(--visual-link-color);
+}
+
+.mermaid-card.is-rendered {
+  gap: 0;
+  border-color: transparent;
+  border-left-color: transparent;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.mermaid-card.is-rendered:focus-within {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--surface), transparent 26%);
+}
+
+.mermaid-render,
+.mermaid-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.mermaid-render-header {
+  min-height: 28px;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.mermaid-card.is-rendered:focus-within .mermaid-render-header {
+  opacity: 1;
+}
+
+.mermaid-render-edit {
+  min-height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mermaid-editor-header strong {
+  color: var(--text-strong);
+}
+
+.mermaid-card-canvas {
+  overflow: auto;
+  border-radius: 6px;
+  padding: 12px;
+  background: var(--surface);
+  text-align: center;
+}
+
+.mermaid-card-canvas svg {
+  width: clamp(680px, 78%, 1120px);
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-card-source {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  background: var(--editor-bg);
+  color: var(--text);
+  font: 0.82em/1.5 var(--mono-font);
+}
+
+.mermaid-card-source:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent), transparent 55%);
+  outline-offset: 1px;
+}
+
+.mermaid-card-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mermaid-card-status {
+  margin-left: auto;
+  color: var(--text-muted);
+  font: 11px/1.25 var(--ui-font);
+}
+
+.mermaid-card-controls {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mermaid-card-controls button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.math-preview {
+  position: relative;
+}
+
+.math-preview .math-edit-button {
+  min-width: auto;
+  min-height: 20px;
+  margin-left: 6px;
+  border-radius: 999px;
+  padding: 0 7px;
+  opacity: 0;
+  font-family: var(--ui-font);
+  font-size: 10px;
+  transition: opacity 120ms ease;
+  vertical-align: middle;
+}
+
+.math-preview:hover .math-edit-button,
+.math-preview:focus-within .math-edit-button {
+  opacity: 1;
+}
+
+.math-edit-input {
+  display: block;
+  min-width: min(360px, 70vw);
+  margin-top: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--editor-bg);
+  color: var(--text);
+  font: 12px/1.45 var(--mono-font);
+}
+
+.math-edit-input[hidden] {
+  display: none !important;
+}
+
+.math-preview-inline .math-edit-input {
+  display: inline-block;
+  width: 220px;
+  margin-top: 0;
+  margin-left: 6px;
+}

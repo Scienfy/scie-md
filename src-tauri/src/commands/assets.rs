@@ -5,7 +5,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::path_grants::{assert_file_read_allowed, assert_file_write_allowed};
+use super::path_grants::{
+    assert_file_read_allowed, assert_file_write_allowed, grant_document_image_asset,
+};
 
 const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
 
@@ -49,6 +51,7 @@ pub fn copy_image_to_assets(
         .map_err(|error| format!("Could not read image: {error}"))?;
     validate_image_signature(&image, &bytes)?;
     let destination = write_unique_asset(&assets_dir, &safe_file_name, &bytes)?;
+    grant_document_image_asset(&document, &destination)?;
 
     let copied_name = destination
         .file_name()
@@ -93,6 +96,7 @@ pub fn save_image_bytes_to_assets(
         .map_err(|error| format!("Could not create assets directory: {error}"))?;
 
     let destination = write_unique_asset(&assets_dir, &safe_file_name, &bytes)?;
+    grant_document_image_asset(&document, &destination)?;
 
     let copied_name = destination
         .file_name()
@@ -286,7 +290,10 @@ fn sanitize_file_name(file_name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::path_grants::{grant_file_and_parent, isolate_test_path_grants};
+    use crate::commands::path_grants::{
+        assert_file_read_allowed, assert_file_write_allowed, grant_file_and_parent,
+        grant_read_only_file, isolate_test_path_grants,
+    };
     use std::{
         env, fs,
         time::{SystemTime, UNIX_EPOCH},
@@ -324,9 +331,45 @@ mod tests {
         .unwrap();
 
         assert_eq!(image.markdown_path, "assets/clipboard.png");
-        assert!(dir.join("assets").join("clipboard.png").exists());
+        let copied = dir.join("assets").join("clipboard.png");
+        assert!(copied.exists());
+        assert!(assert_file_read_allowed(&copied).is_ok());
+        assert!(assert_file_write_allowed(&copied).is_err());
 
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn copy_image_to_assets_grants_only_the_copied_asset() {
+        let _grants = isolate_test_path_grants();
+        let dir = env::temp_dir().join(format!("scie-md-copy-assets-{}", suffix()));
+        let incoming = env::temp_dir().join(format!("scie-md-copy-source-{}", suffix()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(&incoming).unwrap();
+        let document = dir.join("document.md");
+        let source = incoming.join("source.png");
+        fs::write(&document, b"# Doc").unwrap();
+        fs::write(&source, png_bytes()).unwrap();
+        grant_file_and_parent(&document).unwrap();
+        grant_read_only_file(&source).unwrap();
+
+        let image = copy_image_to_assets(
+            document.to_string_lossy().to_string(),
+            source.to_string_lossy().to_string(),
+            "source".to_string(),
+        )
+        .unwrap();
+        let copied = dir.join("assets").join(&image.file_name);
+
+        assert_eq!(image.markdown_path, format!("assets/{}", image.file_name));
+        assert!(assert_file_read_allowed(&source).is_ok());
+        assert!(assert_file_write_allowed(&source).is_err());
+        assert!(assert_file_read_allowed(&copied).is_ok());
+        assert!(assert_file_write_allowed(&copied).is_err());
+        assert!(assert_file_read_allowed(&dir.join("assets").join("other.png")).is_err());
+
+        let _ = fs::remove_dir_all(dir);
+        let _ = fs::remove_dir_all(incoming);
     }
 
     #[test]

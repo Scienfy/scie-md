@@ -1,21 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { listReadableFiles, pickFolder } from '../../services/fileService';
 import type { FileExplorerEntry } from '../../services/fileService';
-import { clearWatchedFiles, listenFileWatchChanges, updateWatchedFiles } from '../../services/fileWatchService';
-import { isTauriRuntime } from '../runtime';
+import { fileWatchRetryDelayMs } from '../../services/fileWatchService';
+import { desktopPlatformHost } from '../host/desktopPlatformHost';
+import type { DesktopPlatformHost } from '../host/platformHost';
 
 const VISIBLE_DIRECTORY_LOAD_TIMEOUT_MS = 15_000;
 const SILENT_DIRECTORY_LOAD_TIMEOUT_MS = 30_000;
+const EXPLORER_WATCH_DEGRADED_MESSAGE = 'Folder changes are being checked periodically because native folder watching is unavailable.';
 type LoadDirectoryOptions = { silent?: boolean; suppressError?: boolean };
 
 interface UseFileExplorerOptions {
   initialPath: string | null;
+  fallbackInitialPath?: string | null;
   onPersistPath: (path: string) => void;
   onOpenDocument: (path: string) => void;
+  platformHost?: DesktopPlatformHost;
 }
 
-export function useFileExplorer({ initialPath, onPersistPath, onOpenDocument }: UseFileExplorerOptions) {
+export function useFileExplorer({
+  initialPath,
+  fallbackInitialPath = null,
+  onPersistPath,
+  onOpenDocument,
+  platformHost = desktopPlatformHost,
+}: UseFileExplorerOptions) {
   const loadedInitialPathRef = useRef<string | null>(null);
+  const attemptedInitialPathKeyRef = useRef<string | null>(null);
   const loadRequestRef = useRef(0);
   const visibleLoadRequestRef = useRef(0);
   const watchScopeRef = useRef(`explorer:${Math.random().toString(36).slice(2)}`);
@@ -24,6 +34,7 @@ export function useFileExplorer({ initialPath, onPersistPath, onOpenDocument }: 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [watcherMessage, setWatcherMessage] = useState<string | null>(null);
 
   const loadDirectory = useCallback(async (path: string, options: LoadDirectoryOptions = {}) => {
     const requestId = ++loadRequestRef.current;
@@ -37,17 +48,18 @@ export function useFileExplorer({ initialPath, onPersistPath, onOpenDocument }: 
     if (!silent) setSelectedImage(null);
     try {
       const nextEntries = await withTimeout(
-        listReadableFiles(path),
+        platformHost.fileBrowser.listReadableFiles(path),
         silent ? SILENT_DIRECTORY_LOAD_TIMEOUT_MS : VISIBLE_DIRECTORY_LOAD_TIMEOUT_MS,
         'Folder loading took too long. Try choosing the folder again.',
       );
-      if (requestId !== loadRequestRef.current) return;
+      if (requestId !== loadRequestRef.current) return false;
       loadedInitialPathRef.current = path;
       setCurrentPath(path);
       setEntries(nextEntries);
       onPersistPath(path);
+      return true;
     } catch (loadError) {
-      if (requestId !== loadRequestRef.current) return;
+      if (requestId !== loadRequestRef.current) return false;
       if (loadError instanceof DirectoryLoadTimeoutError) {
         loadRequestRef.current += 1;
       }
@@ -55,41 +67,55 @@ export function useFileExplorer({ initialPath, onPersistPath, onOpenDocument }: 
         setError(null);
         setEntries([]);
         setCurrentPath((current) => current === path ? null : current);
-        return;
+        return false;
       }
       setError(loadError instanceof Error ? loadError.message : 'Could not read this folder.');
       setEntries([]);
+      return false;
     } finally {
       if (!silent && visibleLoadRequestRef.current === requestId) {
         setLoading(false);
       }
     }
-  }, [onPersistPath]);
+  }, [onPersistPath, platformHost]);
 
   const chooseFolder = useCallback(async () => {
     try {
-      const selectedFolder = await pickFolder();
+      const selectedFolder = await platformHost.fileBrowser.pickFolder();
       if (!selectedFolder) return;
       await loadDirectory(selectedFolder);
     } catch (folderError) {
       console.warn('File explorer folder picker failed.', folderError);
       setError(folderError instanceof Error ? folderError.message : 'Could not choose this folder.');
     }
-  }, [loadDirectory]);
+  }, [loadDirectory, platformHost]);
 
   useEffect(() => {
     if (!initialPath || loadedInitialPathRef.current === initialPath) return;
-    void loadDirectory(initialPath, { silent: true, suppressError: true }).catch((error) => {
+    const fallbackPath = fallbackInitialPath?.trim() ? fallbackInitialPath : null;
+    const initialKey = `${initialPath}\n${fallbackPath ?? ''}`;
+    if (attemptedInitialPathKeyRef.current === initialKey) return;
+    attemptedInitialPathKeyRef.current = initialKey;
+    void (async () => {
+      const loaded = await loadDirectory(initialPath, { silent: true, suppressError: true });
+      if (loaded || !fallbackPath || fallbackPath === initialPath) return;
+      await loadDirectory(fallbackPath, { silent: true, suppressError: true });
+    })().catch((error) => {
       console.warn('Initial file explorer folder could not be loaded.', error);
     });
-  }, [initialPath, loadDirectory]);
+  }, [fallbackInitialPath, initialPath, loadDirectory]);
 
   useEffect(() => {
-    if (!currentPath) return undefined;
+    if (!currentPath) {
+      setWatcherMessage(null);
+      return undefined;
+    }
     let disposed = false;
     let unlisten: (() => void) | undefined;
     let reloadTimer: number | null = null;
     let pollTimer: number | null = null;
+    let retryTimer: number | null = null;
+    let watchFailureCount = 0;
     let refreshInFlight = false;
 
     const refresh = () => {
@@ -105,7 +131,65 @@ export function useFileExplorer({ initialPath, onPersistPath, onOpenDocument }: 
     };
     const startFallbackPolling = () => {
       if (pollTimer !== null) return;
+      setWatcherMessage(EXPLORER_WATCH_DEGRADED_MESSAGE);
+      refresh();
       pollTimer = window.setInterval(refresh, 30_000);
+    };
+    const stopFallbackPolling = () => {
+      if (pollTimer !== null) {
+        window.clearInterval(pollTimer);
+        pollTimer = null;
+      }
+      setWatcherMessage(null);
+    };
+    const scheduleWatchRetry = () => {
+      if (retryTimer !== null || disposed) return;
+      watchFailureCount += 1;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        void activateWatcher();
+      }, fileWatchRetryDelayMs(watchFailureCount));
+    };
+    const activateWatcher = async () => {
+      if (disposed) return;
+      try {
+        if (!unlisten) {
+          const dispose = await platformHost.watcher.listenFileWatchChanges((event) => {
+            if (event.paths.length === 0 || event.paths.some((path) => pathInsideDirectory(path, currentPath))) {
+              scheduleRefresh();
+            }
+          });
+          if (disposed) {
+            dispose();
+            return;
+          }
+          unlisten = dispose;
+        }
+      } catch (error) {
+        console.warn('File explorer watcher listener failed.', error);
+        if (!disposed) {
+          startFallbackPolling();
+          scheduleWatchRetry();
+        }
+        return;
+      }
+      try {
+        const active = await platformHost.watcher.updateWatchedFiles(watchScopeRef.current, [currentPath]);
+        if (disposed) return;
+        if (active) {
+          watchFailureCount = 0;
+          stopFallbackPolling();
+        } else {
+          startFallbackPolling();
+          scheduleWatchRetry();
+        }
+      } catch (error) {
+        console.warn('File explorer watcher update failed.', error);
+        if (!disposed) {
+          startFallbackPolling();
+          scheduleWatchRetry();
+        }
+      }
     };
     const scheduleRefresh = () => {
       if (reloadTimer !== null) window.clearTimeout(reloadTimer);
@@ -122,30 +206,7 @@ export function useFileExplorer({ initialPath, onPersistPath, onOpenDocument }: 
     window.addEventListener('focus', handleFocusOrVisibility);
     document.addEventListener('visibilitychange', handleFocusOrVisibility);
 
-    if (isTauriRuntime()) {
-      void listenFileWatchChanges((event) => {
-        if (event.paths.length === 0 || event.paths.some((path) => pathInsideDirectory(path, currentPath))) {
-          scheduleRefresh();
-        }
-      }).then((dispose) => {
-        if (disposed) {
-          dispose();
-          return;
-        }
-        unlisten = dispose;
-      }).catch((error) => {
-        console.warn('File explorer watcher listener failed.', error);
-        if (!disposed) startFallbackPolling();
-      });
-      void updateWatchedFiles(watchScopeRef.current, [currentPath]).then((active) => {
-        if (!active && !disposed) startFallbackPolling();
-      }).catch((error) => {
-        console.warn('File explorer watcher update failed.', error);
-        if (!disposed) startFallbackPolling();
-      });
-    } else {
-      startFallbackPolling();
-    }
+    void activateWatcher();
 
     return () => {
       disposed = true;
@@ -153,12 +214,13 @@ export function useFileExplorer({ initialPath, onPersistPath, onOpenDocument }: 
       document.removeEventListener('visibilitychange', handleFocusOrVisibility);
       if (reloadTimer !== null) window.clearTimeout(reloadTimer);
       if (pollTimer !== null) window.clearInterval(pollTimer);
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
       unlisten?.();
-      void clearWatchedFiles(watchScopeRef.current).catch((error) => {
+      void platformHost.watcher.clearWatchedFiles(watchScopeRef.current).catch((error) => {
         console.warn('File explorer watcher cleanup failed.', error);
       });
     };
-  }, [currentPath, loadDirectory]);
+  }, [currentPath, loadDirectory, platformHost]);
 
   const openEntry = useCallback((entry: FileExplorerEntry) => {
     if (entry.kind === 'directory') {
@@ -176,6 +238,7 @@ export function useFileExplorer({ initialPath, onPersistPath, onOpenDocument }: 
     loading,
     error,
     selectedImage,
+    watcherMessage,
     loadDirectory,
     chooseFolder,
     openEntry,

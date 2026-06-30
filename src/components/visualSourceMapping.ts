@@ -1,5 +1,5 @@
 import type { Node as ProseNode } from '@milkdown/prose/model';
-import { parseFrontmatter } from '../domain/document/frontmatter';
+import { parseFrontmatter } from '@sciemd/core';
 
 export function visualSourceLineForPosition(doc: ProseNode, position: number, sourceMarkdown: string): number | null {
   const blockIndex = textblockIndexAtPosition(doc, position);

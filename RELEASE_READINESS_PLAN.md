@@ -19,13 +19,31 @@ the NSIS installer or MSI package only. Do not distribute `ScieMD.next.exe` or
 
 ## Required Local Gate
 
-Before sharing a build:
+Before opening a merge request or sharing a build, run the full local pre-merge gate:
 
 ```bash
-npm run validate:release
-npm run build:desktop
-npm run copy:exe
+npm run validate:merge
 ```
+
+This runs release validation, the large-document/OOM stress gate, a packaged
+desktop build, required packaged desktop smoke testing, desktop artifact staging,
+VSIX packaging and package-content checks, required installed-VSIX smoke testing,
+VSIX staging, release identity checks, generated-output policy checks, and
+`git diff --check`.
+
+`npm run validate:release` also runs the release identity guard and
+generated-output policy guard, which keeps CI and local release validation aligned
+before the heavier build, test, extension, Rust, and clippy checks run.
+
+For a release artifact rebuild without the final whitespace check:
+
+```bash
+npm run release:local
+```
+
+`release:local` still runs the required packaged desktop smoke and required
+installed-VSIX smoke before staging artifacts, then re-runs the generated-output
+policy guard after staging.
 
 Confirm these files exist:
 
@@ -38,6 +56,33 @@ artifacts/SHA256SUMS.txt
 
 Linux `.deb` and `.AppImage` assets are generated in GitHub Actions rather than by
 the Windows local release command.
+
+## Generated Outputs And Ignored Paths
+
+The following outputs are expected to be regenerated and ignored by Git:
+
+- Frontend and test output: `dist/`, `coverage/`, `.vite/`, `output/`, `tmp/`.
+- Tauri output: `src-tauri/target/`, `src-tauri/gen/`, `.runtime-test/`.
+- Release staging output: `artifacts/`, including `artifacts/installers/`.
+- Local VS Code packages: `scie-md-vscode-extension/*.vsix`.
+- Desktop/install packages: `*.exe`, `*.msi`, `*.msix`, `*.app`, `*.dmg`,
+  `*.deb`, `*.rpm`.
+- Local logs and smoke output: `*.log`, `desktop-build-smoke/`.
+
+Generated installers, VSIX packages, and checksum manifests belong in GitHub
+Releases, not source commits.
+
+The generated-output policy can be checked directly with:
+
+```bash
+npm run validate:generated-outputs
+npm run validate:generated-outputs:self-test
+```
+
+The guard allows ordinary source and documentation changes in an in-progress
+working tree, but fails if generated directories, packaged artifacts, temporary
+outputs, checksum manifests, logs, or Windows reserved names appear in tracked or
+untracked Git status.
 
 ## GitHub Release Flow
 

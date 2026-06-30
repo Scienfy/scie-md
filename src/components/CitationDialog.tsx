@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { BibtexEntry, BibtexEntryDraft } from '../domain/citations/bibtex';
+import type { BibtexEntry, BibtexEntryDraft } from '@sciemd/core';
 import { fetchCrossrefCitationDraft } from '../domain/citations/crossref';
 import { ModalShell } from './ModalShell';
 import { DialogActions } from './DialogActions';

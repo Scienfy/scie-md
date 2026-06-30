@@ -1,15 +1,19 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { fromVisualImagePaths, resolveSafeDocumentRelativePath, toVisualImagePaths } from './imagePaths';
+import { fromVisualImagePaths, localImageDisplayUrl, localImageDisplayUrlToPath, resolveSafeDocumentRelativePath, toVisualImagePaths } from './imagePaths';
 
-const vscodeResourceWindow = window as Window & { __SCIE_MD_VSCODE_DOCUMENT_RESOURCE_BASE__?: string };
+const vscodeResourceWindow = window as Window & {
+  __SCIE_MD_VSCODE_DOCUMENT_RESOURCE_BASE__?: string;
+  __TAURI_INTERNALS__?: unknown;
+};
 
 afterEach(() => {
   delete vscodeResourceWindow.__SCIE_MD_VSCODE_DOCUMENT_RESOURCE_BASE__;
+  delete vscodeResourceWindow.__TAURI_INTERNALS__;
 });
 
 describe('fromVisualImagePaths', () => {
   it('restores display URLs only inside image markdown URLs', () => {
-    const displayUrl = 'asset://localhost/C:/doc/assets/a.png?x=1';
+    const displayUrl = localImageDisplayUrl('C:\\doc\\assets\\a.png', 'assets/a.png?x=1');
     const map = new Map([[displayUrl, 'assets/a.png']]);
     const markdown = `Text mentioning ${displayUrl}\n\n![Alt](${displayUrl})\n`;
 
@@ -17,10 +21,10 @@ describe('fromVisualImagePaths', () => {
   });
 
   it('restores display URLs for image markdown that includes a title', () => {
-    const displayUrl = 'asset://localhost/C:/doc/assets/my%20image.png';
+    const displayUrl = localImageDisplayUrl('C:\\doc\\assets\\my image.png');
     const map = new Map([[displayUrl, 'assets/my image.png']]);
 
-    expect(fromVisualImagePaths(`![Alt](${displayUrl} "Figure title")`, map)).toBe(
+    expect(fromVisualImagePaths(`![Alt](<${displayUrl}> "Figure title")`, map)).toBe(
       '![Alt](<assets/my image.png> "Figure title")',
     );
   });
@@ -42,6 +46,24 @@ describe('resolveSafeDocumentRelativePath', () => {
 });
 
 describe('toVisualImagePaths', () => {
+  it('rewrites Tauri relative images to the grant-checked local image protocol', () => {
+    vscodeResourceWindow.__TAURI_INTERNALS__ = {};
+
+    const result = toVisualImagePaths('![Figure](assets/my image.png?raw#frag)', 'D:\\Lab\\paper.md');
+    const displayUrl = localImageDisplayUrl('D:\\Lab\\assets\\my image.png', 'assets/my image.png?raw#frag');
+
+    expect(result.markdown).toBe(`![Figure](${displayUrl})`);
+    expect(result.displayToOriginal.get(displayUrl)).toBe('assets/my image.png?raw#frag');
+    expect(localImageDisplayUrlToPath(displayUrl)).toBe('D:\\Lab\\assets\\my image.png');
+  });
+
+  it('decodes Windows custom protocol URLs that Tauri may expose through localhost', () => {
+    const displayUrl = localImageDisplayUrl('E:\\outside-home\\assets\\panel A.svg');
+    const windowsUrl = displayUrl.replace('scie-md-local-image://localhost/', 'http://scie-md-local-image.localhost/');
+
+    expect(localImageDisplayUrlToPath(windowsUrl)).toBe('E:\\outside-home\\assets\\panel A.svg');
+  });
+
   it('rewrites relative images to VS Code webview resource URIs when available', () => {
     vscodeResourceWindow.__SCIE_MD_VSCODE_DOCUMENT_RESOURCE_BASE__ = 'https://file+.vscode-resource.vscode-cdn.net/c%3A/docs';
 

@@ -1,0 +1,745 @@
+/*
+ * ScieMD app styles: rendered directive theme overrides and visual-atom directive rhythm.
+ * Import order is owned by app.css and mirrored by appCssBundle.ts for HTML export.
+ */
+.directive-card.is-rendered:not(.directive-figure) {
+  --directive-rail-width: 3px;
+  --directive-radius: 0;
+  --directive-pad-y: 0.16em;
+  --directive-pad-x: 0.86em;
+  --directive-bg: transparent;
+  --directive-border: transparent;
+  --directive-shadow: none;
+  --directive-label-gap: 0.18em;
+  --directive-label-size: 0.64em;
+  --directive-body-size: 0.97em;
+  --directive-line-height: 1.43;
+  margin: 0.62em 0;
+  border: 0;
+  border-left: var(--directive-rail-width) solid var(--directive-accent, var(--accent));
+  border-radius: var(--directive-radius);
+  padding: var(--directive-pad-y) var(--directive-pad-x);
+  background: var(--directive-bg);
+  box-shadow: var(--directive-shadow);
+}
+
+.directive-card.is-rendered:not(.directive-figure) .directive-render-body {
+  color: var(--directive-text, inherit);
+  font-size: var(--directive-body-size);
+  line-height: var(--directive-line-height);
+}
+
+.directive-card.is-rendered:not(.directive-figure) .directive-render-body::before {
+  display: block;
+  margin-bottom: var(--directive-label-gap);
+  color: var(--directive-label, var(--directive-accent, var(--accent)));
+  font-family: var(--ui-font);
+  font-size: var(--directive-label-size);
+  font-weight: var(--directive-label-weight, 760);
+  letter-spacing: var(--directive-label-spacing, 0.09em);
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.directive-card.is-rendered.directive-note {
+  --directive-accent: #4f7c68;
+  --directive-label: color-mix(in srgb, #4f7c68, var(--text-muted) 35%);
+  --directive-rail-width: 2px;
+  --directive-body-size: 0.96em;
+}
+
+.directive-card.is-rendered.directive-callout {
+  --directive-accent: #42526e;
+  --directive-label: color-mix(in srgb, #42526e, var(--text-muted) 28%);
+  --directive-rail-width: 2px;
+}
+
+.directive-card.is-rendered.directive-tip {
+  --directive-accent: #23834f;
+  --directive-label: color-mix(in srgb, #23834f, var(--text-muted) 24%);
+  --directive-rail-width: 2px;
+}
+
+.directive-card.is-rendered.directive-tip .directive-render-body {
+  font-style: italic;
+}
+
+.directive-card.is-rendered.directive-warning,
+.directive-card.is-rendered.directive-important {
+  --directive-rail-width: 0;
+  --directive-pad-y: 0.48em;
+  --directive-pad-x: 0;
+  --directive-bg: transparent;
+  border-left: 0;
+  border-top: 2px solid var(--directive-accent);
+  border-bottom: 1px solid color-mix(in srgb, var(--directive-accent), transparent 62%);
+  color: var(--directive-text, var(--text-strong));
+}
+
+.directive-card.is-rendered.directive-warning {
+  --directive-accent: #bd5a20;
+  --directive-label: #bd5a20;
+}
+
+.directive-card.is-rendered.directive-important {
+  --directive-accent: #9b2c6a;
+  --directive-label: #9b2c6a;
+  --directive-body-size: 1em;
+}
+
+.directive-card.is-rendered.directive-important .directive-render-body {
+  font-weight: 650;
+}
+
+.directive-card.is-rendered.directive-result {
+  --directive-accent: #8b6f20;
+  --directive-label: color-mix(in srgb, #8b6f20, var(--text-strong) 18%);
+  --directive-rail-width: 4px;
+  --directive-pad-y: 0.48em;
+  --directive-pad-x: 0.82em;
+  --directive-bg: color-mix(in srgb, #8b6f20, var(--surface) 94%);
+  --directive-radius: 2px;
+}
+
+:root[data-theme="dark"] .directive-card.is-rendered.directive-note {
+  --directive-accent: #8ed8ba;
+  --directive-label: #8ed8ba;
+}
+
+:root[data-theme="dark"] .directive-card.is-rendered.directive-callout {
+  --directive-accent: #a7b8de;
+  --directive-label: #a7b8de;
+}
+
+:root[data-theme="dark"] .directive-card.is-rendered.directive-tip {
+  --directive-accent: #8fe2a9;
+  --directive-label: #8fe2a9;
+}
+
+:root[data-theme="dark"] .directive-card.is-rendered.directive-result {
+  --directive-accent: #f0c85d;
+  --directive-label: #f0c85d;
+  --directive-bg: color-mix(in srgb, #8b6f20, var(--surface) 84%);
+}
+
+:root[data-theme="dark"] .directive-card.is-rendered.directive-important {
+  --directive-accent: #f0a7d3;
+  --directive-label: #f0a7d3;
+}
+
+:root[data-theme="dark"] .directive-card.is-rendered.directive-warning {
+  --directive-accent: #ffb276;
+  --directive-label: #ffb276;
+}
+
+:root[data-visual-style="scientific-draft"] .directive-card.is-rendered:not(.directive-figure) {
+  --directive-radius: 0;
+  --directive-pad-y: 0.18em;
+  --directive-pad-x: 0.9em;
+}
+
+:root[data-visual-style="scientific-draft"] .directive-card.is-rendered.directive-result {
+  --directive-bg: linear-gradient(90deg, color-mix(in srgb, var(--directive-accent), transparent 90%), transparent 52%);
+}
+
+:root[data-visual-style="journal-manuscript"] .directive-card.is-rendered:not(.directive-figure),
+:root[data-visual-style="nature"] .directive-card.is-rendered:not(.directive-figure) {
+  --directive-rail-width: 0;
+  --directive-pad-y: 0.5em;
+  --directive-pad-x: 0;
+  --directive-bg: transparent;
+  --directive-label-spacing: 0;
+  --directive-label-size: 0.7em;
+  --directive-line-height: 1.48;
+  border-left: 0;
+  border-top: 1px solid color-mix(in srgb, var(--directive-accent), var(--border) 58%);
+  border-bottom: 0;
+}
+
+:root[data-visual-style="journal-manuscript"] .directive-card.is-rendered.directive-note,
+:root[data-visual-style="nature"] .directive-card.is-rendered.directive-note,
+:root[data-visual-style="journal-manuscript"] .directive-card.is-rendered.directive-tip,
+:root[data-visual-style="nature"] .directive-card.is-rendered.directive-tip {
+  border-top-style: dotted;
+}
+
+:root[data-visual-style="journal-manuscript"] .directive-card.is-rendered.directive-callout,
+:root[data-visual-style="nature"] .directive-card.is-rendered.directive-callout {
+  margin-left: 1.2em;
+  padding-left: 0.8em;
+  border-top: 0;
+  border-left: 2px solid color-mix(in srgb, var(--directive-accent), var(--border) 35%);
+}
+
+:root[data-visual-style="journal-manuscript"] .directive-card.is-rendered.directive-result,
+:root[data-visual-style="nature"] .directive-card.is-rendered.directive-result {
+  --directive-pad-y: 0.58em;
+  --directive-pad-x: 0.75em;
+  --directive-bg: transparent;
+  border-top: 2px solid var(--text-strong);
+  border-bottom: 1px solid var(--visual-hr-color);
+}
+
+:root[data-visual-style="lab-notebook"] .directive-card.is-rendered:not(.directive-figure) {
+  --directive-rail-width: 3px;
+  --directive-pad-y: 0.26em;
+  --directive-pad-x: 0.75em;
+  --directive-bg: linear-gradient(90deg, color-mix(in srgb, var(--directive-accent), transparent 90%), transparent 80%);
+  --directive-label-size: 0.62em;
+  border-left-style: dashed;
+}
+
+:root[data-visual-style="lab-notebook"] .directive-card.is-rendered.directive-warning,
+:root[data-visual-style="lab-notebook"] .directive-card.is-rendered.directive-important {
+  border-left: 3px dashed var(--directive-accent);
+  border-top: 0;
+  border-bottom: 0;
+  padding-left: 0.85em;
+}
+
+:root[data-visual-style="technical-code"] .directive-card.is-rendered:not(.directive-figure),
+:root[data-visual-style="codex"] .directive-card.is-rendered:not(.directive-figure) {
+  --directive-rail-width: 0;
+  --directive-pad-y: 0.28em;
+  --directive-pad-x: 0.76em;
+  --directive-radius: 4px;
+  --directive-bg: color-mix(in srgb, var(--surface-soft), var(--directive-accent) 5%);
+  --directive-body-size: 0.93em;
+  --directive-line-height: 1.36;
+  border-left: 0;
+  box-shadow: inset 2px 0 0 var(--directive-accent);
+}
+
+:root[data-visual-style="technical-code"] .directive-card.is-rendered:not(.directive-figure) .directive-render-body::before,
+:root[data-visual-style="codex"] .directive-card.is-rendered:not(.directive-figure) .directive-render-body::before {
+  font-family: var(--mono-font);
+  text-transform: none;
+}
+
+:root[data-visual-style="amin"] .directive-card.is-rendered:not(.directive-figure) {
+  --directive-rail-width: 0;
+  --directive-pad-y: 0.34em;
+  --directive-pad-x: 0.82em;
+  --directive-radius: 4px;
+  --directive-bg: linear-gradient(90deg, color-mix(in srgb, var(--directive-accent), transparent 94%), color-mix(in srgb, var(--surface), transparent 4%) 78%);
+  --directive-label-spacing: 0.16em;
+  border-left: 0;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+:root[data-visual-style="amin"] .directive-card.is-rendered.directive-callout {
+  --directive-accent: #485071;
+  --directive-label: #485071;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .directive-card.is-rendered.directive-callout {
+  --directive-accent: #a8afd9;
+  --directive-label: #a8afd9;
+}
+
+:root[data-visual-style="amin"] .directive-card.is-rendered.directive-important {
+  --directive-accent: #a94a50;
+  --directive-label: #a94a50;
+  --directive-text: var(--text-strong);
+  --directive-bg: linear-gradient(90deg, color-mix(in srgb, #a94a50, transparent 93%), color-mix(in srgb, var(--surface), transparent 4%) 78%);
+  border-left: 0;
+  border-top: 0;
+  border-bottom: 0;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .directive-card.is-rendered.directive-important {
+  --directive-accent: #d99a96;
+  --directive-label: #d99a96;
+  --directive-bg: linear-gradient(90deg, color-mix(in srgb, #d99a96, transparent 90%), color-mix(in srgb, var(--surface), transparent 4%) 78%);
+}
+
+:root[data-visual-style="science"] .directive-card.is-rendered:not(.directive-figure) {
+  --directive-rail-width: 0;
+  --directive-pad-y: 0.62em;
+  --directive-pad-x: 0.82em;
+  --directive-bg: var(--surface-soft);
+  --directive-label-size: 0.66em;
+  --directive-label-spacing: 0;
+  --directive-line-height: 1.42;
+  border-left: 0;
+  border-top: 3px solid var(--accent);
+}
+
+:root[data-visual-style="science"] .directive-card.is-rendered.directive-note,
+:root[data-visual-style="science"] .directive-card.is-rendered.directive-tip,
+:root[data-visual-style="science"] .directive-card.is-rendered.directive-callout {
+  border-top: 3px solid color-mix(in srgb, var(--accent), var(--border) 28%);
+  border-bottom: 0;
+  padding-left: var(--directive-pad-x);
+}
+
+:root[data-visual-style="science"] .directive-card.is-rendered.directive-note .directive-render-body,
+:root[data-visual-style="science"] .directive-card.is-rendered.directive-tip .directive-render-body {
+  color: color-mix(in srgb, var(--text), var(--text-muted) 18%);
+}
+
+:root[data-visual-style="science"] .directive-card.is-rendered.directive-tip .directive-render-body {
+  font-style: italic;
+}
+
+:root[data-visual-style="science"] .directive-card.is-rendered.directive-warning,
+:root[data-visual-style="science"] .directive-card.is-rendered.directive-important {
+  --directive-accent: var(--accent);
+  --directive-label: var(--accent);
+  --directive-text: var(--text-strong);
+  --directive-bg: color-mix(in srgb, var(--accent), var(--surface) 91%);
+  border-top: 4px solid var(--accent);
+  border-bottom: 0;
+  padding-top: 0.48em;
+  padding-bottom: 0.48em;
+}
+
+:root[data-visual-style="science"] .directive-card.is-rendered.directive-result {
+  --directive-pad-y: 0.58em;
+  --directive-pad-x: 0.86em;
+  --directive-bg: var(--surface-soft);
+  border-top: 4px solid var(--directive-accent);
+  border-left: 0;
+}
+
+:root[data-visual-style="nature"] .directive-card.is-rendered.directive-important,
+:root[data-visual-style="nature"] .directive-card.is-rendered.directive-warning {
+  border-top-width: 3px;
+  color: var(--text-strong);
+}
+
+:root[data-visual-style="codex"] .directive-figure-media,
+:root[data-visual-style="technical-code"] .directive-figure-media {
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface-soft), var(--visual-code-bg) 4%);
+}
+
+/* Final visual-atom directive treatment. The atom renderer injects HTML-export
+   fragments, so these rules must target .directive-card directly, not only the
+   older editor-only .directive-render-body structure. */
+.scie-md-visual-atom-content > .directive-card.is-rendered:not(.directive-figure) {
+  --atom-directive-accent: var(--directive-accent, var(--accent));
+  --atom-directive-label: var(--directive-label, var(--atom-directive-accent));
+  margin: 0;
+  border: 0;
+  border-left: var(--directive-rail-width, 3px) solid var(--atom-directive-accent);
+  border-radius: var(--directive-radius, 0);
+  padding: var(--directive-pad-y, 0.16em) var(--directive-pad-x, 0.86em);
+  background: var(--directive-bg, transparent);
+  box-shadow: var(--directive-shadow, none);
+  color: var(--directive-text, inherit);
+}
+
+.scie-md-visual-atom-content > .directive-card.is-rendered:not(.directive-figure) header {
+  position: static;
+  margin: 0 0 var(--directive-label-gap, 0.18em);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  opacity: 1;
+}
+
+.scie-md-visual-atom-content > .directive-card.is-rendered:not(.directive-figure) header strong {
+  color: var(--atom-directive-label);
+  font-family: var(--ui-font);
+  font-size: var(--directive-label-size, 0.64em);
+  font-weight: var(--directive-label-weight, 760);
+  letter-spacing: var(--directive-label-spacing, 0.09em);
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.scie-md-visual-atom-content > .directive-card.is-rendered:not(.directive-figure) header span {
+  color: var(--text-muted);
+  font-family: var(--ui-font);
+  font-size: 0.72em;
+}
+
+.scie-md-visual-atom-content > .directive-card.is-rendered:not(.directive-figure) .directive-card-body-rendered {
+  color: var(--directive-text, inherit);
+  font-size: var(--directive-body-size, 0.97em);
+  line-height: var(--directive-line-height, 1.43);
+}
+
+.scie-md-visual-atom-content > .directive-card.is-rendered.directive-note {
+  --directive-accent: #4f7c68;
+  --directive-label: color-mix(in srgb, #4f7c68, var(--text-muted) 35%);
+  --directive-rail-width: 2px;
+  --directive-body-size: 0.96em;
+}
+
+.scie-md-visual-atom-content > .directive-card.is-rendered.directive-callout {
+  --directive-accent: #42526e;
+  --directive-label: color-mix(in srgb, #42526e, var(--text-muted) 28%);
+  --directive-rail-width: 2px;
+}
+
+.scie-md-visual-atom-content > .directive-card.is-rendered.directive-tip {
+  --directive-accent: #23834f;
+  --directive-label: color-mix(in srgb, #23834f, var(--text-muted) 24%);
+  --directive-rail-width: 2px;
+}
+
+.scie-md-visual-atom-content > .directive-card.is-rendered.directive-tip .directive-card-body-rendered {
+  font-style: italic;
+}
+
+.scie-md-visual-atom-content > .directive-card.is-rendered.directive-warning,
+.scie-md-visual-atom-content > .directive-card.is-rendered.directive-important {
+  --directive-rail-width: 0;
+  --directive-pad-y: 0.48em;
+  --directive-pad-x: 0;
+  --directive-bg: transparent;
+  border-left: 0;
+  border-top: 2px solid var(--directive-accent);
+  border-bottom: 1px solid color-mix(in srgb, var(--directive-accent), transparent 62%);
+  color: var(--directive-text, var(--text-strong));
+}
+
+.scie-md-visual-atom-content > .directive-card.is-rendered.directive-warning {
+  --directive-accent: #bd5a20;
+  --directive-label: #bd5a20;
+}
+
+.scie-md-visual-atom-content > .directive-card.is-rendered.directive-important {
+  --directive-accent: #9b2c6a;
+  --directive-label: #9b2c6a;
+  --directive-body-size: 1em;
+}
+
+.scie-md-visual-atom-content > .directive-card.is-rendered.directive-important .directive-card-body-rendered {
+  font-weight: 650;
+}
+
+.scie-md-visual-atom-content > .directive-card.is-rendered.directive-result {
+  --directive-accent: #8b6f20;
+  --directive-label: color-mix(in srgb, #8b6f20, var(--text-strong) 18%);
+  --directive-rail-width: 4px;
+  --directive-pad-y: 0.48em;
+  --directive-pad-x: 0.82em;
+  --directive-bg: color-mix(in srgb, #8b6f20, var(--surface) 94%);
+  --directive-radius: 2px;
+}
+
+:root[data-theme="dark"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-note {
+  --directive-accent: #8ed8ba;
+  --directive-label: #8ed8ba;
+}
+
+:root[data-theme="dark"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-callout {
+  --directive-accent: #a7b8de;
+  --directive-label: #a7b8de;
+}
+
+:root[data-theme="dark"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-tip {
+  --directive-accent: #8fe2a9;
+  --directive-label: #8fe2a9;
+}
+
+:root[data-theme="dark"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-result {
+  --directive-accent: #f0c85d;
+  --directive-label: #f0c85d;
+  --directive-bg: color-mix(in srgb, #8b6f20, var(--surface) 84%);
+}
+
+:root[data-theme="dark"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-important {
+  --directive-accent: #f0a7d3;
+  --directive-label: #f0a7d3;
+}
+
+:root[data-theme="dark"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-warning {
+  --directive-accent: #ffb276;
+  --directive-label: #ffb276;
+}
+
+:root[data-visual-style="journal-manuscript"] .scie-md-visual-atom-content > .directive-card.is-rendered:not(.directive-figure),
+:root[data-visual-style="nature"] .scie-md-visual-atom-content > .directive-card.is-rendered:not(.directive-figure) {
+  --directive-rail-width: 0;
+  --directive-pad-y: 0.5em;
+  --directive-pad-x: 0;
+  --directive-bg: transparent;
+  --directive-label-spacing: 0;
+  --directive-label-size: 0.7em;
+  --directive-line-height: 1.48;
+  border-left: 0;
+  border-top: 1px solid color-mix(in srgb, var(--directive-accent), var(--border) 58%);
+  border-bottom: 0;
+}
+
+:root[data-visual-style="journal-manuscript"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-callout,
+:root[data-visual-style="nature"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-callout {
+  margin-left: 1.2em;
+  padding-left: 0.8em;
+  border-top: 0;
+  border-left: 2px solid color-mix(in srgb, var(--directive-accent), var(--border) 35%);
+}
+
+:root[data-visual-style="nature"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-result {
+  --directive-pad-y: 0.58em;
+  --directive-pad-x: 0.75em;
+  --directive-bg: transparent;
+  border-top: 2px solid var(--text-strong);
+  border-bottom: 1px solid var(--visual-hr-color);
+}
+
+:root[data-visual-style="lab-notebook"] .scie-md-visual-atom-content > .directive-card.is-rendered:not(.directive-figure) {
+  --directive-rail-width: 3px;
+  --directive-pad-y: 0.26em;
+  --directive-pad-x: 0.75em;
+  --directive-bg: linear-gradient(90deg, color-mix(in srgb, var(--directive-accent), transparent 90%), transparent 80%);
+  --directive-label-size: 0.62em;
+  border-left-style: dashed;
+}
+
+:root[data-visual-style="technical-code"] .scie-md-visual-atom-content > .directive-card.is-rendered:not(.directive-figure),
+:root[data-visual-style="codex"] .scie-md-visual-atom-content > .directive-card.is-rendered:not(.directive-figure) {
+  --directive-rail-width: 0;
+  --directive-pad-y: 0.28em;
+  --directive-pad-x: 0.76em;
+  --directive-radius: 4px;
+  --directive-bg: color-mix(in srgb, var(--surface-soft), var(--directive-accent) 5%);
+  --directive-body-size: 0.93em;
+  --directive-line-height: 1.36;
+  border-left: 0;
+  box-shadow: inset 2px 0 0 var(--directive-accent);
+}
+
+:root[data-visual-style="amin"] .scie-md-visual-atom-content > .directive-card.is-rendered:not(.directive-figure) {
+  --directive-rail-width: 0;
+  --directive-pad-y: 0.34em;
+  --directive-pad-x: 0.82em;
+  --directive-radius: 4px;
+  --directive-bg: linear-gradient(90deg, color-mix(in srgb, var(--directive-accent), transparent 94%), color-mix(in srgb, var(--surface), transparent 4%) 78%);
+  --directive-label-spacing: 0.16em;
+  border-left: 0;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+:root[data-visual-style="amin"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-callout {
+  --directive-accent: #485071;
+  --directive-label: #485071;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-callout {
+  --directive-accent: #a8afd9;
+  --directive-label: #a8afd9;
+}
+
+:root[data-visual-style="amin"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-important {
+  --directive-accent: #a94a50;
+  --directive-label: #a94a50;
+  --directive-text: var(--text-strong);
+  --directive-bg: linear-gradient(90deg, color-mix(in srgb, #a94a50, transparent 93%), color-mix(in srgb, var(--surface), transparent 4%) 78%);
+  border-left: 0;
+  border-top: 0;
+  border-bottom: 0;
+}
+
+:root[data-theme="dark"][data-visual-style="amin"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-important {
+  --directive-accent: #d99a96;
+  --directive-label: #d99a96;
+  --directive-bg: linear-gradient(90deg, color-mix(in srgb, #d99a96, transparent 90%), color-mix(in srgb, var(--surface), transparent 4%) 78%);
+}
+
+:root[data-visual-style="science"] .scie-md-visual-atom-content > .directive-card.is-rendered:not(.directive-figure) {
+  --directive-rail-width: 0;
+  --directive-pad-y: 0.62em;
+  --directive-pad-x: 0.82em;
+  --directive-bg: var(--surface-soft);
+  --directive-label-size: 0.66em;
+  --directive-label-spacing: 0;
+  --directive-line-height: 1.42;
+  border-left: 0;
+  border-top: 3px solid var(--accent);
+}
+
+:root[data-visual-style="science"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-note,
+:root[data-visual-style="science"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-tip,
+:root[data-visual-style="science"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-callout {
+  border-top: 3px solid color-mix(in srgb, var(--accent), var(--border) 28%);
+  border-bottom: 0;
+  padding-left: var(--directive-pad-x);
+}
+
+:root[data-visual-style="science"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-note .directive-card-body-rendered,
+:root[data-visual-style="science"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-tip .directive-card-body-rendered {
+  color: color-mix(in srgb, var(--text), var(--text-muted) 18%);
+}
+
+:root[data-visual-style="science"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-tip .directive-card-body-rendered {
+  font-style: italic;
+}
+
+:root[data-visual-style="science"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-warning,
+:root[data-visual-style="science"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-important {
+  --directive-accent: var(--accent);
+  --directive-label: var(--accent);
+  --directive-text: var(--text-strong);
+  --directive-bg: color-mix(in srgb, var(--accent), var(--surface) 91%);
+  border-top: 4px solid var(--accent);
+  border-bottom: 0;
+  padding-top: 0.48em;
+  padding-bottom: 0.48em;
+}
+
+:root[data-visual-style="science"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-result {
+  --directive-pad-y: 0.58em;
+  --directive-pad-x: 0.86em;
+  --directive-bg: var(--surface-soft);
+  border-top: 4px solid var(--directive-accent);
+  border-left: 0;
+}
+
+:root[data-visual-style="scienfy"] .directive-card.is-rendered:not(.directive-figure),
+:root[data-visual-style="scienfy"] .scie-md-visual-atom-content > .directive-card.is-rendered:not(.directive-figure) {
+  --directive-rail-width: 0;
+  --directive-pad-y: 0.64em;
+  --directive-pad-x: 0.86em;
+  --directive-radius: 9px;
+  --directive-tint: var(--directive-accent);
+  --directive-text: var(--text-strong);
+  --directive-label: color-mix(in srgb, var(--directive-tint), var(--text-strong) 18%);
+  --directive-bg: linear-gradient(
+    105deg,
+    color-mix(in srgb, var(--directive-tint), transparent 90%),
+    color-mix(in srgb, var(--directive-tint), transparent 96%) 42%,
+    color-mix(in srgb, var(--surface), transparent 2%) 78%,
+    transparent 100%
+  );
+  --directive-label-size: 0.62em;
+  --directive-label-spacing: 0.12em;
+  --directive-body-size: 0.96em;
+  border: 0;
+  box-shadow: none;
+}
+
+:root[data-visual-style="scienfy"] .directive-card.is-rendered.directive-note,
+:root[data-visual-style="scienfy"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-note {
+  --directive-accent: #668a78;
+  --directive-tint: #668a78;
+  --directive-label: #527965;
+}
+
+:root[data-visual-style="scienfy"] .directive-card.is-rendered.directive-tip,
+:root[data-visual-style="scienfy"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-tip {
+  --directive-accent: #5f9274;
+  --directive-tint: #5f9274;
+  --directive-label: #4a7d61;
+}
+
+:root[data-visual-style="scienfy"] .directive-card.is-rendered.directive-callout,
+:root[data-visual-style="scienfy"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-callout {
+  --directive-accent: #657d9f;
+  --directive-tint: #657d9f;
+  --directive-label: #526d90;
+}
+
+:root[data-visual-style="scienfy"] .directive-card.is-rendered.directive-result,
+:root[data-visual-style="scienfy"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-result {
+  --directive-accent: #9a7f3a;
+  --directive-tint: #9a7f3a;
+  --directive-label: #806a2c;
+  --directive-bg: linear-gradient(
+    105deg,
+    color-mix(in srgb, #9a7f3a, transparent 88%),
+    color-mix(in srgb, #9a7f3a, transparent 95%) 46%,
+    color-mix(in srgb, var(--surface-soft), transparent 10%) 78%,
+    transparent 100%
+  );
+}
+
+:root[data-visual-style="scienfy"] .directive-card.is-rendered.directive-warning,
+:root[data-visual-style="scienfy"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-warning {
+  --directive-accent: #b8744d;
+  --directive-tint: #b8744d;
+  --directive-label: #9f5f3c;
+  --directive-bg: linear-gradient(
+    105deg,
+    color-mix(in srgb, #b8744d, transparent 88%),
+    color-mix(in srgb, #b8744d, transparent 96%) 46%,
+    color-mix(in srgb, var(--surface), transparent 2%) 80%,
+    transparent 100%
+  );
+  border: 0;
+}
+
+:root[data-visual-style="scienfy"] .directive-card.is-rendered.directive-important,
+:root[data-visual-style="scienfy"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-important {
+  --directive-accent: #a45c82;
+  --directive-tint: #a45c82;
+  --directive-label: #914a73;
+  --directive-bg: linear-gradient(
+    105deg,
+    color-mix(in srgb, #a45c82, transparent 88%),
+    color-mix(in srgb, #a45c82, transparent 96%) 46%,
+    color-mix(in srgb, var(--surface), transparent 2%) 80%,
+    transparent 100%
+  );
+  border: 0;
+}
+
+:root[data-theme="dark"][data-visual-style="scienfy"] .directive-card.is-rendered:not(.directive-figure),
+:root[data-theme="dark"][data-visual-style="scienfy"] .scie-md-visual-atom-content > .directive-card.is-rendered:not(.directive-figure) {
+  --directive-text: var(--text-strong);
+  --directive-label: color-mix(in srgb, var(--directive-tint), var(--text-strong) 8%);
+  --directive-bg: linear-gradient(
+    105deg,
+    color-mix(in srgb, var(--directive-tint), transparent 86%),
+    color-mix(in srgb, var(--directive-tint), transparent 94%) 46%,
+    color-mix(in srgb, var(--surface), transparent 2%) 80%,
+    transparent 100%
+  );
+  border: 0;
+  box-shadow: none;
+}
+
+:root[data-theme="dark"][data-visual-style="scienfy"] .directive-card.is-rendered.directive-warning,
+:root[data-theme="dark"][data-visual-style="scienfy"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-warning {
+  --directive-accent: #d89368;
+  --directive-tint: #d89368;
+  --directive-label: #e0a47f;
+}
+
+:root[data-theme="dark"][data-visual-style="scienfy"] .directive-card.is-rendered.directive-important,
+:root[data-theme="dark"][data-visual-style="scienfy"] .scie-md-visual-atom-content > .directive-card.is-rendered.directive-important {
+  --directive-accent: #d989ba;
+  --directive-tint: #d989ba;
+  --directive-label: #eba4cf;
+}
+
+/* Visual atoms own their outside rhythm. The rendered HTML fragments inside
+   them must not add a second margin layer, otherwise paragraph/directive gaps
+   collapse unevenly around notes, tips, and important blocks. */
+.visual-editor .ProseMirror > .scie-md-visual-atom {
+  margin-block:
+    calc(var(--document-block-gap) * var(--visual-block-scale) * 0.86);
+}
+
+.visual-editor .ProseMirror > .scie-md-directive-atom {
+  margin-block:
+    calc(var(--document-block-gap) * var(--visual-block-scale) * 0.78);
+}
+
+.visual-editor .ProseMirror > .scie-md-directive-atom .scie-md-visual-atom-content > .directive-card.is-rendered {
+  margin: 0;
+}
+
+.visual-editor .ProseMirror > .scie-md-directive-atom + .scie-md-directive-atom {
+  margin-top:
+    calc(var(--document-block-gap) * var(--visual-block-scale) * 0.56);
+}
+
+:root:is([data-visual-style="scienfy"], [data-visual-style="science"]) .visual-editor .ProseMirror > .scie-md-directive-atom {
+  margin-block:
+    calc(var(--document-block-gap) * var(--visual-block-scale) * 0.82);
+}
+
+:root:is([data-visual-style="scienfy"], [data-visual-style="science"]) .visual-editor .ProseMirror > .scie-md-directive-atom .directive-card.is-rendered.directive-warning,
+:root:is([data-visual-style="scienfy"], [data-visual-style="science"]) .visual-editor .ProseMirror > .scie-md-directive-atom .directive-card.is-rendered.directive-important {
+  padding-block: 0.54em;
+}

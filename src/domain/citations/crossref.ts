@@ -1,4 +1,4 @@
-import type { BibtexEntryDraft } from './bibtex';
+import type { BibtexEntryDraft } from '@sciemd/core';
 
 interface CrossrefPerson {
   given?: string;

@@ -1,7 +1,7 @@
 import { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createReviewPlan } from '../markdown/reviewPlan';
+import { createReviewPlan } from '@sciemd/core';
 import { DiffReviewDialog } from './DiffReviewDialog';
 
 vi.mock('../markdown/htmlExport', () => ({

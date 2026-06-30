@@ -1,4 +1,4 @@
-import type { MarkdownHeading } from '../markdown/outline';
+import type { MarkdownHeading } from '@sciemd/core';
 
 interface QuickOutlineHoverProps {
   headings: MarkdownHeading[];

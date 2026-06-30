@@ -7,16 +7,17 @@ import { Compartment, EditorState, Transaction } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
 import { Decoration, EditorView, hoverTooltip, keymap } from '@codemirror/view';
 import type { AuthorshipMark } from '../markdown/authorship';
-import { fencedCodeRanges, inlineCodeRanges, isOffsetInsideRanges, mergeRanges, scieMdCommentRanges } from '../markdown/markdownRanges';
+import { fencedCodeRanges, inlineCodeRanges, isOffsetInsideRanges, mergeRanges, scieMdCommentRanges } from '@sciemd/core';
 import type { ValidationIssue } from '../markdown/markdownValidation';
-import { changeTouchesProtectedAnchor, changeTouchesProtectedBlockBody, parseProtectedAnchors, parseProtectedBlocks } from '../markdown/protectedBlocks';
-import type { ProtectedAnchor, ProtectedBlock } from '../markdown/protectedBlocks';
-import { quoteAnchorPrefix, quoteAnchorSuffix } from '../markdown/quoteAnchors';
+import { changeTouchesProtectedAnchor, changeTouchesProtectedBlockBody, parseProtectedAnchors, parseProtectedBlocks } from '@sciemd/core';
+import type { ProtectedAnchor, ProtectedBlock } from '@sciemd/core';
+import { quoteAnchorPrefix, quoteAnchorSuffix } from '@sciemd/core';
 import type { EditorHistoryControls } from './editorControls';
 import type { EditorSelectionGetter } from './editorSelection';
-import type { CrossReferenceLabel } from '../domain/references/crossReferenceIndex';
-import type { VariableDefinition } from '../domain/variables/variableIndex';
-import type { BibtexEntry } from '../domain/citations/bibtex';
+import type { CrossReferenceLabel } from '@sciemd/core';
+import type { VariableDefinition } from '@sciemd/core';
+import { extractCitationTokens } from '@sciemd/core';
+import type { BibtexEntry } from '@sciemd/core';
 
 export type SourceMarkdownInsert = (markdown: string) => void;
 export type SourceMarkdownJump = (line: number) => void;
@@ -42,6 +43,7 @@ interface SourceMarkdownEditorProps {
   validationIssues?: ValidationIssue[];
   protectedBlocks?: ProtectedBlock[];
   onLockViolation?: (message: string) => void;
+  readOnly?: boolean;
 }
 
 export interface SourceVariableDecorationRange {
@@ -79,6 +81,7 @@ export function SourceMarkdownEditor({
   validationIssues = [],
   protectedBlocks = [],
   onLockViolation,
+  readOnly = false,
 }: SourceMarkdownEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -98,10 +101,25 @@ export function SourceMarkdownEditor({
   const scientificCompletionCompartmentRef = useRef(new Compartment());
   const citationDecorationCompartmentRef = useRef(new Compartment());
   const variableDecorationCompartmentRef = useRef(new Compartment());
+  const editableCompartmentRef = useRef(new Compartment());
+  const readOnlyCompartmentRef = useRef(new Compartment());
+  const readOnlyRef = useRef(readOnly);
 
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    readOnlyRef.current = readOnly;
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: [
+        editableCompartmentRef.current.reconfigure(EditorView.editable.of(!readOnly)),
+        readOnlyCompartmentRef.current.reconfigure(EditorState.readOnly.of(readOnly)),
+      ],
+    });
+  }, [readOnly]);
 
   useEffect(() => {
     onInsertReadyRef.current = onInsertReady;
@@ -177,6 +195,8 @@ export function SourceMarkdownEditor({
           EditorState.allowMultipleSelections.of(true),
           EditorView.lineWrapping,
           keymap.of([indentWithTab, ...defaultKeymap]),
+          editableCompartmentRef.current.of(EditorView.editable.of(!readOnlyRef.current)),
+          readOnlyCompartmentRef.current.of(EditorState.readOnly.of(readOnlyRef.current)),
           createSourceLockProtectionExtension(
             () => protectedEditBypassRef.current,
             () => protectedBlocksRef.current,
@@ -189,6 +209,7 @@ export function SourceMarkdownEditor({
           variableDecorationCompartmentRef.current.of(createSourceVariableExtension(variableDefinitions, highlightedVariableName)),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
+              if (readOnlyRef.current) return;
               onChangeRef.current(update.state.doc.toString());
             }
             if (update.docChanged || update.selectionSet) {
@@ -212,6 +233,7 @@ export function SourceMarkdownEditor({
     window.addEventListener('resize', scheduleViewportLine);
     scheduleViewportLine();
     onInsertReadyRef.current?.((snippet) => {
+      if (readOnlyRef.current) return;
       const currentView = viewRef.current;
       if (!currentView) return;
       const transaction = buildInsertTransaction(currentView, snippet);
@@ -339,7 +361,7 @@ export function SourceMarkdownEditor({
   }, [highlightedVariableName, variableDefinitions]);
 
   return (
-    <div className="source-editor source-editor-shell">
+    <div className="source-editor source-editor-shell" data-readonly={readOnly ? 'true' : undefined}>
       <div className="source-editor-host" ref={hostRef} />
       <SourceValidationTicks
         markdown={markdown}
@@ -611,26 +633,8 @@ export function createSourceCitationDecorationRanges(
   const entryByKey = new Map(entries.map((entry) => [entry.key, entry]));
   const known = new Set(citationKeys);
   const hasBibliography = citationKeys.length > 0;
-  const ignoredRanges = mergeRanges([
-    ...fencedCodeRanges(markdown),
-    ...inlineCodeRanges(markdown),
-    ...scieMdCommentRanges(markdown),
-  ]);
-  const ranges: SourceCitationDecorationRange[] = [];
-  const bracketPattern = /\[[^\]]*@([A-Za-z0-9_][A-Za-z0-9_:.#$%&+\-?<>~/]*)[^\]]*]/g;
-  let bracketMatch: RegExpExecArray | null;
-
-  while ((bracketMatch = bracketPattern.exec(markdown))) {
-    if (isOffsetInsideRanges(bracketMatch.index, ignoredRanges)) continue;
-    const raw = bracketMatch[0];
-    for (const citationMatch of raw.matchAll(/@([A-Za-z0-9_][A-Za-z0-9_:.#$%&+\-?<>~/]*)/g)) {
-      const localIndex = citationMatch.index ?? 0;
-      const from = bracketMatch.index + localIndex;
-      ranges.push(createCitationDecorationRange(from, from + citationMatch[0].length, citationMatch[1], entryByKey, known, hasBibliography));
-    }
-  }
-
-  return ranges;
+  return extractCitationTokens(markdown, { allowLoose: hasBibliography })
+    .map((token) => createCitationDecorationRange(token.from, token.to, token.key, entryByKey, known, hasBibliography));
 }
 
 export function createSourceVariableDecorationRanges(

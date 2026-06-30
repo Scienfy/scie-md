@@ -1,5 +1,9 @@
 import { readBinaryFileBase64 } from '../services/fileService';
+import { sanitizeHtmlFragment } from '../services/htmlSanitizer';
+import { localImageDisplayUrlToPath } from '../markdown/imagePaths';
 import type { ExportLayoutMetrics } from './exportTypes';
+import { createExportArtifactIssue, EXPORT_ISSUE_ATTRIBUTE, EXPORT_ISSUE_MESSAGE_ATTRIBUTE, EXPORT_ISSUE_SOURCE_ATTRIBUTE } from './exportArtifactIssues';
+import type { ExportArtifactIssue } from './exportArtifactIssues';
 
 const EXPORT_ONLY_REMOVE_SELECTORS = [
   '.save-pill',
@@ -45,6 +49,7 @@ const MAX_CONCURRENT_EXPORT_IMAGE_INLINES = 4;
 export interface CapturedEditorHtml {
   bodyHtml: string;
   warnings: string[];
+  issues: ExportArtifactIssue[];
   isFullVisualFrame: boolean;
   exportLayout?: ExportLayoutMetrics;
 }
@@ -54,6 +59,7 @@ export async function captureEditorHtmlForExport(root: HTMLElement | null): Prom
   if (!frame) return null;
   const clone = frame.cloneNode(true) as HTMLElement;
   const warnings: string[] = [];
+  const issues: ExportArtifactIssue[] = [];
 
   clone.classList.add('export-captured-stage');
   clone.removeAttribute('onkeydown');
@@ -87,11 +93,12 @@ export async function captureEditorHtmlForExport(root: HTMLElement | null): Prom
     element.classList.remove('ProseMirror-selectednode', 'selected', 'is-editing');
   });
 
-  await inlineExportImages(clone, warnings);
+  await inlineExportImages(clone, warnings, issues);
 
   return {
-    bodyHtml: clone.outerHTML,
+    bodyHtml: sanitizeHtmlFragment(clone.outerHTML),
     warnings,
+    issues,
     isFullVisualFrame: true,
     exportLayout: measureExportLayout(frame),
   };
@@ -129,7 +136,7 @@ function resolveVisualFrame(root: HTMLElement | null): HTMLElement | null {
   return null;
 }
 
-async function inlineExportImages(root: HTMLElement, warnings: string[]): Promise<void> {
+async function inlineExportImages(root: HTMLElement, warnings: string[], issues: ExportArtifactIssue[]): Promise<void> {
   const images = Array.from(root.querySelectorAll<HTMLImageElement>('img[src]'));
   await runWithConcurrency(images, MAX_CONCURRENT_EXPORT_IMAGE_INLINES, async (image) => {
     const src = image.getAttribute('src') ?? '';
@@ -143,7 +150,12 @@ async function inlineExportImages(root: HTMLElement, warnings: string[]): Promis
       if (mustEmbedImage(src)) {
         throw new Error(`Could not embed local image "${shortSource(src)}": ${errorMessage(error)}`);
       }
-      warnings.push(`Could not embed remote image "${shortSource(src)}"; the export will keep its URL.`);
+      const issue = createExportArtifactIssue('remote-image-kept', shortSource(src));
+      issues.push(issue);
+      warnings.push(issue.message);
+      image.setAttribute(EXPORT_ISSUE_ATTRIBUTE, issue.code);
+      if (issue.source) image.setAttribute(EXPORT_ISSUE_SOURCE_ATTRIBUTE, issue.source);
+      image.setAttribute(EXPORT_ISSUE_MESSAGE_ATTRIBUTE, issue.message);
     }
   });
 }
@@ -199,12 +211,13 @@ async function fetchImageAsDataUri(src: string): Promise<string> {
 }
 
 function diskPathFromVisualAssetUrl(src: string): string | null {
-  if (/^asset:\/\//i.test(src)) return pathFromUrlPath(src);
+  const localImagePath = localImageDisplayUrlToPath(src);
+  if (localImagePath) return localImagePath;
   if (/^file:\/\//i.test(src)) return pathFromUrlPath(src);
   if (/^https?:\/\//i.test(src)) {
     try {
       const parsed = new URL(src);
-      if (parsed.hostname !== 'asset.localhost' && parsed.hostname !== 'localhost') return null;
+      if (parsed.hostname !== 'scie-md-local-image.localhost') return null;
       if (!parsed.pathname) return null;
       const decoded = decodeURIComponent(parsed.pathname);
       return normalizeDecodedUrlPath(decoded);
