@@ -66,7 +66,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: scie-md-vscode-extension/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            scie-md-vscode-extension/package-lock.json
+
+      - name: Install shared core dependencies
+        run: npm ci --workspace packages/core --include-workspace-root=false
 
       - name: Install extension dependencies
         working-directory: scie-md-vscode-extension
