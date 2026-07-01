@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?scie-md preserve-source?>
+<study xmlns="urn:study" xmlns:lab="urn:lab" id="S-001" lab:phase="coat" xml:lang="en">
+  <title>Ultrasonic spray coating</title>
+  <!-- Keep this reviewer note attached to the following sample. -->
+  <lab:sample status="ready" lab:site="north">
+    <![CDATA[thin <film> sample & raw text]]>
+    AT&amp;T &#956; value
+  </lab:sample>
+  <measurements>
+    <measurement name="thickness" unit="nm">115.5</measurement>
+    <measurement name="roughness" unit="nm">4.2</measurement>
+  </measurements>
+</study>
+

@@ -25,7 +25,10 @@ export function upsertFrontmatterVariable(markdown: string, name: string, value:
   const variables = variableRecord(data.variables);
   variables[name] = value;
   data.variables = variables;
-  return serializeFrontmatter(data, frontmatter.hasFrontmatter ? frontmatter.body : markdown);
+  return serializeFrontmatter(data, frontmatter.hasFrontmatter ? frontmatter.body : markdown, {
+    lineEnding: frontmatter.lineEnding,
+    closingFence: frontmatter.closingFence || '---',
+  });
 }
 
 export function upsertScienfyVariablesFile(markdown: string, filePath: string): string {
@@ -43,7 +46,10 @@ export function upsertScienfyVariablesFile(markdown: string, filePath: string): 
     : {};
   scienfy.variablesFile = Array.from(new Set([...stringList(scienfy.variablesFile), trimmed]));
   data.scienfy = scienfy;
-  return serializeFrontmatter(data, frontmatter.hasFrontmatter ? frontmatter.body : markdown);
+  return serializeFrontmatter(data, frontmatter.hasFrontmatter ? frontmatter.body : markdown, {
+    lineEnding: frontmatter.lineEnding,
+    closingFence: frontmatter.closingFence || '---',
+  });
 }
 
 export function renameVariableAndUpdateUsages(
@@ -66,7 +72,10 @@ export function renameVariableAndUpdateUsages(
   variables[nextName] = value;
   data.variables = variables;
   const body = replaceVariableUsages(frontmatter.hasFrontmatter ? frontmatter.body : markdown, originalName, nextName);
-  return serializeFrontmatter(data, body);
+  return serializeFrontmatter(data, body, {
+    lineEnding: frontmatter.lineEnding,
+    closingFence: frontmatter.closingFence || '---',
+  });
 }
 
 function stringList(value: unknown): string[] {

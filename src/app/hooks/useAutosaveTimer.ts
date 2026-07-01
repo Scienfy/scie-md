@@ -4,7 +4,7 @@ import { AUTOSAVE_DELAY_MS, AUTOSAVE_MAX_WAIT_MS, shouldScheduleAutosave } from 
 
 interface UseAutosaveTimerOptions {
   filePath: string | null;
-  markdown: string;
+  sourceText: string;
   dirty: boolean;
   externalConflict: boolean;
   autosaveBlocked?: boolean;
@@ -14,7 +14,7 @@ interface UseAutosaveTimerOptions {
 
 export function useAutosaveTimer({
   filePath,
-  markdown,
+  sourceText,
   dirty,
   externalConflict,
   autosaveBlocked = false,
@@ -99,7 +99,10 @@ export function useAutosaveTimer({
     }
 
     setAutosaveStatus('pending');
-    if (autosaveBlocked) return;
+    if (autosaveBlocked) {
+      setAutosaveStatus('paused');
+      return;
+    }
 
     const now = Date.now();
     firstPendingAtRef.current ??= now;
@@ -134,7 +137,7 @@ export function useAutosaveTimer({
     scheduleAutosave();
 
     return cancelAutosave;
-  }, [cancelAutosave, markdown, scheduleAutosave]);
+  }, [cancelAutosave, scheduleAutosave, sourceText]);
 
   return { cancelAutosave, flushAutosave, resumeAutosave };
 }

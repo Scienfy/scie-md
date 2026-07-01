@@ -1,7 +1,8 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
+import { releaseSizeBudgets, formatBytes } from './release-budgets.mjs';
 
 const root = process.cwd();
 const extensionRoot = resolve(root, 'scie-md-vscode-extension');
@@ -9,7 +10,6 @@ const extensionPackage = JSON.parse(readFileSync(join(extensionRoot, 'package.js
 const expectedVsix = resolve(extensionRoot, `${extensionPackage.name}-${extensionPackage.version}.vsix`);
 const vsixPath = resolve(process.argv[2] ?? expectedVsix);
 const failures = [];
-
 if (!existsSync(vsixPath)) {
   fail(`Missing VSIX package: ${vsixPath}`);
 }
@@ -46,6 +46,11 @@ try {
   expectManifestVersion(manifest);
   expectNoLocalDependencies(manifest, manifestPath);
   expectNoTauriDependencies(manifest, manifestPath);
+  expectStructuredAssociationPolicy(manifest, manifestPath);
+  expectStructuredPreviewBudgetPolicy(manifestPath);
+  expectFileSizeAtMost(vsixPath, 'VSIX package', releaseSizeBudgets.vsixBytes);
+  expectDirectoryJavaScriptBudget(join(unpacked, 'extension', 'dist', 'extension'), 'extension host JavaScript', releaseSizeBudgets.extensionHostJsBytes);
+  expectDirectoryJavaScriptBudget(join(unpacked, 'extension', 'dist', 'webview'), 'webview JavaScript', releaseSizeBudgets.extensionWebviewJsBytes);
   for (const bundlePath of listPackagedJavaScriptBundles(join(unpacked, 'extension', 'dist'))) {
     expectBundleClean(bundlePath, bundlePath.replace(`${unpacked}\\`, '').replace(`${unpacked}/`, ''));
   }
@@ -121,6 +126,79 @@ function expectNoTauriDependencies(manifest, label) {
     if (Object.hasOwn(dependencies, '@tauri-apps/api')) {
       failures.push(`${label} has desktop-only ${dependencyField} entry @tauri-apps/api.`);
     }
+  }
+}
+
+function expectStructuredAssociationPolicy(manifest, label) {
+  const genericStructuredPatterns = ['*.json', '*.jsonl', '*.ndjson', '*.yaml', '*.yml', '*.toml', '*.xml', '*.csv', '*.tsv'];
+  const customEditorPatterns = (manifest.contributes?.customEditors ?? []).flatMap((editor) => (
+    (editor.selector ?? []).map((selector) => selector.filenamePattern)
+  ));
+  const editorAssociations = manifest.contributes?.configurationDefaults?.['workbench.editorAssociations'] ?? {};
+  for (const pattern of genericStructuredPatterns) {
+    if (customEditorPatterns.includes(pattern)) {
+      failures.push(`${label} claims ${pattern} as a custom editor association.`);
+    }
+    if (Object.hasOwn(editorAssociations, pattern)) {
+      failures.push(`${label} sets a default editor association for ${pattern}.`);
+    }
+  }
+
+  const settings = manifest.contributes?.configuration?.properties ?? {};
+  if (settings['scieMd.structured.enableJsonActions']?.default !== false) {
+    failures.push(`${label} must keep scieMd.structured.enableJsonActions defaulted to false.`);
+  }
+  if (settings['scieMd.structured.enablePreviewAssociations']?.default !== false) {
+    failures.push(`${label} must keep scieMd.structured.enablePreviewAssociations defaulted to false.`);
+  }
+
+  const menus = manifest.contributes?.menus ?? {};
+  const structuredEditMenus = [
+    ...(menus.commandPalette ?? []),
+    ...(menus['editor/title/context'] ?? []),
+    ...(menus['editor/title'] ?? []),
+    ...(menus['explorer/context'] ?? []),
+  ].filter((item) => item.command === 'scieMd.applyStructuredClipboardToJson');
+  for (const item of structuredEditMenus) {
+    const when = String(item.when ?? '');
+    if (!when.includes('config.scieMd.structured.enableJsonActions')) {
+      failures.push(`${label} exposes scieMd.applyStructuredClipboardToJson without the enableJsonActions setting gate.`);
+    }
+    if (when.includes('resourceExtname == .yaml') || when.includes('resourceExtname == .yml') || when.includes('resourceExtname == .toml')) {
+      failures.push(`${label} exposes scieMd.applyStructuredClipboardToJson for YAML/TOML, which must remain preview-only.`);
+    }
+  }
+}
+
+function expectStructuredPreviewBudgetPolicy(label) {
+  const hostSource = readFileSync(join(extensionRoot, 'src', 'extension', 'StructuredPreviewPanel.ts'), 'utf8');
+  const webviewSource = readFileSync(join(extensionRoot, 'src', 'webview', 'StructuredPreview.tsx'), 'utf8');
+  if (!hostSource.includes('VSCODE_STRUCTURED_PREVIEW_SOURCE_EXCERPT_BYTES')) {
+    failures.push(`${label} does not define an explicit VS Code structured preview source excerpt budget.`);
+  }
+  if (!hostSource.includes('formatParseBudgetBytes')) {
+    failures.push(`${label} does not tie VS Code structured preview excerpts to shared parse budgets.`);
+  }
+  if (!hostSource.includes('sourceTextTruncated') || !hostSource.includes('sourceTotalBytes') || !hostSource.includes('sourceLimitBytes')) {
+    failures.push(`${label} does not post structured preview source-excerpt metadata to the webview.`);
+  }
+  if (!webviewSource.includes('sourceTextTruncated') || !webviewSource.includes('source-excerpt')) {
+    failures.push(`${label} webview does not handle structured preview source excerpts as source-only previews.`);
+  }
+}
+
+function expectFileSizeAtMost(filePath, label, maxBytes) {
+  const size = statSync(filePath).size;
+  if (size > maxBytes) {
+    failures.push(`${label} is ${formatBytes(size)}, above budget ${formatBytes(maxBytes)}.`);
+  }
+}
+
+function expectDirectoryJavaScriptBudget(directory, label, maxBytes) {
+  const totalBytes = listPackagedJavaScriptBundles(directory)
+    .reduce((total, filePath) => total + statSync(filePath).size, 0);
+  if (totalBytes > maxBytes) {
+    failures.push(`${label} totals ${formatBytes(totalBytes)}, above budget ${formatBytes(maxBytes)}.`);
   }
 }
 

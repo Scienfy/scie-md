@@ -206,7 +206,7 @@ If you downloaded a `.vsix` file manually:
 Command-line installation:
 
 ```bash
-code --install-extension sciemd-vscode-1.0.12.vsix --force
+code --install-extension sciemd-vscode-1.1.0.vsix --force
 ```
 
 ## Who This Is For
@@ -228,6 +228,8 @@ source files matter.
 Implemented in this VS Code extension:
 
 - Custom editor for `.md`, `.scie.md`, and `.sciemd.md`.
+- Command-based structured previews for JSON, JSONL/NDJSON, YAML, TOML, and XML
+  without replacing VS Code's default structured-data editors.
 - Real ScieMD visual editor using Milkdown/ProseMirror.
 - Source mode using CodeMirror.
 - Visual style selector.
@@ -281,4 +283,4 @@ npm run build
 npm run package
 ```
 
-The package command creates `sciemd-vscode-1.0.12.vsix` in this folder.
+The package command creates `sciemd-vscode-1.1.0.vsix` in this folder.

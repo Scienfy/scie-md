@@ -1,0 +1,19 @@
+matrix:
+  rows:
+    - [1, 2, 3]
+    - [4, 5, 6]
+  metadata: { unit: cps, normalized: true }
+
+nested:
+  - stage: preheat
+    params:
+      temperature_c: 80
+      duration_min: 10
+  - stage: coat
+    params:
+      passes:
+        - speed_mm_s: 30
+          nozzle_height_mm: 45
+        - speed_mm_s: 35
+          nozzle_height_mm: 42
+

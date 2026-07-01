@@ -2,40 +2,74 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const nativeRecovery = vi.hoisted(() => ({
   snapshot: null as null | {
+    schemaVersion?: number;
     markdown: string;
     filePath: string | null;
+    format?: string;
     updatedAtMs: number;
     markdownBytes: number;
   },
+  snapshots: new Map<string, {
+    schemaVersion?: number;
+    markdown: string;
+    filePath: string | null;
+    format?: string;
+    updatedAtMs: number;
+    markdownBytes: number;
+  }>(),
+  latestKey: null as string | null,
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(async (command: string, args?: { payload?: { markdown: string; filePath: string | null; updatedAtMs: number } }) => {
+  invoke: vi.fn(async (
+    command: string,
+    args?: {
+      payload?: { schemaVersion?: number; markdown: string; filePath: string | null; format?: string; updatedAtMs: number };
+      filePath?: string | null;
+      latest?: boolean;
+    },
+  ) => {
     if (command === 'write_recovery_snapshot') {
       const payload = args?.payload;
       if (!payload) throw new Error('missing recovery payload');
-      nativeRecovery.snapshot = {
+      const snapshot = {
+        schemaVersion: payload.schemaVersion,
         markdown: payload.markdown,
         filePath: payload.filePath,
+        format: payload.format,
         updatedAtMs: payload.updatedAtMs,
         markdownBytes: payload.markdown.length,
       };
+      const key = recoveryKey(payload.filePath);
+      nativeRecovery.snapshots.set(key, snapshot);
+      nativeRecovery.latestKey = key;
+      nativeRecovery.snapshot = snapshot;
       return {
         updatedAtMs: payload.updatedAtMs,
         markdownBytes: payload.markdown.length,
-        path: 'C:\\Users\\amin_\\AppData\\Roaming\\ScieMD\\diagnostics\\latest-recovery-snapshot.json',
+        path: `C:\\Users\\amin_\\AppData\\Roaming\\ScieMD\\diagnostics\\recovery-snapshots\\${key}.json`,
       };
     }
     if (command === 'read_recovery_snapshot') {
-      return nativeRecovery.snapshot;
+      if (args?.latest) return nativeRecovery.snapshot;
+      return nativeRecovery.snapshots.get(recoveryKey(args?.filePath ?? null)) ?? null;
     }
     if (command === 'clear_recovery_snapshot') {
-      nativeRecovery.snapshot = null;
+      const key = args?.latest ? nativeRecovery.latestKey : recoveryKey(args?.filePath ?? null);
+      if (key) nativeRecovery.snapshots.delete(key);
+      if (key && nativeRecovery.latestKey === key) {
+        nativeRecovery.latestKey = null;
+        nativeRecovery.snapshot = null;
+      }
       return undefined;
     }
     throw new Error(`unexpected invoke: ${command}`);
   }),
 }));
+
+function recoveryKey(filePath: string | null): string {
+  return filePath ? filePath.replace(/\\/g, '/').toLowerCase() : 'untitled';
+}
 
 import {
   clearFileDraft,
@@ -66,6 +100,8 @@ describe('draftRecoveryService', () => {
     localStorage.clear();
     resetDraftRecoveryForTests();
     nativeRecovery.snapshot = null;
+    nativeRecovery.snapshots.clear();
+    nativeRecovery.latestKey = null;
     originalIndexedDb = globalThis.indexedDB;
     delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   });
@@ -80,7 +116,27 @@ describe('draftRecoveryService', () => {
   it('stores and restores an untitled draft', () => {
     saveUntitledDraft('# Draft\n', 1000);
 
-    expect(loadUntitledDraft(1500)).toEqual({ markdown: '# Draft\n', savedAt: 1000 });
+    expect(loadUntitledDraft(1500)).toEqual({ markdown: '# Draft\n', savedAt: 1000, format: 'markdown' });
+  });
+
+  it('restores legacy untitled draft payloads without a format as Markdown', () => {
+    localStorage.setItem('scie_md.untitledDraft.v1', JSON.stringify({ markdown: '# Legacy\n', savedAt: 1000 }));
+
+    expect(loadUntitledDraft(1500)).toEqual({ markdown: '# Legacy\n', savedAt: 1000, format: 'markdown' });
+  });
+
+  it('restores untitled draft payloads that use sourceText as the canonical text field', () => {
+    localStorage.setItem('scie_md.untitledDraft.v1', JSON.stringify({
+      sourceText: '{"draft":true}\n',
+      savedAt: 1000,
+      format: 'json',
+    }));
+
+    expect(loadUntitledDraft(1500)).toEqual({
+      markdown: '{"draft":true}\n',
+      savedAt: 1000,
+      format: 'json',
+    });
   });
 
   it('drops stale drafts', () => {
@@ -99,7 +155,35 @@ describe('draftRecoveryService', () => {
   it('stores and restores file-specific drafts', () => {
     saveFileDraft('C:\\docs\\paper.md', '# Edited\n', 1000);
 
-    expect(loadFileDraft('c:/docs/paper.md', 1500)).toEqual({ markdown: '# Edited\n', savedAt: 1000 });
+    expect(loadFileDraft('c:/docs/paper.md', 1500)).toEqual({ markdown: '# Edited\n', savedAt: 1000, format: 'markdown' });
+  });
+
+  it('infers JSON format for legacy file drafts without a stored format', () => {
+    saveFileDraft('C:\\docs\\results.json', '{"draft":true}\n', 1000);
+    const draftKey = Object.keys(localStorage).find((key) => key.startsWith('scie_md.fileDraft.v2.sha256.'));
+    expect(draftKey).toBeTruthy();
+    localStorage.setItem(draftKey!, JSON.stringify({ markdown: '{"draft":true}\n', savedAt: 1000 }));
+    resetDraftRecoveryForTests();
+
+    expect(loadFileDraft('C:\\docs\\results.json', 1500)).toEqual({
+      markdown: '{"draft":true}\n',
+      savedAt: 1000,
+      format: 'json',
+    });
+  });
+
+  it('restores file draft payloads that use sourceText while preserving format inference', () => {
+    saveFileDraft('C:\\docs\\config.yaml', 'old: true\n', 1000);
+    const draftKey = Object.keys(localStorage).find((key) => key.startsWith('scie_md.fileDraft.v2.sha256.'));
+    expect(draftKey).toBeTruthy();
+    localStorage.setItem(draftKey!, JSON.stringify({ sourceText: 'ok: true\n', savedAt: 2000 }));
+    resetDraftRecoveryForTests();
+
+    expect(loadFileDraft('C:\\docs\\config.yaml', 2500)).toEqual({
+      markdown: 'ok: true\n',
+      savedAt: 2000,
+      format: 'yaml',
+    });
   });
 
   it('stores file draft base metadata so restore decisions do not rely only on clock ordering', () => {
@@ -109,10 +193,27 @@ describe('draftRecoveryService', () => {
     expect(loadFileDraft('C:\\docs\\paper.md', 1500)).toEqual({
       markdown: '# Edited\n',
       savedAt: 1000,
+      format: 'markdown' as const,
       baseMetadata: {
         lastKnownMtimeMs: 900,
         lastKnownSizeBytes: 12,
         contentHash: 'abc',
+      },
+    });
+  });
+
+  it('restores JSON file drafts preserved during source conflicts with their format', () => {
+    const metadata = fileMetadata({ lastKnownMtimeMs: 1200, lastKnownSizeBytes: 14, contentHash: 'json-base' });
+    saveFileDraft('C:\\docs\\conflict.json', '{"local":true}\n', 2000, metadata, 'json');
+
+    expect(loadFileDraft('C:\\docs\\conflict.json', 2500)).toEqual({
+      markdown: '{"local":true}\n',
+      savedAt: 2000,
+      format: 'json',
+      baseMetadata: {
+        lastKnownMtimeMs: 1200,
+        lastKnownSizeBytes: 14,
+        contentHash: 'json-base',
       },
     });
   });
@@ -137,6 +238,7 @@ describe('draftRecoveryService', () => {
       expect(loadFileDraft('c:/docs/quota.md', 1500)).toEqual({
         markdown: '# Edited despite quota\n',
         savedAt: 1000,
+        format: 'markdown',
       });
     } finally {
       Storage.prototype.setItem = originalSetItem;
@@ -172,7 +274,7 @@ describe('draftRecoveryService', () => {
     saveFileDraft('/tmp/Paper.md', '# Upper\n', 1000);
 
     expect(loadFileDraft('/tmp/paper.md', 1500)).toBeNull();
-    expect(loadFileDraft('/tmp/Paper.md', 1500)).toEqual({ markdown: '# Upper\n', savedAt: 1000 });
+    expect(loadFileDraft('/tmp/Paper.md', 1500)).toEqual({ markdown: '# Upper\n', savedAt: 1000, format: 'markdown' });
   });
 
   it('prunes older file-specific drafts so local recovery storage cannot grow without bound', () => {
@@ -201,6 +303,7 @@ describe('draftRecoveryService', () => {
     const draft = {
       markdown: '# Edited\n',
       savedAt: 1000,
+      format: 'markdown' as const,
       baseMetadata: {
         lastKnownMtimeMs: 500,
         lastKnownSizeBytes: 10,
@@ -210,7 +313,7 @@ describe('draftRecoveryService', () => {
 
     expect(shouldOfferFileDraftRestore(draft, fileMetadata({ lastKnownMtimeMs: 1500, lastKnownSizeBytes: 20, contentHash: 'base' }))).toBe(true);
     expect(shouldOfferFileDraftRestore(draft, fileMetadata({ lastKnownMtimeMs: 1500, lastKnownSizeBytes: 20, contentHash: 'changed' }))).toBe(false);
-    expect(shouldOfferFileDraftRestore({ markdown: '# Edited\n', savedAt: 3000 }, fileMetadata({ lastKnownMtimeMs: 1000 }))).toBe(true);
+    expect(shouldOfferFileDraftRestore({ markdown: '# Edited\n', savedAt: 3000, format: 'markdown' }, fileMetadata({ lastKnownMtimeMs: 1000 }))).toBe(true);
   });
 
   it('does not persist the unchanged bundled tutorial', () => {
@@ -243,6 +346,7 @@ describe('draftRecoveryService', () => {
     expect(await loadFileDraftAsync('C:\\docs\\paper.md', 3000)).toEqual({
       markdown: secondLargeDraft,
       savedAt: 2000,
+      format: 'markdown',
     });
   });
 
@@ -263,6 +367,7 @@ describe('draftRecoveryService', () => {
     expect(await loadFileDraftAsync('C:\\docs\\blocked-db.md', 1500)).toEqual({
       markdown: largeDraft,
       savedAt: 1000,
+      format: 'markdown',
     });
   });
 
@@ -276,12 +381,64 @@ describe('draftRecoveryService', () => {
 
     expect(nativeRecovery.snapshot).toMatchObject({
       filePath: 'C:\\docs\\native.md',
+      format: 'markdown',
+      schemaVersion: 2,
       updatedAtMs: 2000,
       markdownBytes: largeDraft.length,
     });
     expect(await loadFileDraftAsync('c:/docs/native.md', 2500)).toEqual({
       markdown: largeDraft,
       savedAt: 2000,
+      format: 'markdown',
+    });
+  });
+
+  it('writes and restores JSON format in desktop-native file drafts', async () => {
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+    const jsonDraft = '{"draft":true}\n';
+
+    await saveFileDraftAsync('C:\\docs\\results.json', jsonDraft, 2200, fileMetadata({ lastKnownMtimeMs: 2000 }));
+    localStorage.clear();
+    resetDraftRecoveryForTests();
+
+    expect(nativeRecovery.snapshot).toMatchObject({
+      schemaVersion: 2,
+      filePath: 'C:\\docs\\results.json',
+      format: 'json',
+      updatedAtMs: 2200,
+    });
+    expect(await loadFileDraftAsync('C:\\docs\\results.json', 2500)).toEqual({
+      markdown: jsonDraft,
+      savedAt: 2200,
+      format: 'json',
+    });
+  });
+
+  it('keeps desktop-native file drafts keyed by document path', async () => {
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+
+    await saveFileDraftAsync('C:\\docs\\first.json', '{"first":true}\n', 3000, fileMetadata({ lastKnownMtimeMs: 2500 }), 'json');
+    await saveFileDraftAsync('C:\\docs\\second.yaml', 'second: true\n', 3100, fileMetadata({ lastKnownMtimeMs: 2600 }), 'yaml');
+    localStorage.clear();
+    resetDraftRecoveryForTests();
+
+    expect(await loadFileDraftAsync('C:\\docs\\first.json', 3500)).toEqual({
+      markdown: '{"first":true}\n',
+      savedAt: 3000,
+      format: 'json',
+    });
+    expect(await loadFileDraftAsync('C:\\docs\\second.yaml', 3500)).toEqual({
+      markdown: 'second: true\n',
+      savedAt: 3100,
+      format: 'yaml',
+    });
+
+    await clearFileDraftAsync('C:\\docs\\first.json');
+    expect(await loadFileDraftAsync('C:\\docs\\first.json', 3500)).toBeNull();
+    expect(await loadFileDraftAsync('C:\\docs\\second.yaml', 3500)).toEqual({
+      markdown: 'second: true\n',
+      savedAt: 3100,
+      format: 'yaml',
     });
   });
 
@@ -295,6 +452,7 @@ describe('draftRecoveryService', () => {
     expect(await loadUntitledDraftAsync(3500)).toEqual({
       markdown: '# Untitled native draft\n',
       savedAt: 3000,
+      format: 'markdown',
     });
 
     await clearUntitledDraftAsync();

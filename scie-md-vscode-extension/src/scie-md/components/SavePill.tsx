@@ -11,7 +11,7 @@ export function SavePill({ status, text, queueDepth = 0 }: SavePillProps) {
   const [visible, setVisible] = useState(false);
   const previousStatusRef = useRef(status);
   useEffect(() => {
-    const active = queueDepth > 0 || status === 'pending' || status === 'saving' || status === 'conflict';
+    const active = queueDepth > 0 || status === 'pending' || status === 'paused' || status === 'saving' || status === 'conflict';
     const justSaved = status === 'saved' && previousStatusRef.current !== 'saved';
     previousStatusRef.current = status;
 

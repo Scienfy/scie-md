@@ -8,8 +8,10 @@ import type { RecentFilePreview } from '../../markdown/documentIntelligence';
 import type { PersistedSettings, SidebarView, ThemeMode } from '../../services/settingsService';
 import type { VisualStyleId } from '../../services/visualStyleService';
 import type { PandocExportFormat } from '../../export/exportTypes';
+import type { FormatUiCapabilities } from '../formatCapabilities';
 
 interface UseAppCommandsArgs {
+  formatCapabilities: FormatUiCapabilities;
   settings: Pick<PersistedSettings, 'outlineOpen' | 'focusMode' | 'themeMode' | 'exportOptions'>;
   currentVisualStyleLabel: string;
   pasteReviewHunks: number | null;
@@ -19,6 +21,9 @@ interface UseAppCommandsArgs {
   citationEntries: BibtexEntry[];
   missingCitationCount: number;
   missingVariableCount: number;
+  structuredContextAvailable?: boolean;
+  structuredTableSampleAvailable?: boolean;
+  structuredPasteBackValidationAvailable?: boolean;
   onNew: () => void;
   onOpen: () => void;
   onOpenFolder: () => void;
@@ -50,6 +55,14 @@ interface UseAppCommandsArgs {
   onGenerateSubmissionReadiness: () => void;
   onCopyScieMDLlmSkill: () => void;
   onGenerateScieMDLlmSkill: () => void;
+  onCopyStructuredContext: () => void;
+  onCopySelectedStructureContext: () => void;
+  onCopyParserDiagnostics: () => void;
+  onCopyStructuredSchemaSummary: () => void;
+  onCopyStructuredTableSample: () => void;
+  onCopyStructuredHealthReport: () => void;
+  onCopyRedactedStructuredPreview: () => void;
+  onValidateStructuredClipboard: () => void;
   onCopyRichText: () => void;
   onRunConfiguredExport: (format: PandocExportFormat | 'html', options: PersistedSettings['exportOptions']) => void;
   onPrintPreview: () => void;
@@ -70,6 +83,7 @@ interface UseAppCommandsArgs {
 }
 
 export function useAppCommands({
+  formatCapabilities,
   settings,
   currentVisualStyleLabel,
   pasteReviewHunks,
@@ -79,6 +93,9 @@ export function useAppCommands({
   citationEntries,
   missingCitationCount,
   missingVariableCount,
+  structuredContextAvailable,
+  structuredTableSampleAvailable,
+  structuredPasteBackValidationAvailable,
   onNew,
   onOpen,
   onOpenFolder,
@@ -110,6 +127,14 @@ export function useAppCommands({
   onGenerateSubmissionReadiness,
   onCopyScieMDLlmSkill,
   onGenerateScieMDLlmSkill,
+  onCopyStructuredContext,
+  onCopySelectedStructureContext,
+  onCopyParserDiagnostics,
+  onCopyStructuredSchemaSummary,
+  onCopyStructuredTableSample,
+  onCopyStructuredHealthReport,
+  onCopyRedactedStructuredPreview,
+  onValidateStructuredClipboard,
   onCopyRichText,
   onRunConfiguredExport,
   onPrintPreview,
@@ -129,6 +154,7 @@ export function useAppCommands({
   onNewFromTemplate,
 }: UseAppCommandsArgs) {
   const commands = useAppCommandRegistry({
+    formatCapabilities,
     outlineOpen: settings.outlineOpen,
     focusMode: settings.focusMode,
     themeMode: settings.themeMode as ThemeMode,
@@ -136,6 +162,9 @@ export function useAppCommands({
     pasteReviewHunks,
     recentPreviews,
     headings,
+    structuredContextAvailable,
+    structuredTableSampleAvailable,
+    structuredPasteBackValidationAvailable,
     onNew,
     onOpen,
     onOpenFolder,
@@ -167,6 +196,14 @@ export function useAppCommands({
     onGenerateSubmissionReadiness,
     onCopyScieMDLlmSkill,
     onGenerateScieMDLlmSkill,
+    onCopyStructuredContext,
+    onCopySelectedStructureContext,
+    onCopyParserDiagnostics,
+    onCopyStructuredSchemaSummary,
+    onCopyStructuredTableSample,
+    onCopyStructuredHealthReport,
+    onCopyRedactedStructuredPreview,
+    onValidateStructuredClipboard,
     onCopyRichText,
     onExportHtml: () => onRunConfiguredExport('html', settings.exportOptions),
     onExportPandoc: (format) => onRunConfiguredExport(format, settings.exportOptions),
@@ -194,7 +231,7 @@ export function useAppCommands({
 
   const dynamicCommands = useCallback((query: string): CommandItem[] => {
     const trimmed = query.trim();
-    if (trimmed.startsWith('@')) {
+    if (formatCapabilities.canUseCitations && trimmed.startsWith('@')) {
       const needle = trimmed.slice(1).toLowerCase();
       const entryByKey = new Map(citationEntries.map((entry) => [entry.key, entry]));
       return citationCompletionKeys
@@ -207,7 +244,7 @@ export function useAppCommands({
           run: () => onInsertMarkdown(`[@${key}]`),
         }));
     }
-    if (trimmed.startsWith('#')) {
+    if (formatCapabilities.canUseManuscriptReadiness && trimmed.startsWith('#')) {
       const needle = trimmed.slice(1).trim().toLowerCase();
       return headings
         .filter((heading) => !needle || heading.text.toLowerCase().includes(needle))
@@ -220,7 +257,7 @@ export function useAppCommands({
         }));
     }
     return [];
-  }, [citationCompletionKeys, citationEntries, headings, onInsertMarkdown, onJumpToHeading]);
+  }, [citationCompletionKeys, citationEntries, formatCapabilities, headings, onInsertMarkdown, onJumpToHeading]);
 
   return { commands, dynamicCommands };
 }

@@ -168,6 +168,9 @@ function safeParseFrontmatter(markdown: string): FrontmatterParseResult {
       endLine: 1,
       openingFence: '',
       closingFence: '',
+      lineEnding: '\n',
+      sourcePrefix: '',
+      bodyStartOffset: 0,
     };
   }
 }

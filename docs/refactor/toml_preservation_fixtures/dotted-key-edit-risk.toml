@@ -1,0 +1,10 @@
+# Dotted key edit-risk fixture
+
+owner.name = "Ada"
+owner.contact.email = "owner@example.test"
+owner.contact.phone = "+1-555-0100"
+
+[owner.preferences]
+theme = "light"
+density = "compact"
+

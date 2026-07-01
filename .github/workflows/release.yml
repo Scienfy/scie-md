@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to build and publish, for example v1.0.12'
+        description: 'Release tag to build and publish, for example v1.1.0'
         required: true
         type: string
 
@@ -213,18 +213,21 @@ jobs:
       - name: Create release notes
         run: |
           cat > RELEASE_NOTES.md <<'NOTES'
-          ScieMD desktop preview build with Linux installer support.
+          ScieMD 1.1.0 structured data preview.
 
           Highlights:
-          - Adds GitHub Actions Linux packaging for `.AppImage` and `.deb` assets.
-          - Keeps Windows, macOS, Linux, and VS Code extension packages built from the tagged source release.
-          - Publishes separate SHA-256 checksum manifests for each desktop platform.
+          - Adds structured document support alongside Markdown for JSON, JSONL/NDJSON, YAML, TOML, XML, CSV/TSV, and plain text.
+          - Adds visual structured views for JSON trees, JSON object-array tables, JSONL records, tabular data, health diagnostics, schema-aware JSON checks, and read-only YAML/TOML/XML previews.
+          - Adds guarded visual editing for JSON, JSONL, CSV, and TSV with validation, review, and stale-source checks.
+          - Adds Windows Open With / Default Apps registration for supported non-CSV structured formats; CSV remains Excel-friendly at the OS level while still opening inside ScieMD.
+          - Adds command-based structured preview support in the VS Code extension without hijacking VS Code's default structured-data editors.
 
           Download the installer for your operating system from the assets below.
 
           Windows:
           - Use `ScieMD_*_x64-setup.exe` for normal installation.
           - Use the `.msi` only if your environment requires MSI installers.
+          - During interactive setup, ScieMD can open Windows Default Apps so you can approve ScieMD for supported file types.
 
           Linux:
           - Use `ScieMD_*_amd64.AppImage` for a portable Linux build.

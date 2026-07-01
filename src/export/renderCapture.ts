@@ -17,6 +17,8 @@ const EXPORT_ONLY_REMOVE_SELECTORS = [
   '.floating-format-toolbar',
   '.visual-annotation-overlay',
   '.editor-context-menu',
+  '.context-menu-root',
+  '.context-menu-card',
   '.scie-md-visual-atom-controls',
   '.scie-md-visual-atom-actions',
   '.scie-md-note-actions',

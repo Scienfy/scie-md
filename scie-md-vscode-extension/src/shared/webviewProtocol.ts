@@ -1,11 +1,17 @@
+import type { DocumentFormat } from '@sciemd/core/formats/documentFormat';
+
 export interface ScieMDDocumentSnapshot {
   uri: string;
   fileName: string;
+  format?: DocumentFormat;
   text: string;
   version: number;
   isDirty: boolean;
   isReadonly?: boolean;
   readonlyReason?: string;
+  sourceTextTruncated?: boolean;
+  sourceTotalBytes?: number;
+  sourceLimitBytes?: number;
 }
 
 export type DocumentUpdateReason = 'initial' | 'changed' | 'saved';

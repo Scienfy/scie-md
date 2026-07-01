@@ -1,0 +1,6 @@
+[note]
+summary = """Line one
+Line two
+Line three"""
+literal = '''Do not\nescape'''
+

@@ -24,6 +24,7 @@ export interface InspectorPaneData {
   authorshipVisible: boolean;
   missingImageCount: number;
   autosaveStatus: AutosaveStatus;
+  autosavePauseReason?: string | null;
   protectedBlocks: ProtectedBlock[];
   editorComments: EditorComment[];
   targetedInstructions: TargetedInstruction[];
@@ -354,7 +355,14 @@ function MetadataPanel({ data, actions }: { data: InspectorPaneData; actions: In
       <dl className="metadata-list">
         <div><dt>Path</dt><dd title={data.filePath ?? 'Untitled'}>{data.filePath ?? 'Untitled'}</dd></div>
         <div><dt>Mode</dt><dd>{data.mode}</dd></div>
-        <div><dt>Save</dt><dd>{data.autosaveStatus}</dd></div>
+        <div>
+          <dt>Save</dt>
+          <dd title={data.autosavePauseReason ?? data.autosaveStatus}>
+            {data.autosaveStatus === 'paused' && data.autosavePauseReason
+              ? data.autosavePauseReason
+              : data.autosaveStatus}
+          </dd>
+        </div>
         <div><dt>Type</dt><dd>{data.documentType.replace('-', ' ')}</dd></div>
         <div><dt>Style</dt><dd>{data.visualStyleLabel}</dd></div>
         <div><dt>Line endings</dt><dd>{data.metadata.hasMixedLineEndings ? 'mixed' : data.metadata.lineEnding}{data.metadata.hasBom ? ' + BOM' : ''}</dd></div>

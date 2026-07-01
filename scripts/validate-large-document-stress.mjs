@@ -26,6 +26,7 @@ console.log(JSON.stringify({
   sections: options.sections,
   exportSections: options.exportSections,
   visualImages: options.visualImages,
+  structuredRecords: options.structuredRecords,
   timeoutMs: options.timeoutMs,
   reportPath,
 }, null, 2));
@@ -46,6 +47,7 @@ const result = spawnSync(process.execPath, [
     SCIEMD_LARGE_DOCUMENT_STRESS_SECTIONS: String(options.sections),
     SCIEMD_LARGE_DOCUMENT_STRESS_EXPORT_SECTIONS: String(options.exportSections),
     SCIEMD_LARGE_DOCUMENT_STRESS_VISUAL_IMAGES: String(options.visualImages),
+    SCIEMD_LARGE_DOCUMENT_STRESS_STRUCTURED_RECORDS: String(options.structuredRecords),
     SCIEMD_LARGE_DOCUMENT_STRESS_TIMEOUT_MS: String(options.timeoutMs),
     SCIEMD_LARGE_DOCUMENT_STRESS_REPORT: reportPath,
   },
@@ -80,6 +82,7 @@ function parseArgs(args) {
     sections: readPositiveIntegerEnv('SCIEMD_LARGE_DOCUMENT_STRESS_SECTIONS', 900),
     exportSections: readPositiveIntegerEnv('SCIEMD_LARGE_DOCUMENT_STRESS_EXPORT_SECTIONS', 180),
     visualImages: readPositiveIntegerEnv('SCIEMD_LARGE_DOCUMENT_STRESS_VISUAL_IMAGES', 48),
+    structuredRecords: readPositiveIntegerEnv('SCIEMD_LARGE_DOCUMENT_STRESS_STRUCTURED_RECORDS', 3200),
     timeoutMs: readPositiveIntegerEnv('SCIEMD_LARGE_DOCUMENT_STRESS_TIMEOUT_MS', 60_000),
     reportPath: process.env.SCIEMD_LARGE_DOCUMENT_STRESS_REPORT ?? null,
     help: false,
@@ -91,6 +94,7 @@ function parseArgs(args) {
     else if (arg === '--sections') parsed.sections = parsePositiveInteger(args[++index], 'sections');
     else if (arg === '--export-sections') parsed.exportSections = parsePositiveInteger(args[++index], 'export-sections');
     else if (arg === '--visual-images') parsed.visualImages = parsePositiveInteger(args[++index], 'visual-images');
+    else if (arg === '--structured-records') parsed.structuredRecords = parsePositiveInteger(args[++index], 'structured-records');
     else if (arg === '--timeout-ms') parsed.timeoutMs = parsePositiveInteger(args[++index], 'timeout-ms');
     else if (arg === '--report') parsed.reportPath = args[++index] ?? '';
     else throw new Error(`Unknown argument: ${arg}`);
@@ -111,6 +115,7 @@ Options:
   --sections <count>         Parser/diagnostics fixture size. Default: 900.
   --export-sections <count>  HTML export fixture size. Default: 180.
   --visual-images <count>    Visual export capture image count. Default: 48.
+  --structured-records <n>   Structured JSON/JSONL/CSV fixture size. Default: 3200.
   --timeout-ms <ms>          Vitest test/hook timeout. Default: 60000.
   --report <path>           JSON report path. Default: tmp/large-document-stress/report-<time>.json.
 `);
@@ -136,6 +141,7 @@ function formatReportSummary(report) {
     `sections=${report.sectionCount}`,
     `exportSections=${report.exportSectionCount}`,
     `visualImages=${report.visualImageCount}`,
+    `structuredRecords=${report.structuredRecordCount}`,
   ];
   for (const step of report.steps ?? []) {
     const heap = typeof step.heapUsedBytes === 'number'

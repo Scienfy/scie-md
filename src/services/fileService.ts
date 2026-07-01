@@ -1,9 +1,20 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { DocumentFormat } from '@sciemd/core';
 import type { FileMetadata, ReadTextFileResponse } from '../app/documentState';
 import { DEFAULT_METADATA } from '../app/documentState';
 import type { PandocExportFormat } from '../export/exportTypes';
 
-export type FileExplorerEntryKind = 'directory' | 'markdown';
+export type FileExplorerEntryKind =
+  | 'directory'
+  | 'markdown'
+  | 'json'
+  | 'jsonl'
+  | 'yaml'
+  | 'toml'
+  | 'xml'
+  | 'csv'
+  | 'tsv'
+  | 'plainText';
 
 export interface FileExplorerEntry {
   name: string;
@@ -24,12 +35,23 @@ export async function pickMarkdownFile(): Promise<string | null> {
   return invoke<string | null>('pick_markdown_file');
 }
 
+export async function pickDocumentFile(): Promise<string | null> {
+  return invoke<string | null>('pick_document_file');
+}
+
+export async function pickJsonSchemaFile(): Promise<string | null> {
+  return invoke<string | null>('pick_json_schema_file');
+}
+
 export async function pickFolder(): Promise<string | null> {
   return invoke<string | null>('pick_folder');
 }
 
-export async function pickSavePath(defaultPath?: string | null): Promise<string | null> {
-  return invoke<string | null>('pick_save_path', { defaultPath: defaultPath ?? null });
+export async function pickSavePath(defaultPath?: string | null, format?: DocumentFormat): Promise<string | null> {
+  return invoke<string | null>('pick_save_path', {
+    defaultPath: defaultPath ?? null,
+    format: format ?? null,
+  });
 }
 
 export async function pickHtmlSavePath(defaultPath?: string | null): Promise<string | null> {
@@ -62,16 +84,34 @@ export async function getInitialMarkdownPath(): Promise<string | null> {
   return invoke<string | null>('initial_markdown_path');
 }
 
+// Native "document" launch commands are the preferred startup/open-with API.
+// Markdown-named commands remain as compatibility aliases for older callers.
+export async function getInitialDocumentPath(): Promise<string | null> {
+  return invoke<string | null>('initial_document_path');
+}
+
 export async function peekPendingMarkdownOpen(): Promise<string | null> {
   return invoke<string | null>('peek_pending_markdown_open');
+}
+
+export async function peekPendingDocumentOpen(): Promise<string | null> {
+  return invoke<string | null>('peek_pending_document_open');
 }
 
 export async function takePendingMarkdownOpen(): Promise<string | null> {
   return invoke<string | null>('take_pending_markdown_open');
 }
 
+export async function takePendingDocumentOpen(): Promise<string | null> {
+  return invoke<string | null>('take_pending_document_open');
+}
+
 export async function clearPendingMarkdownOpen(path: string): Promise<void> {
   await invoke('clear_pending_markdown_open', { path });
+}
+
+export async function clearPendingDocumentOpen(path: string): Promise<void> {
+  await invoke('clear_pending_document_open', { path });
 }
 
 export async function readTextFile(path: string): Promise<ReadTextFileResponse> {
@@ -103,14 +143,14 @@ export async function statFile(path: string, options: { contentHash?: boolean } 
 
 export async function writeTextFileAtomic(
   path: string,
-  markdown: string,
+  sourceText: string,
   metadata: FileMetadata | null,
   expectedMetadata: FileMetadata | null = null,
 ): Promise<FileMetadata> {
   const writeMetadata = metadata ?? DEFAULT_METADATA;
   return invoke<FileMetadata>('write_text_file_atomic', {
     path,
-    markdown,
+    markdown: sourceText,
     lineEnding: writeMetadata.lineEnding,
     encoding: writeMetadata.encoding,
     hasBom: writeMetadata.hasBom,
@@ -122,13 +162,13 @@ export async function writeTextFileAtomic(
 
 export async function writeTextFileCreateNew(
   path: string,
-  markdown: string,
+  sourceText: string,
   metadata: FileMetadata | null = null,
 ): Promise<FileMetadata> {
   const writeMetadata = metadata ?? DEFAULT_METADATA;
   return invoke<FileMetadata>('write_text_file_create_new', {
     path,
-    markdown,
+    markdown: sourceText,
     lineEnding: writeMetadata.lineEnding,
     encoding: writeMetadata.encoding,
     hasBom: writeMetadata.hasBom,
@@ -138,14 +178,14 @@ export async function writeTextFileCreateNew(
 export async function createGeneratedSiblingArtifact(
   documentPath: string,
   artifactKind: GeneratedSiblingArtifactKind,
-  markdown: string,
+  sourceText: string,
   metadata: FileMetadata | null = null,
 ): Promise<GeneratedSiblingArtifactResponse> {
   const writeMetadata = metadata ?? DEFAULT_METADATA;
   return invoke<GeneratedSiblingArtifactResponse>('create_generated_sibling_artifact', {
     documentPath,
     artifactKind,
-    markdown,
+    markdown: sourceText,
     lineEnding: writeMetadata.lineEnding,
     encoding: writeMetadata.encoding,
     hasBom: writeMetadata.hasBom,

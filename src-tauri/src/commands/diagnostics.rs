@@ -13,9 +13,11 @@ const DIAGNOSTICS_DIR: &str = "diagnostics";
 const HEARTBEAT_FILE: &str = "renderer-heartbeat.json";
 const DIAGNOSTICS_LOG_FILE: &str = "diagnostics.jsonl";
 const RECOVERY_SNAPSHOT_FILE: &str = "latest-recovery-snapshot.json";
+const RECOVERY_SNAPSHOT_DIR: &str = "recovery-snapshots";
 const DIAGNOSTICS_BUNDLE_PREFIX: &str = "diagnostics-bundle";
 const MAX_DIAGNOSTICS_LOG_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_RECOVERY_SNAPSHOT_BYTES: usize = 64 * 1024 * 1024;
+const MAX_RECOVERY_SNAPSHOT_COUNT: usize = 8;
 const MAX_BUNDLE_LOG_TAIL_BYTES: usize = 512 * 1024;
 const PREVIOUS_SESSION_CRASH_WINDOW_MS: u128 = 15_000;
 
@@ -78,16 +80,24 @@ pub struct DiagnosticsEventPayload {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecoverySnapshotPayload {
+    #[serde(default)]
+    pub schema_version: Option<u8>,
     pub markdown: String,
     pub file_path: Option<String>,
+    #[serde(default)]
+    pub format: Option<String>,
     pub updated_at_ms: u128,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecoverySnapshot {
+    #[serde(default = "default_recovery_schema_version")]
+    pub schema_version: u8,
     pub markdown: String,
     pub file_path: Option<String>,
+    #[serde(default)]
+    pub format: Option<String>,
     pub updated_at_ms: u128,
     pub markdown_bytes: usize,
 }
@@ -141,7 +151,9 @@ struct DiagnosticsLogBundle {
 #[serde(rename_all = "camelCase")]
 struct RecoverySnapshotBundle {
     path: String,
+    schema_version: u8,
     file_path: Option<String>,
+    format: Option<String>,
     updated_at_ms: u128,
     markdown_bytes: usize,
     markdown_omitted_reason: &'static str,
@@ -242,13 +254,19 @@ pub fn write_recovery_snapshot(
     fs::create_dir_all(&dir)
         .map_err(|error| format!("Could not create diagnostics dir: {error}"))?;
     let snapshot = RecoverySnapshot {
+        schema_version: payload
+            .schema_version
+            .unwrap_or(default_recovery_schema_version()),
         markdown: payload.markdown,
         file_path: payload.file_path,
+        format: payload.format,
         updated_at_ms: payload.updated_at_ms,
         markdown_bytes,
     };
-    let path = dir.join(RECOVERY_SNAPSHOT_FILE);
+    let path = recovery_snapshot_path(&dir, snapshot.file_path.as_deref());
     write_json_atomically(&path, &snapshot)?;
+    write_json_atomically(&dir.join(RECOVERY_SNAPSHOT_FILE), &snapshot)?;
+    prune_recovery_snapshots(&dir, &path)?;
     Ok(RecoverySnapshotMetadata {
         updated_at_ms: snapshot.updated_at_ms,
         markdown_bytes,
@@ -257,26 +275,120 @@ pub fn write_recovery_snapshot(
 }
 
 #[tauri::command]
-pub fn read_recovery_snapshot(app: AppHandle) -> Result<Option<RecoverySnapshot>, String> {
-    let path = diagnostics_dir(&app)?.join(RECOVERY_SNAPSHOT_FILE);
-    if !path.exists() {
-        return Ok(None);
+pub fn read_recovery_snapshot(
+    app: AppHandle,
+    file_path: Option<String>,
+    latest: Option<bool>,
+) -> Result<Option<RecoverySnapshot>, String> {
+    let dir = diagnostics_dir(&app)?;
+    if latest.unwrap_or(file_path.is_none()) {
+        return read_recovery_snapshot_file(&dir.join(RECOVERY_SNAPSHOT_FILE));
     }
-    let raw = fs::read_to_string(&path)
-        .map_err(|error| format!("Could not read recovery snapshot: {error}"))?;
-    let snapshot: RecoverySnapshot = serde_json::from_str(&raw)
-        .map_err(|error| format!("Could not parse recovery snapshot: {error}"))?;
-    Ok(Some(snapshot))
+    let path = recovery_snapshot_path(&dir, file_path.as_deref());
+    let keyed = read_recovery_snapshot_file(&path)?;
+    if keyed.is_some() {
+        return Ok(keyed);
+    }
+    let legacy = read_recovery_snapshot_file(&dir.join(RECOVERY_SNAPSHOT_FILE))?;
+    Ok(legacy.filter(|snapshot| recovery_snapshot_matches(snapshot, file_path.as_deref())))
 }
 
 #[tauri::command]
-pub fn clear_recovery_snapshot(app: AppHandle) -> Result<(), String> {
-    let path = diagnostics_dir(&app)?.join(RECOVERY_SNAPSHOT_FILE);
-    match fs::remove_file(&path) {
+pub fn clear_recovery_snapshot(
+    app: AppHandle,
+    file_path: Option<String>,
+    latest: Option<bool>,
+) -> Result<(), String> {
+    let dir = diagnostics_dir(&app)?;
+    if latest.unwrap_or(false) {
+        return remove_recovery_snapshot_file(&dir.join(RECOVERY_SNAPSHOT_FILE));
+    }
+    let path = recovery_snapshot_path(&dir, file_path.as_deref());
+    remove_recovery_snapshot_file(&path)?;
+    let latest_path = dir.join(RECOVERY_SNAPSHOT_FILE);
+    if let Some(snapshot) = read_recovery_snapshot_file(&latest_path)? {
+        if recovery_snapshot_matches(&snapshot, file_path.as_deref()) {
+            remove_recovery_snapshot_file(&latest_path)?;
+        }
+    }
+    Ok(())
+}
+
+fn remove_recovery_snapshot_file(path: &Path) -> Result<(), String> {
+    match fs::remove_file(path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(format!("Could not clear recovery snapshot: {error}")),
     }
+}
+
+fn read_recovery_snapshot_file(path: &Path) -> Result<Option<RecoverySnapshot>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = fs::read_to_string(path)
+        .map_err(|error| format!("Could not read recovery snapshot: {error}"))?;
+    let snapshot = serde_json::from_str(&raw)
+        .map_err(|error| format!("Could not parse recovery snapshot: {error}"))?;
+    Ok(Some(snapshot))
+}
+
+fn recovery_snapshot_path(diagnostics_dir: &Path, file_path: Option<&str>) -> PathBuf {
+    diagnostics_dir
+        .join(RECOVERY_SNAPSHOT_DIR)
+        .join(format!("{}.json", recovery_snapshot_key(file_path)))
+}
+
+fn recovery_snapshot_key(file_path: Option<&str>) -> String {
+    let normalized = file_path
+        .map(normalize_recovery_path)
+        .unwrap_or_else(|| "untitled".to_string());
+    let prefix = if file_path.is_some() { "file" } else { "untitled" };
+    format!("{prefix}-{}", blake3::hash(normalized.as_bytes()).to_hex())
+}
+
+fn normalize_recovery_path(value: &str) -> String {
+    let normalized = value.replace('\\', "/");
+    if normalized.len() >= 3 && normalized.as_bytes()[1] == b':' && normalized.as_bytes()[2] == b'/' {
+        return normalized.to_lowercase();
+    }
+    if normalized.starts_with("//") {
+        return normalized.to_lowercase();
+    }
+    normalized
+}
+
+fn recovery_snapshot_matches(snapshot: &RecoverySnapshot, file_path: Option<&str>) -> bool {
+    match (snapshot.file_path.as_deref(), file_path) {
+        (None, None) => true,
+        (Some(left), Some(right)) => normalize_recovery_path(left) == normalize_recovery_path(right),
+        _ => false,
+    }
+}
+
+fn prune_recovery_snapshots(diagnostics_dir: &Path, keep_path: &Path) -> Result<(), String> {
+    let dir = diagnostics_dir.join(RECOVERY_SNAPSHOT_DIR);
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return Ok(());
+    };
+    let mut snapshots = entries
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            if path == keep_path || path.extension().and_then(|value| value.to_str()) != Some("json") {
+                return None;
+            }
+            read_recovery_snapshot_file(&path)
+                .ok()
+                .flatten()
+                .map(|snapshot| (path, snapshot.updated_at_ms))
+        })
+        .collect::<Vec<_>>();
+    snapshots.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+    for (path, _) in snapshots.into_iter().skip(MAX_RECOVERY_SNAPSHOT_COUNT.saturating_sub(1)) {
+        let _ = fs::remove_file(path);
+    }
+    Ok(())
 }
 
 fn diagnostics_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -362,11 +474,17 @@ fn read_recovery_snapshot_bundle(path: &Path) -> Result<Option<RecoverySnapshotB
         .map_err(|error| format!("Could not parse recovery snapshot metadata: {error}"))?;
     Ok(Some(RecoverySnapshotBundle {
         path: path.to_string_lossy().to_string(),
+        schema_version: snapshot.schema_version,
         file_path: snapshot.file_path,
+        format: snapshot.format,
         updated_at_ms: snapshot.updated_at_ms,
         markdown_bytes: snapshot.markdown_bytes,
-        markdown_omitted_reason: "Raw Markdown is stored in the recovery snapshot file and omitted from diagnostics bundles to keep bundles small.",
+        markdown_omitted_reason: "Raw document text is stored in the recovery snapshot file and omitted from diagnostics bundles to keep bundles small.",
     }))
+}
+
+fn default_recovery_schema_version() -> u8 {
+    1
 }
 
 fn read_text_tail(path: &Path, max_bytes: usize) -> Result<(String, u64, bool), String> {
@@ -632,8 +750,10 @@ mod tests {
         write_json_atomically(
             &dir.join(super::RECOVERY_SNAPSHOT_FILE),
             &RecoverySnapshot {
+                schema_version: 2,
                 markdown: "# private draft".into(),
                 file_path: Some("C:/lab/paper.md".into()),
+                format: Some("markdown".into()),
                 updated_at_ms: 3456,
                 markdown_bytes: 15,
             },
@@ -652,6 +772,8 @@ mod tests {
             .unwrap()
             .contains("save-failed"));
         assert_eq!(parsed["recoverySnapshot"]["markdownBytes"], 15);
+        assert_eq!(parsed["recoverySnapshot"]["schemaVersion"], 2);
+        assert_eq!(parsed["recoverySnapshot"]["format"], "markdown");
         assert!(!bundle.contains("# private draft"));
         let _ = fs::remove_dir_all(dir);
     }

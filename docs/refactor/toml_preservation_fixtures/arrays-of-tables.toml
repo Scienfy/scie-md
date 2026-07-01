@@ -1,0 +1,13 @@
+# Inventory array-of-tables fixture
+
+[catalog]
+title = "Spare parts"
+
+[[products]]
+sku = "A-001"
+name = "Pump"
+
+[[products]]
+sku = "B-002"
+name = "Valve"
+

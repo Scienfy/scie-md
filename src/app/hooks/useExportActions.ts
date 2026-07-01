@@ -351,7 +351,7 @@ function recordExportDiagnostic(
     eventType,
     message: `${format.toUpperCase()}: ${message}`,
     documentPath,
-    markdownBytes: byteLength(markdown),
+    sourceTextBytes: byteLength(markdown),
   });
 }
 

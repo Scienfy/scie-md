@@ -9,6 +9,20 @@ import type { PersistedSettings } from '../../services/settingsService';
 import type { AuthorshipMark } from '../../markdown/authorship';
 import type { ConfirmState } from './useDialogs';
 import { useDocumentSession } from './useDocumentSession';
+import { readVisualEditorState } from '../../components/visualEditorStateSync';
+
+vi.mock('../../components/visualEditorStateSync', () => ({
+  readVisualEditorState: vi.fn(() => null),
+  commitVisualEditorReadResult: vi.fn((result: { markdown: string; changed: boolean; markCommitted?: () => void } | null, onCommit: (markdown: string) => void) => {
+    if (!result) return null;
+    if (result.changed) {
+      result.markCommitted?.();
+      onCommit(result.markdown);
+    }
+    return result.markdown;
+  }),
+  commitVisualEditorState: vi.fn(() => null),
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -21,6 +35,7 @@ describe('useDocumentSession visual round-trip write acknowledgement', () => {
   let host: MockDocumentHost;
   let pushToast: ReturnType<typeof vi.fn<(text: string, tone?: 'info' | 'success' | 'warning' | 'error') => void>>;
   let confirmText: ReturnType<typeof vi.fn<(state: ConfirmState) => Promise<boolean>>>;
+  const mockedReadVisualEditorState = vi.mocked(readVisualEditorState);
 
   beforeEach(() => {
     Reflect.deleteProperty(window, '__TAURI_INTERNALS__');
@@ -32,6 +47,7 @@ describe('useDocumentSession visual round-trip write acknowledgement', () => {
     host = createHost();
     pushToast = vi.fn<(text: string, tone?: 'info' | 'success' | 'warning' | 'error') => void>();
     confirmText = vi.fn<(state: ConfirmState) => Promise<boolean>>().mockResolvedValue(true);
+    mockedReadVisualEditorState.mockReturnValue(null);
   });
 
   afterEach(() => {
@@ -39,6 +55,7 @@ describe('useDocumentSession visual round-trip write acknowledgement', () => {
     container.remove();
     document.body.innerHTML = '';
     localStorage.clear();
+    vi.clearAllMocks();
   });
 
   it('prompts once per risky visual Markdown shape during the session', async () => {
@@ -99,6 +116,36 @@ describe('useDocumentSession visual round-trip write acknowledgement', () => {
     expect(confirmText).toHaveBeenCalledTimes(1);
   });
 
+  it('flushes structured recovery drafts from source text without reading Markdown visual state', async () => {
+    const path = 'C:\\docs\\results.json';
+    renderSession();
+
+    await act(async () => {
+      await latestState?.handleOpen(path, { draftRestore: 'skip' });
+    });
+    await flushAsync();
+
+    act(() => {
+      latestState?.commitSourceTextEdit('{"ok":false}\n');
+    });
+    await flushAsync();
+    mockedReadVisualEditorState.mockClear();
+
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'));
+    });
+    await flushAsync();
+
+    expect(mockedReadVisualEditorState).not.toHaveBeenCalled();
+    expect(host.recovery.saveFileDraftAsync).toHaveBeenCalledWith(
+      path,
+      '{"ok":false}\n',
+      expect.any(Number),
+      expect.objectContaining({ lastKnownSizeBytes: '{"ok":true}\n'.length }),
+      'json',
+    );
+  });
+
   function renderSession() {
     act(() => {
       root.render(
@@ -122,6 +169,9 @@ interface MockDocumentHost extends DocumentHost {
     statFile: ReturnType<typeof vi.fn<(path: string) => Promise<FileMetadata>>>;
     writeTextFileAtomic: DocumentHost['file']['writeTextFileAtomic'];
     createBackupSnapshot: DocumentHost['file']['createBackupSnapshot'];
+  };
+  recovery: DocumentHost['recovery'] & {
+    saveFileDraftAsync: ReturnType<typeof vi.fn<DocumentHost['recovery']['saveFileDraftAsync']>>;
   };
 }
 
@@ -156,19 +206,28 @@ function createHost(): MockDocumentHost {
   return {
     file: {
       readTextFile: vi.fn<(path: string) => Promise<ReadTextFileResponse>>().mockResolvedValue(readResponse('')),
-      readTextFileForEdit: vi.fn<(path: string) => Promise<ReadTextFileResponse>>().mockResolvedValue(readResponse('')),
+      readTextFileForEdit: vi.fn<(path: string) => Promise<ReadTextFileResponse>>().mockImplementation(async (path) => (
+        path.endsWith('.json') ? readResponse('{"ok":true}\n') : readResponse('')
+      )),
       statFile: vi.fn<(path: string) => Promise<FileMetadata>>().mockResolvedValue(DEFAULT_METADATA),
       writeTextFileAtomic: vi.fn().mockResolvedValue(DEFAULT_METADATA),
       createBackupSnapshot: vi.fn().mockResolvedValue(null),
     },
     dialog: {
       pickMarkdownFile: vi.fn().mockResolvedValue(null),
+      pickDocumentFile: vi.fn().mockResolvedValue(null),
+      pickJsonSchemaFile: vi.fn().mockResolvedValue(null),
       pickSavePath: vi.fn().mockResolvedValue(null),
     },
     launch: {
       getInitialMarkdownPath: vi.fn().mockResolvedValue(null),
+      getInitialDocumentPath: vi.fn().mockResolvedValue(null),
       peekPendingMarkdownOpen: vi.fn().mockResolvedValue(null),
+      peekPendingDocumentOpen: vi.fn().mockResolvedValue(null),
+      takePendingMarkdownOpen: vi.fn().mockResolvedValue(null),
+      takePendingDocumentOpen: vi.fn().mockResolvedValue(null),
       clearPendingMarkdownOpen: vi.fn().mockResolvedValue(undefined),
+      clearPendingDocumentOpen: vi.fn().mockResolvedValue(undefined),
       listenSingleInstanceOpen: vi.fn().mockResolvedValue(vi.fn()),
     },
     recovery: {

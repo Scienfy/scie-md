@@ -5,6 +5,8 @@ import {
   generateSkillFileBesideActiveDocument,
   openWithScieMDVisualEditor,
 } from './ScieMdCustomEditorProvider';
+import { openStructuredPreview } from './StructuredPreviewPanel';
+import { applyStructuredClipboardToJsonDocument } from './structuredCommands';
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('ScieMD');
@@ -23,6 +25,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('scieMd.openWithVisualEditor', openWithScieMDVisualEditor),
+    vscode.commands.registerCommand('scieMd.openStructuredPreview', (uri?: vscode.Uri) => openStructuredPreview(context, output, uri)),
+    vscode.commands.registerCommand('scieMd.applyStructuredClipboardToJson', (uri?: vscode.Uri) => applyStructuredClipboardToJsonDocument(output, uri)),
     vscode.commands.registerCommand('scieMd.copyLlmSkill', copyScieMDLlmSkill),
     vscode.commands.registerCommand('scieMd.generateLlmSkillFile', generateSkillFileBesideActiveDocument),
   );

@@ -482,6 +482,10 @@
   background: #b7791f;
 }
 
+.status-dot.paused {
+  background: #b7791f;
+}
+
 .status-dot.saving {
   background: #2563eb;
 }

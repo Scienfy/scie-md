@@ -2,7 +2,7 @@
   "name": "sciemd-vscode",
   "displayName": "ScieMD Markdown Editor",
   "description": "WYSIWYG Markdown editor and reader for scientific writing, hybrid LLM drafting, direct document comments, visual styles, LaTeX math, and Mermaid diagrams.",
-  "version": "1.0.12",
+  "version": "1.1.0",
   "publisher": "scienfy",
   "author": "Scienfy Inc.",
   "license": "AGPL-3.0-or-later",
@@ -53,6 +53,8 @@
     "onCustomEditor:scieMd.visualMarkdown",
     "onLanguage:markdown",
     "onCommand:scieMd.openWithVisualEditor",
+    "onCommand:scieMd.openStructuredPreview",
+    "onCommand:scieMd.applyStructuredClipboardToJson",
     "onCommand:scieMd.copyLlmSkill",
     "onCommand:scieMd.generateLlmSkillFile"
   ],
@@ -64,6 +66,21 @@
         "*.markdown": "scieMd.visualMarkdown",
         "*.scie.md": "scieMd.visualMarkdown",
         "*.sciemd.md": "scieMd.visualMarkdown"
+      }
+    },
+    "configuration": {
+      "title": "ScieMD",
+      "properties": {
+        "scieMd.structured.enableJsonActions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable explicit JSON/JSON Lines structured edit commands. These commands validate clipboard text through ScieMD's shared preview/review metadata and use source-hash checks before applying a whole-document workspace edit."
+        },
+        "scieMd.structured.enablePreviewAssociations": {
+          "type": "boolean",
+          "default": false,
+          "description": "Reserved for future structured preview associations. ScieMD does not register JSON, JSON Lines, YAML, TOML, or XML custom-editor associations by default."
+        }
       }
     },
     "customEditors": [
@@ -98,6 +115,20 @@
         }
       },
       {
+        "command": "scieMd.openStructuredPreview",
+        "title": "Open Structured Preview",
+        "category": "ScieMD",
+        "icon": {
+          "light": "assets/sciemd-icon.svg",
+          "dark": "assets/sciemd-icon.svg"
+        }
+      },
+      {
+        "command": "scieMd.applyStructuredClipboardToJson",
+        "title": "Apply Validated Structured Clipboard to JSON/JSONL",
+        "category": "ScieMD"
+      },
+      {
         "command": "scieMd.copyLlmSkill",
         "title": "Copy ScieMD LLM Skill",
         "category": "ScieMD"
@@ -114,6 +145,13 @@
           "command": "scieMd.openWithVisualEditor"
         },
         {
+          "command": "scieMd.openStructuredPreview"
+        },
+        {
+          "command": "scieMd.applyStructuredClipboardToJson",
+          "when": "config.scieMd.structured.enableJsonActions && resourceExtname == .json || config.scieMd.structured.enableJsonActions && resourceExtname == .jsonl || config.scieMd.structured.enableJsonActions && resourceExtname == .ndjson"
+        },
+        {
           "command": "scieMd.copyLlmSkill"
         },
         {
@@ -127,6 +165,16 @@
           "group": "navigation@1"
         },
         {
+          "command": "scieMd.openStructuredPreview",
+          "when": "resourceExtname == .json || resourceExtname == .jsonl || resourceExtname == .yaml || resourceExtname == .yml || resourceExtname == .toml || resourceExtname == .xml",
+          "group": "navigation@2"
+        },
+        {
+          "command": "scieMd.applyStructuredClipboardToJson",
+          "when": "config.scieMd.structured.enableJsonActions && resourceExtname == .json || config.scieMd.structured.enableJsonActions && resourceExtname == .jsonl || config.scieMd.structured.enableJsonActions && resourceExtname == .ndjson",
+          "group": "navigation@3"
+        },
+        {
           "command": "scieMd.generateLlmSkillFile",
           "when": "resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown"
         }
@@ -136,6 +184,16 @@
           "command": "scieMd.openWithVisualEditor",
           "when": "resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown",
           "group": "navigation@1"
+        },
+        {
+          "command": "scieMd.openStructuredPreview",
+          "when": "resourceExtname == .json || resourceExtname == .jsonl || resourceExtname == .yaml || resourceExtname == .yml || resourceExtname == .toml || resourceExtname == .xml",
+          "group": "navigation@2"
+        },
+        {
+          "command": "scieMd.applyStructuredClipboardToJson",
+          "when": "config.scieMd.structured.enableJsonActions && resourceExtname == .json || config.scieMd.structured.enableJsonActions && resourceExtname == .jsonl || config.scieMd.structured.enableJsonActions && resourceExtname == .ndjson",
+          "group": "navigation@3"
         }
       ],
       "editor/context": [
@@ -152,6 +210,16 @@
           "group": "navigation@1"
         },
         {
+          "command": "scieMd.openStructuredPreview",
+          "when": "resourceExtname == .json || resourceExtname == .jsonl || resourceExtname == .yaml || resourceExtname == .yml || resourceExtname == .toml || resourceExtname == .xml",
+          "group": "navigation@2"
+        },
+        {
+          "command": "scieMd.applyStructuredClipboardToJson",
+          "when": "config.scieMd.structured.enableJsonActions && resourceExtname == .json || config.scieMd.structured.enableJsonActions && resourceExtname == .jsonl || config.scieMd.structured.enableJsonActions && resourceExtname == .ndjson",
+          "group": "navigation@3"
+        },
+        {
           "command": "scieMd.generateLlmSkillFile",
           "when": "resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown"
         }
@@ -164,7 +232,7 @@
     "typecheck:webview": "tsc -p tsconfig.webview.json --noEmit",
     "typecheck": "npm run typecheck:extension && npm run typecheck:webview",
     "verify:shared-core": "node scripts/verify-shared-core-sync.mjs",
-    "build:extension": "esbuild src/extension/extension.ts --bundle --platform=node --format=cjs --target=es2022 --external:vscode --outfile=dist/extension/extension.js",
+    "build:extension": "esbuild src/extension/extension.ts --bundle --platform=node --format=cjs --target=es2022 --main-fields=module,main --external:vscode --outfile=dist/extension/extension.js",
     "build:webview": "vite build",
     "build": "npm run clean && npm run verify:shared-core && npm run typecheck && npm run build:extension && npm run build:webview",
     "test": "vitest run",

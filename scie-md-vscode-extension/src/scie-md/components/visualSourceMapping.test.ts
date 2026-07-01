@@ -61,6 +61,25 @@ describe('visualSourceMapping', () => {
     expect(markdownTextblockStartLines(markdown)).toEqual([1, 5]);
   });
 
+  it('keeps source line mapping stable for CRLF front matter documents', () => {
+    const markdown = [
+      '---',
+      'title: CRLF Mapping',
+      'variables:',
+      '  cohort_n: 128',
+      '---',
+      '',
+      '# Title',
+      '',
+      'Paragraph with {{ cohort_n }}.',
+      '',
+      '1. First item',
+      '2. Second item',
+    ].join('\r\n');
+
+    expect(markdownTextblockStartLines(markdown)).toEqual([7, 9, 11, 12]);
+  });
+
   it('ignores full ScieMD variant bodies when matching visual block order to source lines', () => {
     const markdown = [
       '# Title',

@@ -3,9 +3,9 @@ import { lineStartOffsets, offsetToLine } from './textOffsets';
 
 describe('textOffsets', () => {
   it('tracks line starts across mixed newline input', () => {
-    const text = 'Alpha\nBeta\r\nGamma';
+    const text = 'Alpha\nBeta\r\nGamma\rDelta';
 
-    expect(lineStartOffsets(text)).toEqual([0, 6, 12]);
+    expect(lineStartOffsets(text)).toEqual([0, 6, 12, 18]);
   });
 
   it('maps source offsets to one-based line numbers', () => {

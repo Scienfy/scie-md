@@ -16,6 +16,7 @@ import { ExportLogDialog } from '../components/ExportLogDialog';
 import { ExportRenderHost } from '../components/ExportRenderHost';
 import type { ExportRenderHostHandle } from '../components/ExportRenderHost';
 import { ExportStatusBanner } from '../components/ExportStatusBanner';
+import { JsonEditReviewDialog } from '../components/JsonEditReviewDialog';
 import type { ExportStatusBannerState } from '../components/ExportStatusBanner';
 import { LinkDialog } from '../components/LinkDialog';
 import { PromptDialog } from '../components/PromptDialog';
@@ -23,13 +24,15 @@ import { SettingsDialog } from '../components/SettingsDialog';
 import { ShortcutDialog } from '../components/ShortcutDialog';
 import { SlashCommandMenu } from '../components/SlashCommandMenu';
 import type { SlashCommandItem } from '../components/SlashCommandMenu';
+import { StructuredConflictDialog } from '../components/StructuredConflictDialog';
+import { TabularPasteDialog } from '../components/TabularPasteDialog';
 import { TemplateDialog } from '../components/TemplateDialog';
 import { ToastViewport } from '../components/ToastViewport';
 import type { ToastMessage } from '../components/ToastViewport';
 import { UnsavedDialog } from '../components/UnsavedDialog';
 import { VariableDialog } from '../components/VariableDialog';
 import type { VariableDialogState } from '../components/VariableDialog';
-import type { BibtexEntry, BibtexEntryDraft, DiffHunk, ReviewPlan } from '@sciemd/core';
+import type { BibtexEntry, BibtexEntryDraft, DelimitedTextConversionFormat, DelimitedTextConversionPreview, DiffHunk, JsonStructuralReviewPlan, ReviewPlan, StructuredEditSourcePreview, StructuredExternalConflictReviewPlan, StructuredReviewPlan } from '@sciemd/core';
 import type { ScienfyTemplateId } from '../domain/document/templates';
 import type { VariableDefinition } from '@sciemd/core';
 import type { ExportFormat, ExportLogEntry, ExportRequestOptions } from '../export/exportTypes';
@@ -38,6 +41,7 @@ import type { PersistedSettings } from '../services/settingsService';
 import type { ConfirmState, PromptState } from './hooks/useDialogs';
 import type { EditorSelectionSnapshot } from '../components/editorSelection';
 import type { DocumentOpenStatus } from './documentOpenStatus';
+import type { StructuredConversionRequest } from './structuredConversionActions';
 
 interface LinkDialogState {
   selectedText: string;
@@ -47,6 +51,11 @@ interface LinkDialogState {
 
 interface BlockDialogState {
   selection: EditorSelectionSnapshot | null;
+}
+
+interface TabularPasteDialogState {
+  source: string;
+  preview: DelimitedTextConversionPreview;
 }
 
 interface AppOverlaysProps {
@@ -99,11 +108,36 @@ interface AppOverlaysProps {
   onRejectPasteReview: () => void;
   onClosePasteReview: () => void;
   onFocusReviewLine: (line: number) => void;
+  tabularPaste: TabularPasteDialogState | null;
+  tabularPasteDefaultFormat: DelimitedTextConversionFormat;
+  onInsertTabularPaste: (content: string, format: DelimitedTextConversionFormat) => void;
+  onCopyTabularPaste: (content: string, format: DelimitedTextConversionFormat) => void;
+  onStructuredConversionAction?: (request: StructuredConversionRequest) => void;
+  onCancelTabularPaste: () => void;
+  jsonEditReviewPreview: StructuredEditSourcePreview | null;
+  jsonEditReviewPlan?: StructuredReviewPlan | null;
+  jsonEditReviewSchemaExplanation?: string;
+  onApplyJsonEditReview: () => void;
+  onCancelJsonEditReview: () => void;
   externalConflictOpen: boolean;
   externalConflictHunks: DiffHunk[];
   externalProtectedChanges: ProtectedChange[];
   onApplyExternalConflictReview: (rejectedDiskHunkIds: Set<string>) => void;
   onCloseExternalConflictReview: () => void;
+  structuredConflictOpen: boolean;
+  structuredConflictFormatLabel: string;
+  structuredConflictFilePath: string | null;
+  structuredConflictCurrentSource: string;
+  structuredConflictDiskSource: string;
+  structuredConflictJsonReview?: JsonStructuralReviewPlan | null;
+  structuredConflictExternalReview?: StructuredExternalConflictReviewPlan | null;
+  structuredConflictReviewPlan?: StructuredReviewPlan | null;
+  onKeepStructuredConflict: () => void;
+  onReloadStructuredConflict: () => void;
+  onSaveStructuredConflictAs: () => void;
+  onSaveStructuredConflictAnyway: () => void;
+  onApplyStructuredJsonConflictReview?: (rejectedDiskChangeIds: Set<string>) => void;
+  onApplyStructuredConflictReview?: (rejectedDiskChangeIds: Set<string>) => void;
   shortcutDialogOpen: boolean;
   onCloseShortcutDialog: () => void;
   aboutOpen: boolean;
@@ -193,11 +227,36 @@ export function AppOverlays({
   onRejectPasteReview,
   onClosePasteReview,
   onFocusReviewLine,
+  tabularPaste,
+  tabularPasteDefaultFormat,
+  onInsertTabularPaste,
+  onCopyTabularPaste,
+  onStructuredConversionAction,
+  onCancelTabularPaste,
+  jsonEditReviewPreview,
+  jsonEditReviewPlan,
+  jsonEditReviewSchemaExplanation,
+  onApplyJsonEditReview,
+  onCancelJsonEditReview,
   externalConflictOpen,
   externalConflictHunks,
   externalProtectedChanges,
   onApplyExternalConflictReview,
   onCloseExternalConflictReview,
+  structuredConflictOpen,
+  structuredConflictFormatLabel,
+  structuredConflictFilePath,
+  structuredConflictCurrentSource,
+  structuredConflictDiskSource,
+  structuredConflictJsonReview,
+  structuredConflictExternalReview,
+  structuredConflictReviewPlan,
+  onKeepStructuredConflict,
+  onReloadStructuredConflict,
+  onSaveStructuredConflictAs,
+  onSaveStructuredConflictAnyway,
+  onApplyStructuredJsonConflictReview,
+  onApplyStructuredConflictReview,
   shortcutDialogOpen,
   onCloseShortcutDialog,
   aboutOpen,
@@ -321,6 +380,24 @@ export function AppOverlays({
         onClose={onClosePasteReview}
         onFocusLine={onFocusReviewLine}
       />
+      <TabularPasteDialog
+        open={Boolean(tabularPaste)}
+        preview={tabularPaste?.preview ?? null}
+        sourceText={tabularPaste?.source}
+        defaultFormat={tabularPasteDefaultFormat}
+        onInsert={onInsertTabularPaste}
+        onCopy={onCopyTabularPaste}
+        onConversionAction={onStructuredConversionAction}
+        onCancel={onCancelTabularPaste}
+      />
+      <JsonEditReviewDialog
+        open={Boolean(jsonEditReviewPreview)}
+        preview={jsonEditReviewPreview}
+        reviewPlan={jsonEditReviewPlan}
+        schemaGeneratedValueExplanation={jsonEditReviewSchemaExplanation}
+        onApply={onApplyJsonEditReview}
+        onCancel={onCancelJsonEditReview}
+      />
       <ExternalConflictDialog
         open={externalConflictOpen}
         hunks={externalConflictHunks}
@@ -328,6 +405,23 @@ export function AppOverlays({
         onApplyReview={onApplyExternalConflictReview}
         onClose={onCloseExternalConflictReview}
         onFocusLine={onFocusReviewLine}
+      />
+      <StructuredConflictDialog
+        open={structuredConflictOpen}
+        formatLabel={structuredConflictFormatLabel}
+        filePath={structuredConflictFilePath}
+        currentSource={structuredConflictCurrentSource}
+        diskSource={structuredConflictDiskSource}
+        jsonReview={structuredConflictJsonReview}
+        externalReview={structuredConflictExternalReview}
+        reviewPlan={structuredConflictReviewPlan}
+        onKeepCurrent={onKeepStructuredConflict}
+        onReloadDisk={onReloadStructuredConflict}
+        onSaveAs={onSaveStructuredConflictAs}
+        onSaveAnyway={onSaveStructuredConflictAnyway}
+        onApplyJsonReview={onApplyStructuredJsonConflictReview}
+        onApplyStructuredReview={onApplyStructuredConflictReview}
+        onClose={onCloseExternalConflictReview}
       />
       <ShortcutDialog open={shortcutDialogOpen} onClose={onCloseShortcutDialog} />
       <AboutDialog open={aboutOpen} onClose={onCloseAbout} />

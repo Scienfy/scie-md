@@ -1,0 +1,10 @@
+base: &base
+  operator: Amin
+  substrate: glass
+  repetitions: 3
+
+experiment:
+  <<: *base
+  id: SCMD-MERGE-001
+  repetitions: 5
+

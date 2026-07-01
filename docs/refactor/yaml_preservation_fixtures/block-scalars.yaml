@@ -1,0 +1,13 @@
+abstract: |
+  Ultrasonic spray coating was evaluated across flow rate,
+  stage speed, and nozzle height.
+
+notes: >-
+  Folded notes preserve reader-friendly wrapping while the normalized
+  visual tree only sees the scalar value.
+
+protocol:
+  preparation: |2
+      Clean substrate.
+      Dry under nitrogen.
+

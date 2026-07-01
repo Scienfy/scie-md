@@ -91,7 +91,7 @@ The top bar follows a familiar app menu shape:
 
 | Area | What it does |
 | --- | --- |
-| **File** | New, templates, open/recent files, save, export, and print preview. |
+| **File** | New documents by format, open/recent files, save, export, and print preview. |
 | **Edit** | Undo/redo, Find/Replace, rich-text copy, and scientific typography cleanup. |
 | **View** | Visual/Source mode, sidebar tabs, inspector, focus mode, theme, visual style, and font size. |
 | **Insert** | Links, images, citations, variables, diagrams, semantic blocks, locked sections, LLM notes/instructions, and versions. |
@@ -176,7 +176,7 @@ Press `Ctrl+K` or click the top-bar **K** button. Useful searches:
 
 | Search | Finds |
 | --- | --- |
-| `new paper`, `lab note`, `research statement` | Starter templates |
+| `new`, `markdown`, `json`, `csv` | New document starters by format |
 | `export` | Styled HTML, PDF, and DOCX export |
 | `lock`, `note`, `version` | LLM-safe review commands |
 | `citation`, `bibliography` | Citation insertion and generated bibliography sync |

@@ -12,6 +12,7 @@ const steps = [
   { label: 'Desktop artifact staging', command: npmCommand, args: ['run', 'copy:exe'] },
   { label: 'VS Code extension package', command: npmCommand, args: ['run', 'package:vscode'] },
   { label: 'VSIX package-content guard', command: npmCommand, args: ['run', 'validate:vscode-package'] },
+  { label: 'Packaged artifact budget guard', command: npmCommand, args: ['run', 'validate:package-budgets', '--', '--vsix', '--desktop-bundles'] },
   { label: 'Required installed VSIX smoke', command: npmCommand, args: ['run', 'validate:vscode-installed-smoke', '--', '--required'] },
   { label: 'VS Code extension staging', command: npmCommand, args: ['run', 'stage:vscode'] },
   { label: 'Generated-output leak recheck after staging', command: npmCommand, args: ['run', 'validate:generated-outputs'] },

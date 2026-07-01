@@ -1,13 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { AutosaveStatus, FileMetadata } from '../documentState';
-import { DEFAULT_METADATA, UNTITLED_NAME, metadataChanged } from '../documentState';
+import { DEFAULT_METADATA, metadataChanged, untitledNameForFormat } from '../documentState';
 import { BACKUP_INTERVAL_MS, markAutosaveBackupCreated, shouldCreateAutosaveBackup } from '../../services/autosaveService';
 import type { PersistedSettings } from '../../services/settingsService';
 import type { ConfirmState } from './useDialogs';
 import { parseFrontmatter } from '@sciemd/core';
+import type { DocumentFormat } from '@sciemd/core';
 import { commitVisualEditorReadResult, readVisualEditorState } from '../../components/visualEditorStateSync';
 import type { DocumentHost } from '../host/documentHost';
+import { inferDocumentFormat } from '../documentSession/controller';
+import {
+  DEFAULT_STRUCTURED_SAVE_POLICY,
+  formatStructuredSaveConfirmation,
+  type StructuredSavePolicy,
+} from '../structuredSavePolicy';
 
 export interface VisualRoundTripWriteContext {
   autosave: boolean;
@@ -19,17 +26,26 @@ export interface VisualRoundTripWriteContext {
 interface SaveOperationsParams {
   filePath: string | null;
   fileMetadata: FileMetadata;
-  markdown: string;
+  format: DocumentFormat;
+  sourceText: string;
+  /** @deprecated Use sourceText at generic save boundaries. */
+  markdown?: string;
   getDocumentIdentityVersion: () => number;
   setFilePath: (path: string) => void;
+  setFormat: (format: DocumentFormat) => void;
   setFileMetadata: (metadata: FileMetadata) => void;
-  setLastSavedMarkdown: (markdown: string) => void;
+  setLastSavedSourceText: (sourceText: string) => void;
+  /** @deprecated Use setLastSavedSourceText at generic save boundaries. */
+  setLastSavedMarkdown?: (markdown: string) => void;
   setAutosaveStatus: (status: AutosaveStatus) => void;
   setLastAutosavedAt: (timestamp: number | null) => void;
   setExternalConflict: (conflict: boolean) => void;
   setSettings: Dispatch<SetStateAction<PersistedSettings>>;
-  commitMarkdownEdit: (markdown: string) => void;
-  confirmVisualRoundTripWrite?: (markdown: string, context: VisualRoundTripWriteContext) => Promise<boolean>;
+  commitSourceTextEdit: (sourceText: string) => void;
+  /** @deprecated Use commitSourceTextEdit at generic save boundaries. */
+  commitMarkdownEdit?: (markdown: string) => void;
+  confirmVisualRoundTripWrite?: (sourceText: string, context: VisualRoundTripWriteContext) => Promise<boolean>;
+  structuredSavePolicyRef?: { current: StructuredSavePolicy };
   confirmText: (state: ConfirmState) => Promise<boolean>;
   pushToast: (text: string, tone?: 'info' | 'success' | 'warning' | 'error') => void;
   host: DocumentHost;
@@ -38,27 +54,37 @@ interface SaveOperationsParams {
 export function useSaveOperations({
   filePath,
   fileMetadata,
+  format,
+  sourceText,
   markdown,
   getDocumentIdentityVersion,
   setFilePath,
+  setFormat,
   setFileMetadata,
+  setLastSavedSourceText,
   setLastSavedMarkdown,
   setAutosaveStatus,
   setLastAutosavedAt,
   setExternalConflict,
   setSettings,
+  commitSourceTextEdit,
   commitMarkdownEdit,
   confirmVisualRoundTripWrite,
+  structuredSavePolicyRef,
   confirmText,
   pushToast,
   host,
 }: SaveOperationsParams) {
+  const canonicalSourceText = sourceText ?? markdown ?? '';
+  const commitCanonicalSourceTextEdit = commitSourceTextEdit ?? commitMarkdownEdit ?? (() => undefined);
+  const setLastSavedCanonicalSourceText = setLastSavedSourceText ?? setLastSavedMarkdown ?? (() => undefined);
   const backupScheduleRef = useRef({ sessionBackupDone: false, lastBackupAtMs: 0 });
   const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const saveQueueDepthRef = useRef(0);
   const filePathRef = useRef(filePath);
   const fileMetadataRef = useRef(fileMetadata);
-  const markdownRef = useRef(markdown);
+  const formatRef = useRef(format);
+  const sourceTextRef = useRef(canonicalSourceText);
   const [saveQueueDepth, setSaveQueueDepth] = useState(0);
 
   useEffect(() => {
@@ -70,8 +96,12 @@ export function useSaveOperations({
   }, [fileMetadata]);
 
   useEffect(() => {
-    markdownRef.current = markdown;
-  }, [markdown]);
+    formatRef.current = format;
+  }, [format]);
+
+  useEffect(() => {
+    sourceTextRef.current = canonicalSourceText;
+  }, [canonicalSourceText]);
 
   const updateSaveQueueDepth = useCallback((delta: number) => {
     saveQueueDepthRef.current = Math.max(0, saveQueueDepthRef.current + delta);
@@ -88,21 +118,24 @@ export function useSaveOperations({
       forceSaveAs: options.forceSaveAs ?? false,
       forceOverwrite: options.forceOverwrite ?? false,
     };
-    const visualState = readVisualEditorState();
-    const outputMarkdown = visualState?.markdown ?? markdownRef.current;
-    const visualWriteAllowed = await confirmVisualRoundTripWrite?.(outputMarkdown, {
-      ...requestedOptions,
-      reason: 'save',
-    });
+    const visualState = formatRef.current === 'markdown' ? readVisualEditorState() : null;
+    const outputSourceText = visualState?.markdown ?? sourceTextRef.current;
+    const visualWriteAllowed = visualState
+      ? await confirmVisualRoundTripWrite?.(outputSourceText, {
+        ...requestedOptions,
+        reason: 'save',
+      })
+      : true;
     if (visualWriteAllowed === false) return false;
-    const flushedMarkdown = commitVisualEditorReadResult(visualState, commitMarkdownEdit);
-    markdownRef.current = flushedMarkdown ?? outputMarkdown;
+    const flushedSourceText = commitVisualEditorReadResult(visualState, commitCanonicalSourceTextEdit);
+    sourceTextRef.current = flushedSourceText ?? outputSourceText;
     const snapshot = {
       ...requestedOptions,
       sourceDocumentIdentityVersion: getDocumentIdentityVersion(),
       sourcePath: filePathRef.current,
       sourceMetadata: fileMetadataRef.current,
-      sourceMarkdown: markdownRef.current,
+      sourceFormat: formatRef.current,
+      sourceText: sourceTextRef.current,
     };
     const isSnapshotCurrent = () => (
       getDocumentIdentityVersion() === snapshot.sourceDocumentIdentityVersion
@@ -113,16 +146,42 @@ export function useSaveOperations({
         eventType,
         message,
         documentPath,
-        markdownBytes: byteLength(snapshot.sourceMarkdown),
+        sourceTextBytes: byteLength(snapshot.sourceText),
       });
     };
+    const structuredSavePolicy = structuredSavePolicyRef?.current ?? DEFAULT_STRUCTURED_SAVE_POLICY;
+    if (structuredSavePolicy.autosaveBlocked && snapshot.autosave) {
+      if (snapshot.sourcePath) {
+        host.recovery.saveFileDraft(snapshot.sourcePath, snapshot.sourceText, Date.now(), snapshot.sourceMetadata, snapshot.sourceFormat);
+      }
+      recordSaveDiagnostic(
+        'autosave-structured-parser-invalid',
+        structuredSavePolicy.reason ?? 'Autosave paused because the structured source has parser errors.',
+      );
+      if (isSnapshotCurrent()) setAutosaveStatus('paused');
+      return false;
+    }
+    if (structuredSavePolicy.manualSaveRequiresConfirmation && !snapshot.autosave) {
+      const shouldSaveInvalidSource = await confirmText(formatStructuredSaveConfirmation(structuredSavePolicy));
+      if (!shouldSaveInvalidSource) {
+        if (snapshot.sourcePath) {
+          host.recovery.saveFileDraft(snapshot.sourcePath, snapshot.sourceText, Date.now(), snapshot.sourceMetadata, snapshot.sourceFormat);
+        }
+        if (isSnapshotCurrent()) setAutosaveStatus('paused');
+        return false;
+      }
+    }
 
     const runSave = async (): Promise<string | false> => {
       if (!isSnapshotCurrent()) return false;
       let targetPath: string | null = null;
       try {
         targetPath = snapshot.forceSaveAs || !snapshot.sourcePath
-          ? await host.dialog.pickSavePath(suggestedMarkdownSavePath(snapshot.sourceMarkdown, snapshot.sourcePath))
+          ? await host.dialog.pickSavePath(suggestedDocumentSavePath(
+              snapshot.sourceText,
+              snapshot.sourcePath,
+              snapshot.sourceFormat,
+            ), snapshot.sourceFormat)
           : snapshot.sourcePath;
       } catch (error) {
         recordSaveDiagnostic('save-dialog-failed', saveErrorMessage(error, 'Could not open the Save As dialog.'), targetPath);
@@ -174,7 +233,7 @@ export function useSaveOperations({
       try {
         const preliminaryMetadata = await host.file.statFile(targetPath, { contentHash: false });
         if (isCloudPlaceholderMetadata(preliminaryMetadata)) {
-          host.recovery.saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+          host.recovery.saveFileDraft(targetPath, snapshot.sourceText, Date.now(), snapshot.sourceMetadata, snapshot.sourceFormat);
           if (isSnapshotCurrent()) {
             setAutosaveStatus('error');
             pushToast(
@@ -201,7 +260,7 @@ export function useSaveOperations({
             saveErrorMessage(error, 'Could not verify the disk file before saving.'),
             targetPath,
           );
-          host.recovery.saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+          host.recovery.saveFileDraft(targetPath, snapshot.sourceText, Date.now(), snapshot.sourceMetadata, snapshot.sourceFormat);
           if (isSnapshotCurrent()) {
             setAutosaveStatus('error');
             pushToast(
@@ -218,7 +277,7 @@ export function useSaveOperations({
 
       if (targetPath !== snapshot.sourcePath && existingMetadata && !snapshot.autosave) {
         const replace = await confirmText({
-          title: 'Replace existing Markdown file?',
+          title: `Replace existing ${documentKindLabel(snapshot.sourceFormat)} file?`,
           message: 'The selected Save As target already exists. Replace it with this ScieMD document? A backup of the target file will be created first.',
           okLabel: 'Replace',
           cancelLabel: 'Cancel',
@@ -235,7 +294,7 @@ export function useSaveOperations({
           'The disk file changed before ScieMD could save the current document.',
           targetPath,
         );
-        host.recovery.saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+        host.recovery.saveFileDraft(targetPath, snapshot.sourceText, Date.now(), snapshot.sourceMetadata, snapshot.sourceFormat);
         if (isSnapshotCurrent()) {
           setAutosaveStatus('conflict');
           setExternalConflict(true);
@@ -269,7 +328,7 @@ export function useSaveOperations({
                 'The disk file changed just before ScieMD could write the current document.',
                 targetPath,
               );
-              host.recovery.saveFileDraft(targetPath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+              host.recovery.saveFileDraft(targetPath, snapshot.sourceText, Date.now(), snapshot.sourceMetadata, snapshot.sourceFormat);
               if (isSnapshotCurrent()) {
                 setAutosaveStatus('conflict');
                 setExternalConflict(true);
@@ -300,13 +359,16 @@ export function useSaveOperations({
         const expectedMetadata = targetPath === snapshot.sourcePath
           ? (sourceTargetWasMissing ? null : existingMetadata ?? snapshot.sourceMetadata)
           : existingMetadata;
-        const nextMetadata = await host.file.writeTextFileAtomic(targetPath, snapshot.sourceMarkdown, metadataForWrite, expectedMetadata);
+        const nextMetadata = await host.file.writeTextFileAtomic(targetPath, snapshot.sourceText, metadataForWrite, expectedMetadata);
         if (!isSnapshotCurrent()) return false;
         filePathRef.current = targetPath;
         fileMetadataRef.current = nextMetadata;
+        const nextFormat = inferDocumentFormat(targetPath, snapshot.sourceFormat);
+        formatRef.current = nextFormat;
         setFilePath(targetPath);
+        setFormat(nextFormat);
         setFileMetadata(nextMetadata);
-        setLastSavedMarkdown(snapshot.sourceMarkdown);
+        setLastSavedCanonicalSourceText(snapshot.sourceText);
         setAutosaveStatus('saved');
         setLastAutosavedAt(Date.now());
         setExternalConflict(false);
@@ -330,7 +392,7 @@ export function useSaveOperations({
             saveErrorMessage(error, 'The file changed on disk before ScieMD could save.'),
             targetPath,
           );
-          if (snapshot.sourcePath) host.recovery.saveFileDraft(snapshot.sourcePath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+          if (snapshot.sourcePath) host.recovery.saveFileDraft(snapshot.sourcePath, snapshot.sourceText, Date.now(), snapshot.sourceMetadata, snapshot.sourceFormat);
           if (isSnapshotCurrent()) {
             setAutosaveStatus('conflict');
             setExternalConflict(true);
@@ -348,7 +410,7 @@ export function useSaveOperations({
           saveErrorMessage(error, 'Save failed.'),
           targetPath,
         );
-        if (snapshot.sourcePath) host.recovery.saveFileDraft(snapshot.sourcePath, snapshot.sourceMarkdown, Date.now(), snapshot.sourceMetadata);
+        if (snapshot.sourcePath) host.recovery.saveFileDraft(snapshot.sourcePath, snapshot.sourceText, Date.now(), snapshot.sourceMetadata, snapshot.sourceFormat);
         if (isSnapshotCurrent()) {
           setAutosaveStatus('error');
           pushToast(
@@ -375,7 +437,7 @@ export function useSaveOperations({
     });
     saveQueueRef.current = handledSave.finally(() => updateSaveQueueDepth(-1));
     return handledSave;
-  }, [commitMarkdownEdit, confirmText, confirmVisualRoundTripWrite, getDocumentIdentityVersion, host, pushToast, setAutosaveStatus, setExternalConflict, setFileMetadata, setFilePath, setLastAutosavedAt, setLastSavedMarkdown, setSettings, updateSaveQueueDepth]);
+  }, [commitCanonicalSourceTextEdit, confirmText, confirmVisualRoundTripWrite, getDocumentIdentityVersion, host, pushToast, setAutosaveStatus, setExternalConflict, setFileMetadata, setFilePath, setFormat, setLastAutosavedAt, setLastSavedCanonicalSourceText, setSettings, structuredSavePolicyRef, updateSaveQueueDepth]);
 
   const ensureDocumentPathForAssets = useCallback(async () => {
     if (filePath) return filePath;
@@ -393,8 +455,41 @@ function isCloudPlaceholderMetadata(metadata: FileMetadata | null): boolean {
 export function suggestedMarkdownSavePath(markdown: string, sourcePath: string | null): string {
   if (sourcePath) return sourcePath;
   const title = documentTitleForFilename(markdown);
-  if (!title) return UNTITLED_NAME;
+  if (!title) return untitledNameForFormat('markdown');
   return `${slugifyFilename(title)}.md`;
+}
+
+export function suggestedDocumentSavePath(
+  sourceText: string,
+  sourcePath: string | null,
+  format: DocumentFormat,
+): string {
+  if (sourcePath) return sourcePath;
+  if (format === 'markdown') return suggestedMarkdownSavePath(sourceText, sourcePath);
+  return untitledNameForFormat(format);
+}
+
+function documentKindLabel(format: DocumentFormat): string {
+  switch (format) {
+    case 'json':
+      return 'JSON';
+    case 'jsonl':
+      return 'JSON Lines';
+    case 'yaml':
+      return 'YAML';
+    case 'toml':
+      return 'TOML';
+    case 'xml':
+      return 'XML';
+    case 'csv':
+      return 'CSV';
+    case 'tsv':
+      return 'TSV';
+    case 'plainText':
+      return 'text';
+    case 'markdown':
+      return 'Markdown';
+  }
 }
 
 function documentTitleForFilename(markdown: string): string | null {

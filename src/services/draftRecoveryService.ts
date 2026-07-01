@@ -1,4 +1,6 @@
 import type { FileMetadata } from '../app/documentState';
+import { formatFromPath } from '@sciemd/core';
+import type { DocumentFormat } from '@sciemd/core';
 import {
   clearNativeRecoverySnapshot,
   readNativeRecoverySnapshot,
@@ -6,8 +8,10 @@ import {
 } from './nativeRecoveryService';
 
 export interface UntitledDraft {
+  sourceText?: string;
   markdown: string;
   savedAt: number;
+  format: DocumentFormat;
   baseMetadata?: DraftBaseMetadata;
 }
 
@@ -25,6 +29,7 @@ const DRAFT_STORE_NAME = 'drafts';
 const MAX_DRAFT_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const INDEXED_DRAFT_THRESHOLD_BYTES = 1024 * 1024;
 const MAX_FILE_DRAFTS = 40;
+const DRAFT_SCHEMA_VERSION = 2;
 const memoryDrafts = new Map<string, UntitledDraft>();
 const indexedDraftOperations = new Map<string, Promise<void>>();
 let lastQuotaWarningAt = 0;
@@ -33,38 +38,38 @@ export function loadUntitledDraft(now = Date.now()): UntitledDraft | null {
   try {
     const raw = localStorage.getItem(UNTITLED_DRAFT_KEY);
     const parsed = raw ? JSON.parse(raw) as Partial<UntitledDraft> : memoryDrafts.get(UNTITLED_DRAFT_KEY);
-    if (!parsed) return null;
-    if (typeof parsed.markdown !== 'string' || typeof parsed.savedAt !== 'number') {
+    const draft = normalizeDraftPayload(parsed, 'markdown');
+    if (!draft) {
       clearUntitledDraft();
       return null;
     }
-    if (!parsed.markdown.trim() || now - parsed.savedAt > MAX_DRAFT_AGE_MS) {
+    if (!draft.markdown.trim() || now - draft.savedAt > MAX_DRAFT_AGE_MS) {
       clearUntitledDraft();
       return null;
     }
-    return draftWithOptionalBaseMetadata(parsed.markdown, parsed.savedAt, parsed.baseMetadata);
+    return draft;
   } catch {
     clearUntitledDraft();
     return null;
   }
 }
 
-export function saveUntitledDraft(markdown: string, savedAt = Date.now()): void {
-  if (!markdown.trim()) {
+export function saveUntitledDraft(sourceText: string, savedAt = Date.now(), format: DocumentFormat = 'markdown'): void {
+  if (!sourceText.trim()) {
     clearUntitledDraft();
     return;
   }
-  persistDraft(UNTITLED_DRAFT_KEY, { markdown, savedAt });
+  persistDraft(UNTITLED_DRAFT_KEY, draftWithOptionalBaseMetadata(sourceText, savedAt, undefined, format));
 }
 
-export async function saveUntitledDraftAsync(markdown: string, savedAt = Date.now()): Promise<void> {
-  if (!markdown.trim()) {
+export async function saveUntitledDraftAsync(sourceText: string, savedAt = Date.now(), format: DocumentFormat = 'markdown'): Promise<void> {
+  if (!sourceText.trim()) {
     await clearUntitledDraftAsync();
     return;
   }
-  saveUntitledDraft(markdown, savedAt);
+  saveUntitledDraft(sourceText, savedAt, format);
   await drainIndexedDraftOperations();
-  await writeNativeDraftSnapshot({ markdown, filePath: null, savedAt });
+  await writeNativeDraftSnapshot({ sourceText, filePath: null, savedAt, format });
 }
 
 export function clearUntitledDraft(): void {
@@ -80,51 +85,65 @@ export function clearUntitledDraft(): void {
 export async function clearUntitledDraftAsync(): Promise<void> {
   clearUntitledDraft();
   await drainIndexedDraftOperations();
-  await clearNativeDraftSnapshotIf((snapshot) => snapshot.filePath === null);
+  await clearNativeRecoverySnapshot(null);
 }
 
 export function loadFileDraft(filePath: string, now = Date.now()): UntitledDraft | null {
   const key = fileDraftKey(filePath);
   const legacyKeys = legacyFileDraftKeys(filePath);
+  const fallbackFormat = inferDraftFormat(filePath);
   try {
     const raw = localStorage.getItem(key) ?? firstLocalStorageValue(legacyKeys);
     const parsed = raw ? JSON.parse(raw) as Partial<UntitledDraft> : memoryDrafts.get(key) ?? firstMemoryDraft(legacyKeys);
-    if (!parsed) return null;
-    if (typeof parsed.markdown !== 'string' || typeof parsed.savedAt !== 'number') {
+    const draft = normalizeDraftPayload(parsed, fallbackFormat);
+    if (!draft) {
       clearFileDraft(filePath);
       return null;
     }
-    if (!parsed.markdown.trim() || now - parsed.savedAt > MAX_DRAFT_AGE_MS) {
+    if (!draft.markdown.trim() || now - draft.savedAt > MAX_DRAFT_AGE_MS) {
       clearFileDraft(filePath);
       return null;
     }
-    return draftWithOptionalBaseMetadata(parsed.markdown, parsed.savedAt, parsed.baseMetadata);
+    return draft;
   } catch {
     clearFileDraft(filePath);
     return null;
   }
 }
 
-export function saveFileDraft(filePath: string, markdown: string, savedAt = Date.now(), baseMetadata?: FileMetadata | null): void {
-  if (!markdown.trim()) {
+export function saveFileDraft(
+  filePath: string,
+  sourceText: string,
+  savedAt = Date.now(),
+  baseMetadata?: FileMetadata | null,
+  format: DocumentFormat = inferDraftFormat(filePath),
+): void {
+  if (!sourceText.trim()) {
     clearFileDraft(filePath);
     return;
   }
-  persistDraft(fileDraftKey(filePath), {
-    markdown,
+  persistDraft(fileDraftKey(filePath), draftWithOptionalBaseMetadata(
+    sourceText,
     savedAt,
-    baseMetadata: baseMetadata ? draftBaseMetadata(baseMetadata) : undefined,
-  });
+    baseMetadata ? draftBaseMetadata(baseMetadata) : undefined,
+    format,
+  ));
 }
 
-export async function saveFileDraftAsync(filePath: string, markdown: string, savedAt = Date.now(), baseMetadata?: FileMetadata | null): Promise<void> {
-  if (!markdown.trim()) {
+export async function saveFileDraftAsync(
+  filePath: string,
+  sourceText: string,
+  savedAt = Date.now(),
+  baseMetadata?: FileMetadata | null,
+  format: DocumentFormat = inferDraftFormat(filePath),
+): Promise<void> {
+  if (!sourceText.trim()) {
     await clearFileDraftAsync(filePath);
     return;
   }
-  saveFileDraft(filePath, markdown, savedAt, baseMetadata);
+  saveFileDraft(filePath, sourceText, savedAt, baseMetadata, format);
   await drainIndexedDraftOperations();
-  await writeNativeDraftSnapshot({ markdown, filePath, savedAt });
+  await writeNativeDraftSnapshot({ sourceText, filePath, savedAt, format });
 }
 
 export function clearFileDraft(filePath: string): void {
@@ -145,30 +164,27 @@ export function clearFileDraft(filePath: string): void {
 export async function clearFileDraftAsync(filePath: string): Promise<void> {
   clearFileDraft(filePath);
   await drainIndexedDraftOperations();
-  const normalizedPath = normalizeDraftPath(filePath);
-  await clearNativeDraftSnapshotIf((snapshot) => (
-    typeof snapshot.filePath === 'string'
-    && normalizeDraftPath(snapshot.filePath) === normalizedPath
-  ));
+  await clearNativeRecoverySnapshot(filePath);
 }
 
 export async function loadUntitledDraftAsync(now = Date.now()): Promise<UntitledDraft | null> {
   return loadUntitledDraft(now)
-    ?? await loadIndexedDraft(UNTITLED_DRAFT_KEY, now)
+    ?? await loadIndexedDraft(UNTITLED_DRAFT_KEY, now, 'markdown')
     ?? await loadNativeUntitledDraft(now);
 }
 
 export async function loadFileDraftAsync(filePath: string, now = Date.now()): Promise<UntitledDraft | null> {
   const legacyKeys = legacyFileDraftKeys(filePath);
+  const fallbackFormat = inferDraftFormat(filePath);
   return loadFileDraft(filePath, now)
-    ?? await loadIndexedDraft(fileDraftKey(filePath), now)
-    ?? await loadFirstIndexedDraft(legacyKeys, now)
+    ?? await loadIndexedDraft(fileDraftKey(filePath), now, fallbackFormat)
+    ?? await loadFirstIndexedDraft(legacyKeys, now, fallbackFormat)
     ?? await loadNativeFileDraft(filePath, now);
 }
 
-export function shouldPersistUntitledDraft(markdown: string, initialMarkdown: string, options: { suppressBundledWelcome?: boolean } = {}): boolean {
-  if (!markdown.trim() || markdown === initialMarkdown) return false;
-  if (options.suppressBundledWelcome && isBundledWelcomeMarkdown(markdown) && isBundledWelcomeMarkdown(initialMarkdown)) return false;
+export function shouldPersistUntitledDraft(sourceText: string, initialSourceText: string, options: { suppressBundledWelcome?: boolean } = {}): boolean {
+  if (!sourceText.trim() || sourceText === initialSourceText) return false;
+  if (options.suppressBundledWelcome && isBundledWelcomeMarkdown(sourceText) && isBundledWelcomeMarkdown(initialSourceText)) return false;
   return true;
 }
 
@@ -215,7 +231,7 @@ function normalizeDraftPath(value: string): string {
 function persistDraft(key: string, draft: UntitledDraft): void {
   memoryDrafts.set(key, draft);
   pruneFileDrafts(key);
-  const raw = JSON.stringify(draft);
+  const raw = JSON.stringify({ schemaVersion: DRAFT_SCHEMA_VERSION, ...draft });
   const rawBytes = byteLength(raw);
   void warnIfStorageQuotaIsTight(rawBytes);
   if (rawBytes >= INDEXED_DRAFT_THRESHOLD_BYTES) {
@@ -310,11 +326,49 @@ function normalizeDraftBaseMetadata(value: unknown): DraftBaseMetadata | undefin
   };
 }
 
-function draftWithOptionalBaseMetadata(markdown: string, savedAt: number, baseMetadata: unknown): UntitledDraft {
+function draftWithOptionalBaseMetadata(
+  sourceText: string,
+  savedAt: number,
+  baseMetadata: unknown,
+  format: DocumentFormat,
+): UntitledDraft {
   const normalizedBaseMetadata = normalizeDraftBaseMetadata(baseMetadata);
   return normalizedBaseMetadata
-    ? { markdown, savedAt, baseMetadata: normalizedBaseMetadata }
-    : { markdown, savedAt };
+    ? { markdown: sourceText, savedAt, format, baseMetadata: normalizedBaseMetadata }
+    : { markdown: sourceText, savedAt, format };
+}
+
+function normalizeDraftPayload(value: unknown, fallbackFormat: DocumentFormat): UntitledDraft | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Partial<UntitledDraft>;
+  const sourceText = typeof record.sourceText === 'string' ? record.sourceText : record.markdown;
+  if (typeof sourceText !== 'string' || typeof record.savedAt !== 'number') return null;
+  return draftWithOptionalBaseMetadata(
+    sourceText,
+    record.savedAt,
+    record.baseMetadata,
+    normalizeDraftFormat(record.format, fallbackFormat),
+  );
+}
+
+function normalizeDraftFormat(value: unknown, fallbackFormat: DocumentFormat): DocumentFormat {
+  return isDocumentFormat(value) ? value : fallbackFormat;
+}
+
+function inferDraftFormat(path: string | null | undefined, fallbackFormat: DocumentFormat = 'markdown'): DocumentFormat {
+  return formatFromPath(path) ?? fallbackFormat;
+}
+
+function isDocumentFormat(value: unknown): value is DocumentFormat {
+  return value === 'markdown'
+    || value === 'json'
+    || value === 'jsonl'
+    || value === 'yaml'
+    || value === 'toml'
+    || value === 'xml'
+    || value === 'csv'
+    || value === 'tsv'
+    || value === 'plainText';
 }
 
 function firstLocalStorageValue(keys: string[]): string | null {
@@ -341,56 +395,67 @@ function removeLocalDraft(key: string): void {
   }
 }
 
-async function loadFirstIndexedDraft(keys: string[], now: number): Promise<UntitledDraft | null> {
+async function loadFirstIndexedDraft(keys: string[], now: number, fallbackFormat: DocumentFormat): Promise<UntitledDraft | null> {
   for (const key of keys) {
-    const draft = await loadIndexedDraft(key, now);
+    const draft = await loadIndexedDraft(key, now, fallbackFormat);
     if (draft) return draft;
   }
   return null;
 }
 
 async function loadNativeUntitledDraft(now: number): Promise<UntitledDraft | null> {
-  const snapshot = await readNativeRecoverySnapshot();
+  const snapshot = await readNativeRecoverySnapshot(null);
   if (!snapshot || snapshot.filePath !== null) return null;
-  return nativeSnapshotToDraft(snapshot.markdown, snapshot.updatedAtMs, now);
+  return nativeSnapshotToDraft(
+    snapshot.sourceText ?? snapshot.markdown,
+    snapshot.updatedAtMs,
+    now,
+    normalizeDraftFormat(snapshot.format, 'markdown'),
+  );
 }
 
 async function loadNativeFileDraft(filePath: string, now: number): Promise<UntitledDraft | null> {
-  const snapshot = await readNativeRecoverySnapshot();
+  const snapshot = await readNativeRecoverySnapshot(filePath);
   if (!snapshot?.filePath) return null;
   if (normalizeDraftPath(snapshot.filePath) !== normalizeDraftPath(filePath)) return null;
-  return nativeSnapshotToDraft(snapshot.markdown, snapshot.updatedAtMs, now);
+  return nativeSnapshotToDraft(
+    snapshot.sourceText ?? snapshot.markdown,
+    snapshot.updatedAtMs,
+    now,
+    normalizeDraftFormat(snapshot.format, inferDraftFormat(filePath)),
+  );
 }
 
-function nativeSnapshotToDraft(markdown: string, savedAt: number, now: number): UntitledDraft | null {
-  if (!markdown.trim() || now - savedAt > MAX_DRAFT_AGE_MS) return null;
-  return { markdown, savedAt };
+function nativeSnapshotToDraft(
+  sourceText: string,
+  savedAt: number,
+  now: number,
+  format: DocumentFormat,
+): UntitledDraft | null {
+  if (!sourceText.trim() || now - savedAt > MAX_DRAFT_AGE_MS) return null;
+  return { markdown: sourceText, savedAt, format };
 }
 
 async function writeNativeDraftSnapshot({
-  markdown,
+  sourceText,
   filePath,
   savedAt,
+  format,
 }: {
-  markdown: string;
+  sourceText: string;
   filePath: string | null;
   savedAt: number;
+  format: DocumentFormat;
 }): Promise<void> {
-  if (!markdown.trim()) return;
-  // Desktop recovery lives in the Tauri app-data diagnostics directory via
-  // latest-recovery-snapshot.json. Browser storage remains the fallback path.
+  if (!sourceText.trim()) return;
+  // Desktop recovery lives in the Tauri app-data diagnostics directory as a
+  // keyed snapshot, with latest-recovery-snapshot.json kept as a compatibility mirror.
   await writeNativeRecoverySnapshot({
-    markdown,
+    sourceText,
     filePath,
     updatedAtMs: savedAt,
+    format,
   });
-}
-
-async function clearNativeDraftSnapshotIf(predicate: (snapshot: { filePath: string | null }) => boolean): Promise<void> {
-  const snapshot = await readNativeRecoverySnapshot();
-  if (snapshot && predicate(snapshot)) {
-    await clearNativeRecoverySnapshot();
-  }
 }
 
 function byteLength(value: string): number {
@@ -499,17 +564,18 @@ async function saveIndexedDraft(key: string, draft: UntitledDraft): Promise<void
   }
 }
 
-async function loadIndexedDraft(key: string, now: number): Promise<UntitledDraft | null> {
+async function loadIndexedDraft(key: string, now: number, fallbackFormat: DocumentFormat): Promise<UntitledDraft | null> {
   try {
     const db = await openDraftDb();
-    const draft = await runDraftTransaction<UntitledDraft | undefined>(db, 'readonly', (store) => store.get(key));
+    const rawDraft = await runDraftTransaction<UntitledDraft | undefined>(db, 'readonly', (store) => store.get(key));
     db.close();
+    const draft = normalizeDraftPayload(rawDraft, fallbackFormat);
     if (!draft || typeof draft.markdown !== 'string' || typeof draft.savedAt !== 'number') return null;
     if (!draft.markdown.trim() || now - draft.savedAt > MAX_DRAFT_AGE_MS) {
       await deleteIndexedDraft(key);
       return null;
     }
-    return draftWithOptionalBaseMetadata(draft.markdown, draft.savedAt, draft.baseMetadata);
+    return draft;
   } catch {
     return null;
   }

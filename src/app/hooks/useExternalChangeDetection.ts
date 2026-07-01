@@ -8,7 +8,7 @@ import { fileWatchRetryDelayMs } from '../../services/fileWatchService';
 interface UseExternalChangeDetectionOptions {
   filePath: string | null;
   fileMetadata: FileMetadata;
-  getCurrentMarkdown: () => string;
+  getCurrentSourceText: () => string;
   onConflict: () => void;
   onSyncedExternalChange?: (path: string, content: string, metadata: FileMetadata) => void;
   onCloudPlaceholder?: (message: string) => void;
@@ -18,7 +18,7 @@ interface UseExternalChangeDetectionOptions {
 export function useExternalChangeDetection({
   filePath,
   fileMetadata,
-  getCurrentMarkdown,
+  getCurrentSourceText,
   onConflict,
   onSyncedExternalChange,
   onCloudPlaceholder,
@@ -29,7 +29,7 @@ export function useExternalChangeDetection({
   const checkVersionRef = useRef(0);
   const filePathRef = useRef(filePath);
   const fileMetadataRef = useRef(fileMetadata);
-  const getCurrentMarkdownRef = useRef(getCurrentMarkdown);
+  const getCurrentSourceTextRef = useRef(getCurrentSourceText);
   const onConflictRef = useRef(onConflict);
   const onSyncedExternalChangeRef = useRef(onSyncedExternalChange);
   const onCloudPlaceholderRef = useRef(onCloudPlaceholder);
@@ -43,8 +43,8 @@ export function useExternalChangeDetection({
   }, [fileMetadata.contentHash, fileMetadata.lastKnownMtimeMs, fileMetadata.lastKnownSizeBytes, filePath]);
 
   useEffect(() => {
-    getCurrentMarkdownRef.current = getCurrentMarkdown;
-  }, [getCurrentMarkdown]);
+    getCurrentSourceTextRef.current = getCurrentSourceText;
+  }, [getCurrentSourceText]);
 
   useEffect(() => {
     onConflictRef.current = onConflict;
@@ -83,7 +83,7 @@ export function useExternalChangeDetection({
       if (metadataChanged(currentFileMetadata, currentMetadata)) {
         const disk = await host.file.readTextFile(currentFilePath).catch(() => null);
         if (!isCurrentCheck()) return;
-        if (disk?.content === getCurrentMarkdownRef.current()) {
+        if (disk?.content === getCurrentSourceTextRef.current()) {
           onSyncedExternalChangeRef.current?.(currentFilePath, disk.content, disk.metadata);
           return;
         }

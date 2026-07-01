@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
+import { parseFrontmatter, replaceFrontmatterBody, serializeFrontmatter } from './frontmatter';
 import { DOCUMENT_PARSE_CRASH_CODE, createFallbackScienfyDocument, parseScienfyDocument, safeParseScienfyDocument } from './documentModel';
 
 describe('Layer II document model', () => {
@@ -14,6 +14,23 @@ describe('Layer II document model', () => {
 
   it('serializes front matter without touching body content', () => {
     expect(serializeFrontmatter({ title: 'Test' }, '# Body\n')).toBe('---\ntitle: Test\n---\n# Body\n');
+  });
+
+  it('preserves CRLF front matter body ranges and serializes with the requested line ending', () => {
+    const markdown = '---\r\ntitle: Test\r\nbibliography: refs.bib\r\n---\r\n# Body\r\n';
+    const parsed = parseFrontmatter(markdown);
+
+    expect(parsed.raw).toBe('title: Test\r\nbibliography: refs.bib');
+    expect(parsed.body).toBe('# Body\r\n');
+    expect(parsed.lineEnding).toBe('\r\n');
+    expect(parsed.sourcePrefix).toBe('---\r\ntitle: Test\r\nbibliography: refs.bib\r\n---\r\n');
+    expect(parsed.bodyStartOffset).toBe(markdown.indexOf('# Body'));
+    expect(replaceFrontmatterBody(parsed, 'Updated {{ value }}\r\n')).toBe(
+      '---\r\ntitle: Test\r\nbibliography: refs.bib\r\n---\r\nUpdated {{ value }}\r\n',
+    );
+    expect(serializeFrontmatter({ title: 'Next' }, '# Body\r\n', { lineEnding: '\r\n' })).toBe(
+      '---\r\ntitle: Next\r\n---\r\n# Body\r\n',
+    );
   });
 
   it('builds citations, cross-references, and directives', () => {

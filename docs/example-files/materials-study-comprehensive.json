@@ -1,0 +1,254 @@
+{
+  "study": {
+    "id": "SCMD-STRUCT-2026-002",
+    "title": "Ultrasonic spray coating parameter sweep",
+    "status": "analysis-ready",
+    "created_at": "2026-06-30T13:45:00Z",
+    "updated_at": "2026-06-30T14:20:00Z",
+    "version": 3,
+    "is_blinded": true,
+    "summary": "Amin Synthetic structured test file for Scie JSON source maps, tree editing, schema suggestions, and review previews.",
+    "notes": "Includes escaped quotes like \"thin film\", a Windows path C:\\\\Lab\\\\ScieMD\\\\dataset, and a newline marker: line one\\nline two.",
+    "empty_object": {},
+    "empty_array": [],
+    "optional_external_doi": null
+  },
+  "contacts": [
+    {
+      "role": "principal_investigator",
+      "name": "Amina Rahman",
+      "email": "amina.rahman@example.test",
+      "orcid": "0000-0002-0000-0001",
+      "active": true
+    },
+    {
+      "role": "data_steward",
+      "name": "Miguel Chen",
+      "email": "miguel.chen@example.test",
+      "orcid": null,
+      "active": true
+    }
+  ],
+  "instrumentation": {
+    "spray_head": {
+      "model": "USC-2L",
+      "serial": "USC2L-042",
+      "frequency_khz": 120,
+      "nozzle_diameter_mm": 0.6,
+      "calibration": {
+        "date": "2026-06-20",
+        "operator.initials": "AR",
+        "certificate": "CAL-2026-184",
+        "passed": true
+      },
+      "ey baba": "this is me"
+    },
+    "environment_chamber": {
+      "model": "CH-22",
+      "temperature_c": 22.5,
+      "relative_humidity_percent": 38.2,
+      "pressure_kpa": 101.3
+    },
+    "microscopy": {
+      "sem": {
+        "model": "SEM-X100",
+        "voltage_kv": 5,
+        "detectors": ["secondary_electron", "backscatter"],
+        "image_formats": ["tif", "png"]
+      },
+      "profilometer": {
+        "model": "PRF-900",
+        "vertical_resolution_nm": 2.5
+      }
+    },
+    "hey": "Alo"
+  },
+  "protocol": {
+    "steps": [
+      {
+        "index": 1,
+        "name": "Substrate clean",
+        "duration_min": 12,
+        "reagents": ["isopropanol", "deionized_water"],
+        "temperature_c": 21.8
+      },
+      {
+        "index": 2,
+        "name": "Primer deposition",
+        "duration_min": 6,
+        "reagents": ["primer_A"],
+        "temperature_c": 22.1
+      },
+      {
+        "index": 3,
+        "name": "Active layer spray",
+        "duration_min": 18,
+        "reagents": ["ink_alpha", "ink_beta"],
+        "temperature_c": 22.6
+      },
+      {
+        "index": 4,
+        "name": "Anneal",
+        "duration_min": 30,
+        "reagents": [],
+        "temperature_c": 85
+      }
+    ],
+    "acceptance_criteria": {
+      "thickness_nm": { "min": 90, "target": 120, "max": 155 },
+      "roughness_nm": { "min": 0, "target": 8, "max": 18 },
+      "defect_density_per_mm2": { "min": 0, "target": 0.4, "max": 2.0 }
+    }
+  },
+  "samples": [
+    {
+      "sample_id": "S-001",
+      "batch": "B-2026-06-A",
+      "substrate": "glass",
+      "operator": "AR",
+      "parameters": {
+        "flow_rate_ml_min": 0.18,
+        "stage_speed_mm_s": 8.5,
+        "passes": 3,
+        "anneal_profile": [25, 60, 85, 85, 40]
+      },
+      "measurements": {
+        "thickness_nm": 118.4,
+        "roughness_nm": 7.8,
+        "defect_density_per_mm2": 0.3,
+        "coverage_percent": 98.7
+      },
+      "qc": {
+        "status": "pass",
+        "reviewed": true,
+        "flags": [],
+        "reviewed_at": "2026-06-30T15:10:00Z"
+      }
+    },
+    {
+      "sample_id": "S-002",
+      "batch": "B-2026-06-A",
+      "substrate": "glass",
+      "operator": "MC",
+      "parameters": {
+        "flow_rate_ml_min": 0.22,
+        "stage_speed_mm_s": 8.5,
+        "passes": 3,
+        "anneal_profile": [25, 60, 85, 85, 40]
+      },
+      "measurements": {
+        "thickness_nm": 141.2,
+        "roughness_nm": 12.4,
+        "defect_density_per_mm2": 1.2,
+        "coverage_percent": 97.9
+      },
+      "qc": {
+        "status": "review",
+        "reviewed": false,
+        "flags": ["roughness_high", "needs_second_sem_image"],
+        "reviewed_at": null
+      }
+    },
+    {
+      "sample_id": "S-003",
+      "batch": "B-2026-06-B",
+      "substrate": "silicon",
+      "operator": "AR",
+      "parameters": {
+        "flow_rate_ml_min": 0.16,
+        "stage_speed_mm_s": 10.0,
+        "passes": 4,
+        "anneal_profile": [25, 70, 90, 90, 45]
+      },
+      "measurements": {
+        "thickness_nm": 109.9,
+        "roughness_nm": 6.4,
+        "defect_density_per_mm2": 0.2,
+        "coverage_percent": 99.1
+      },
+      "qc": {
+        "status": "pass",
+        "reviewed": true,
+        "flags": ["best_candidate"],
+        "reviewed_at": "2026-06-30T16:02:00Z"
+      }
+    },
+    {
+      "sample_id": "S-004",
+      "batch": "B-2026-06-B",
+      "substrate": "silicon",
+      "operator": "MC",
+      "parameters": {
+        "flow_rate_ml_min": 0.3,
+        "stage_speed_mm_s": 6.0,
+        "passes": 2,
+        "anneal_profile": [25, 55, 80, 80, 40]
+      },
+      "measurements": {
+        "thickness_nm": 165.5,
+        "roughness_nm": 19.7,
+        "defect_density_per_mm2": 2.6,
+        "coverage_percent": 95.4
+      },
+      "qc": {
+        "status": "fail",
+        "reviewed": true,
+        "flags": ["too_thick", "roughness_out_of_range", "defect_density_high"],
+        "reviewed_at": "2026-06-30T16:30:00Z"
+      }
+    }
+  ],
+  "analysis": {
+    "primary_metric": "coverage_percent",
+    "secondary_metrics": ["thickness_nm", "roughness_nm", "defect_density_per_mm2"],
+    "model": {
+      "name": "random_forest_regressor",
+      "version": "0.4.1",
+      "random_seed": 72630,
+      "features": [
+        "flow_rate_ml_min",
+        "stage_speed_mm_s",
+        "passes",
+        "substrate",
+        "relative_humidity_percent"
+      ],
+      "performance": {
+        "rmse": 3.42,
+        "r2": 0.83,
+        "fold_scores": [0.81, 0.84, 0.82, 0.86, 0.80]
+      }
+    },
+    "recommendations": [
+      {
+        "rank": 1,
+        "sample_id": "S-003",
+        "reason": "Lowest roughness with high coverage.",
+        "next_action": "Repeat three times with humidity control."
+      },
+      {
+        "rank": 2,
+        "sample_id": "S-001",
+        "reason": "Balanced thickness and defect density.",
+        "next_action": "Use as baseline for additive screen."
+      }
+    ]
+  },
+  "attachments": [
+    {
+      "kind": "sem_image",
+      "path": "assets/sem/S-001-field-a.tif",
+      "sha256": "b2a7b5467a2f8d5f9a5c8e540fbcd2f8292eab11b5bc0a8146a4aa003fef0123"
+    },
+    {
+      "kind": "profile_trace",
+      "path": "assets/profilometry/S-003-line-02.csv",
+      "sha256": "c0ddab0f57c394dd5da3d4ac901f2cc7b731d5b7cf989a6b0c5cb4e9a84d7112"
+    }
+  ],
+  "provenance": {
+    "source": "synthetic",
+    "generated_for": "ScieMD structured-data test corpus",
+    "licenses": ["CC0-1.0"],
+    "quality_statement": "Values are plausible but not experimental evidence."
+  }
+}

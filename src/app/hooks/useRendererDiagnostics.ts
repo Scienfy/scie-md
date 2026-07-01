@@ -15,7 +15,7 @@ import {
 const HEARTBEAT_INTERVAL_MS = 8_000;
 
 interface UseRendererDiagnosticsOptions {
-  markdown: string;
+  sourceText: string;
   filePath: string | null;
   mode: EditorMode;
   warningCount: number;
@@ -23,13 +23,13 @@ interface UseRendererDiagnosticsOptions {
   visualAtomCount: number;
   backgroundJobs?: BackgroundJobSnapshot;
   onPreviousSessionCrashDetected?: () => void;
-  createDocumentMetrics?: (markdown: string) => RendererDocumentMetrics;
+  createDocumentMetrics?: (sourceText: string) => RendererDocumentMetrics;
   heartbeatIntervalMs?: number;
   now?: () => number;
 }
 
 export interface RendererDocumentMetrics {
-  markdownBytes: number;
+  sourceTextBytes: number;
   lineCount: number;
   imageCount: number;
   mathCount: number;
@@ -47,7 +47,7 @@ interface RendererDiagnosticsSnapshot {
 }
 
 export function useRendererDiagnostics({
-  markdown,
+  sourceText,
   filePath,
   mode,
   warningCount,
@@ -55,7 +55,7 @@ export function useRendererDiagnostics({
   visualAtomCount,
   backgroundJobs = EMPTY_BACKGROUND_JOB_SNAPSHOT,
   onPreviousSessionCrashDetected,
-  createDocumentMetrics = summarizeMarkdownForDiagnostics,
+  createDocumentMetrics = summarizeSourceTextForDiagnostics,
   heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS,
   now = Date.now,
 }: UseRendererDiagnosticsOptions): void {
@@ -64,8 +64,8 @@ export function useRendererDiagnostics({
     return `${Date.now().toString(36)}-${random}`;
   }, []);
   const documentMetrics = useMemo(
-    () => createDocumentMetrics(markdown),
-    [createDocumentMetrics, markdown],
+    () => createDocumentMetrics(sourceText),
+    [createDocumentMetrics, sourceText],
   );
   const latestSnapshot = useMemo<RendererDiagnosticsSnapshot>(() => ({
     filePath,
@@ -137,7 +137,7 @@ function metricsForSnapshot(
     sessionId,
     documentPath: snapshot.filePath,
     mode: snapshot.mode,
-    markdownBytes: snapshot.documentMetrics.markdownBytes,
+    sourceTextBytes: snapshot.documentMetrics.sourceTextBytes,
     lineCount: snapshot.documentMetrics.lineCount,
     imageCount: snapshot.documentMetrics.imageCount,
     mathCount: snapshot.documentMetrics.mathCount,
@@ -152,14 +152,17 @@ function metricsForSnapshot(
   };
 }
 
-export function summarizeMarkdownForDiagnostics(markdown: string): RendererDocumentMetrics {
+export function summarizeSourceTextForDiagnostics(sourceText: string): RendererDocumentMetrics {
   return {
-    markdownBytes: byteLength(markdown),
-    lineCount: lineCount(markdown),
-    imageCount: countMatches(markdown, /!\[[^\]]*]\(/g) + countMatches(markdown, /<img\b/gi),
-    mathCount: countMatches(markdown, /\$\$?[^$\n]/g),
+    sourceTextBytes: byteLength(sourceText),
+    lineCount: lineCount(sourceText),
+    imageCount: countMatches(sourceText, /!\[[^\]]*]\(/g) + countMatches(sourceText, /<img\b/gi),
+    mathCount: countMatches(sourceText, /\$\$?[^$\n]/g),
   };
 }
+
+/** @deprecated Use summarizeSourceTextForDiagnostics at generic document boundaries. */
+export const summarizeMarkdownForDiagnostics = summarizeSourceTextForDiagnostics;
 
 function byteLength(value: string): number {
   if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(value).byteLength;

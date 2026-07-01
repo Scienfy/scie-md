@@ -3,6 +3,7 @@ import type { EditorMode } from '../documentState';
 import type { SourceMarkdownFind, SourceMarkdownJump } from '../../components/SourceMarkdownEditor';
 import type { VisualMarkdownFind, VisualMarkdownJump, VisualMarkdownJumpTarget } from '../../components/VisualMarkdownEditor';
 import type { MarkdownHeading } from '@sciemd/core';
+import type { StructuredNavigationTarget } from '../structuredNavigation';
 import { useEditorJumpCoordination } from './useEditorJumpCoordination';
 
 interface DocumentNavigationParams {
@@ -21,6 +22,12 @@ interface FindNavigationRequest {
   query: string;
   index: number;
   caseSensitive: boolean;
+  line: number;
+}
+
+interface SourceRangeNavigationRequest {
+  from: number;
+  to: number;
   line: number;
 }
 
@@ -120,6 +127,54 @@ export function useDocumentNavigation({
     setPendingJumpLine(line);
   }, [setMode]);
 
+  const revealSourceRange = useCallback((range: SourceRangeNavigationRequest) => {
+    const safeFrom = Math.max(0, Math.floor(range.from));
+    const safeTo = Math.max(safeFrom, Math.floor(range.to));
+    const safeLine = Math.max(1, Math.floor(range.line));
+    setCurrentLine(safeLine);
+    setCurrentColumn(1);
+    setActiveNavigationLine(safeLine);
+    setMode('source');
+    setPendingFindMatch({
+      from: safeFrom,
+      to: safeTo,
+      query: '',
+      index: 0,
+      caseSensitive: false,
+      line: safeLine,
+    });
+  }, [setMode]);
+
+  const navigateStructuredTarget = useCallback((target: StructuredNavigationTarget) => {
+    const sourceRange = target.sourceRange;
+    if (sourceRange) {
+      const safeFrom = Math.max(0, Math.floor(sourceRange.from));
+      const safeTo = Math.max(safeFrom, Math.floor(sourceRange.to));
+      const safeLine = Math.max(1, Math.floor(sourceRange.line));
+      setCurrentLine(safeLine);
+      setCurrentColumn(1);
+      setActiveNavigationLine(safeLine);
+      setMode('source');
+      setPendingFindMatch({
+        from: safeFrom,
+        to: safeTo,
+        query: '',
+        index: 0,
+        caseSensitive: false,
+        line: safeLine,
+      });
+      return;
+    }
+    if (target.line !== undefined) {
+      const safeLine = Math.max(1, Math.floor(target.line));
+      setCurrentLine(safeLine);
+      setCurrentColumn(1);
+      setActiveNavigationLine(safeLine);
+      setMode('source');
+      setPendingJumpLine(safeLine);
+    }
+  }, [setMode]);
+
   const preserveLineForModeChange = useCallback((line: number, nextMode: EditorMode) => {
     const safeLine = Math.max(1, Math.floor(line));
     setCurrentLine(safeLine);
@@ -169,6 +224,8 @@ export function useDocumentNavigation({
     jumpToHeading,
     jumpToLineInCurrentMode,
     jumpToLineInSource,
+    revealSourceRange,
+    navigateStructuredTarget,
     preserveLineForModeChange,
     navigateToFindMatch,
   };

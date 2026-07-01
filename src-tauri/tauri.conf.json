@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ScieMD",
-  "version": "1.0.12",
+  "version": "1.1.0",
   "identifier": "com.scienfy.sciemd",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -49,6 +49,65 @@
         ],
         "name": "ScieMD.Markdown",
         "description": "ScieMD Markdown document",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "json"
+        ],
+        "name": "ScieMD.JSON",
+        "description": "ScieMD JSON document",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "jsonl",
+          "ndjson"
+        ],
+        "name": "ScieMD.JSONLines",
+        "description": "ScieMD JSON Lines document",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "yaml",
+          "yml"
+        ],
+        "name": "ScieMD.YAML",
+        "description": "ScieMD YAML document",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "toml"
+        ],
+        "name": "ScieMD.TOML",
+        "description": "ScieMD TOML document",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "xml"
+        ],
+        "name": "ScieMD.XML",
+        "description": "ScieMD XML document",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "tsv"
+        ],
+        "name": "ScieMD.TSV",
+        "description": "ScieMD TSV document",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "txt",
+          "text"
+        ],
+        "name": "ScieMD.PlainText",
+        "description": "ScieMD plain text document",
         "role": "Editor"
       }
     ],

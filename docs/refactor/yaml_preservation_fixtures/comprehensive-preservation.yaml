@@ -1,0 +1,39 @@
+# Comprehensive preservation fixture
+
+defaults: &sample_defaults
+  operator: Amin
+  substrate: glass
+  tags: [baseline, coating, "quoted # not a comment"]
+  process: { flow_rate_ml_min: 0.18, stage_speed_mm_s: 80 }
+
+samples:
+  - <<: *sample_defaults
+    id: S-001
+    note: 'single quoted scalar keeps # literal text'
+  - id: S-002
+    inherited: *sample_defaults
+    metrics:
+      thickness_nm: !!float "115.5"
+      run_id: !!str 0007
+
+protocol:
+  summary: |
+    Line one should keep literal block style.
+    Line two should keep indentation.
+  folded: >-
+    Folded text keeps a reader-friendly wrapping style
+    that the normalized tree cannot reconstruct.
+  indented: |2
+      Clean substrate.
+      Dry under nitrogen.
+
+metadata:
+  created_at: !!timestamp 2026-06-30T13:45:00Z
+  uri: !<tag:example.org,2026:uri> https://example.org/datasets/SCMD-YAML-001
+  windows_path: !!str C:\Lab\ScieMD\dataset
+
+matrix:
+  rows:
+    - [1, 2, 3] # inline flow row comment
+    - [4, 5, 6]
+

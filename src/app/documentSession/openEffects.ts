@@ -34,13 +34,13 @@ export function recordDocumentOpenDiagnostic(
   eventType: string,
   message: string,
   documentPath?: string | null,
-  markdown?: string,
+  sourceText?: string,
 ): void {
   void recoveryHost.appendDiagnosticsEvent({
     eventType,
     message,
     documentPath: documentPath ?? null,
-    markdownBytes: typeof markdown === 'string' ? byteLength(markdown) : null,
+    sourceTextBytes: typeof sourceText === 'string' ? byteLength(sourceText) : null,
   });
 }
 

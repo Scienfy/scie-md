@@ -1,0 +1,7 @@
+# Inline table fixture
+
+[sample]
+id = "S-001"
+coating = { material = "P3HT", solvent = "chlorobenzene", ratio = 1.5 }
+limits = { flow = { min = 0.1, max = 0.4 }, speed = { min = 20, max = 45 } }
+

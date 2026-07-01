@@ -10,6 +10,8 @@ import {
   createLlmClipboardPayload,
   createLlmStyleGuide,
   createScieMDLlmSkill,
+  createJsonContent,
+  parseJsonDocument,
 } from '@sciemd/core';
 
 describe('copied ScieMD core', () => {
@@ -84,5 +86,12 @@ describe('copied ScieMD core', () => {
     expect(payload).toContain('Notes to LLM: id llm-1');
     expect(createLlmStyleGuide()).toContain('ScieMD Markdown Style Guide');
     expect(createScieMDLlmSkill()).toContain('ScieMD LLM Skill');
+  });
+
+  it('uses the shared structured parser boundary for JSON previews', () => {
+    const result = parseJsonDocument(createJsonContent('{"id":"trial","n":12}\n', 'trial.json'));
+
+    expect(result.parsed?.value).toEqual({ id: 'trial', n: 12 });
+    expect(result.diagnostics).toEqual([]);
   });
 });

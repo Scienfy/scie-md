@@ -403,7 +403,7 @@ function splitVisualMarkdownForTest(markdown: string): { visualMarkdown: string;
   }
   return {
     visualMarkdown: frontmatter.body,
-    frontmatterPrefix: `${frontmatter.openingFence || '---'}\n${frontmatter.raw}\n${frontmatter.closingFence || '---'}\n`,
+    frontmatterPrefix: frontmatter.sourcePrefix,
   };
 }
 

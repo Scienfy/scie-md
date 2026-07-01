@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_METADATA } from '../documentState';
+import { SOURCE_ONLY_FILE_BYTES } from '../../markdown/supportedMarkdown';
 import {
   buildOpenedDocumentTransition,
   buildReviewedDiskMergeTransition,
@@ -14,6 +15,66 @@ import {
 } from './controller';
 
 describe('documentSession controller', () => {
+  it('defaults normal opened Markdown documents to visual mode', () => {
+    const transition = buildOpenedDocumentTransition({
+      path: 'C:\\lab\\paper.md',
+      content: '# Paper',
+      metadata: {
+        ...DEFAULT_METADATA,
+        lastKnownSizeBytes: SOURCE_ONLY_FILE_BYTES,
+      },
+      normalizeVisualStyle: () => null,
+    });
+
+    expect(transition.state).toMatchObject({
+      sourceText: '# Paper',
+      lastSavedSourceText: '# Paper',
+      markdown: '# Paper',
+      lastSavedMarkdown: '# Paper',
+      format: 'markdown',
+      filePath: 'C:\\lab\\paper.md',
+      mode: 'visual',
+      autosaveStatus: 'saved',
+      externalConflict: false,
+    });
+  });
+
+  it('infers JSON opened documents and honors preferred tree mode state', () => {
+    const transition = buildOpenedDocumentTransition({
+      path: 'C:\\lab\\results.json',
+      content: '{"ok":true}\n',
+      metadata: DEFAULT_METADATA,
+      preferredMode: 'visual',
+      normalizeVisualStyle: () => null,
+    });
+
+    expect(transition.state).toMatchObject({
+      sourceText: '{"ok":true}\n',
+      lastSavedSourceText: '{"ok":true}\n',
+      markdown: '{"ok":true}\n',
+      lastSavedMarkdown: '{"ok":true}\n',
+      format: 'json',
+      filePath: 'C:\\lab\\results.json',
+      mode: 'visual',
+      autosaveStatus: 'saved',
+    });
+  });
+
+  it('keeps oversized opened Markdown documents in source mode through session transition', () => {
+    const transition = buildOpenedDocumentTransition({
+      path: 'C:\\lab\\large-paper.md',
+      content: '# Large',
+      metadata: {
+        ...DEFAULT_METADATA,
+        lastKnownSizeBytes: SOURCE_ONLY_FILE_BYTES + 1,
+      },
+      preferredMode: 'visual',
+      normalizeVisualStyle: () => null,
+    });
+
+    expect(transition.state.mode).toBe('source');
+  });
+
   it('builds opened saved-document state and metadata-derived settings', () => {
     const transition = buildOpenedDocumentTransition({
       path: 'C:\\lab\\paper.md',
@@ -27,6 +88,7 @@ describe('documentSession controller', () => {
     expect(transition.state).toMatchObject({
       markdown: '# Paper',
       lastSavedMarkdown: '# Paper',
+      format: 'markdown',
       filePath: 'C:\\lab\\paper.md',
       mode: 'source',
       autosaveStatus: 'saved',
@@ -53,6 +115,12 @@ describe('documentSession controller', () => {
   it('records disk merge state as saved only when editor and disk match', () => {
     expect(buildReviewedDiskMergeTransition('# Same', '# Same', DEFAULT_METADATA).state.autosaveStatus).toBe('saved');
     expect(buildReviewedDiskMergeTransition('# Local', '# Disk', DEFAULT_METADATA).state.autosaveStatus).toBe('pending');
+    expect(buildReviewedDiskMergeTransition('# Local', '# Disk', DEFAULT_METADATA).state).toMatchObject({
+      sourceText: '# Local',
+      lastSavedSourceText: '# Disk',
+      markdown: '# Local',
+      lastSavedMarkdown: '# Disk',
+    });
   });
 
   it('decides when untitled draft restore can be skipped, cleared, or prompted', () => {
@@ -86,8 +154,11 @@ describe('documentSession controller', () => {
     const transition = buildUntitledDraftRestoreTransition('# Draft', '# Welcome');
 
     expect(transition.state).toMatchObject({
+      sourceText: '# Draft',
+      lastSavedSourceText: '# Welcome',
       markdown: '# Draft',
       lastSavedMarkdown: '# Welcome',
+      format: 'markdown',
       filePath: null,
       mode: 'visual',
       autosaveStatus: 'idle',

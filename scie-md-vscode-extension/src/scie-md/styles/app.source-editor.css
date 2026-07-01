@@ -82,3 +82,8 @@
   opacity: 1;
   background: var(--error);
 }
+
+.save-pill.paused {
+  border-color: color-mix(in srgb, var(--warning), var(--border) 35%);
+  color: var(--warning);
+}

@@ -1,0 +1,8 @@
+sample_id: !!str 001
+created_at: !!timestamp 2026-06-30T13:45:00Z
+is_blinded: !!bool "false"
+temperature_c: !!float "22.5"
+paths:
+  windows: !!str C:\Lab\ScieMD\dataset
+  uri: !<tag:example.org,2026:uri> https://example.org/dataset/SCMD-YAML-001
+

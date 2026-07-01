@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppWorkbench } from './AppWorkbench';
 import { DEFAULT_METADATA } from './documentState';
+import { formatCapabilitiesFor } from './formatCapabilities';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -255,6 +256,19 @@ describe('AppWorkbench', () => {
     expect(openProps.findReplace?.onClose).toHaveBeenCalledTimes(1);
     expect(openProps.findReplace?.onNavigate).toHaveBeenCalledWith(2, 7);
   });
+
+  it('hides the Markdown toolbar for source-only formats', () => {
+    const props = createProps({
+      formatCapabilities: formatCapabilitiesFor('json'),
+    });
+
+    renderWorkbench(props);
+
+    expect(container.querySelector('[data-testid="markdown-toolbar"]')).toBeNull();
+    expect(container.querySelector('[data-testid="topbar"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="editor-stage"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="status-bar"]')).not.toBeNull();
+  });
 });
 
 function renderWorkbench(props: ComponentProps<typeof AppWorkbench>): void {
@@ -279,8 +293,10 @@ function createProps(overrides: Partial<ComponentProps<typeof AppWorkbench>> = {
     activeTopbarMenu: null,
     onToggleTopbarMenu: vi.fn(),
     onCloseTopbarMenus: vi.fn(),
+    formatCapabilities: formatCapabilitiesFor('markdown'),
     topbar: {
       mode: 'visual',
+      format: 'markdown',
       filePath: 'C:\\docs\\paper.md',
       dirty: true,
       outlineOpen: true,
@@ -320,6 +336,13 @@ function createProps(overrides: Partial<ComponentProps<typeof AppWorkbench>> = {
       onSyncBibliography: vi.fn(),
       onCopyScieMDLlmSkill: vi.fn(),
       onGenerateScieMDLlmSkill: vi.fn(),
+      onCopyStructuredContext: vi.fn(),
+      onCopySelectedStructureContext: vi.fn(),
+      onCopySchemaAwareJsonContext: vi.fn(),
+      onCopyStructuredTableSample: vi.fn(),
+      onCopyParserDiagnostics: vi.fn(),
+      onCopyRedactedStructuredPreview: vi.fn(),
+      onValidateStructuredClipboard: vi.fn(),
       onGenerateSubmissionReadiness: vi.fn(),
       onOpenPasteReview: vi.fn(),
       onOpenExportDialog: vi.fn(),
@@ -414,6 +437,8 @@ function createProps(overrides: Partial<ComponentProps<typeof AppWorkbench>> = {
     },
     editorStage: {
       editorStageRef: { current: null },
+      format: 'markdown',
+      formatCapabilities: formatCapabilitiesFor('markdown'),
       mode: 'visual',
       filePath: 'C:\\docs\\paper.md',
       markdown: '# Draft',
@@ -474,6 +499,7 @@ function createProps(overrides: Partial<ComponentProps<typeof AppWorkbench>> = {
       onJumpToLine: vi.fn(),
       onOpenReferences: vi.fn(),
       onOpenData: vi.fn(),
+      onSwitchToVisualMode: vi.fn(),
       onRetryStartupOpen: vi.fn(),
       onOpenStartupFallbackDocument: vi.fn(),
       onDismissStartupOpenFailure: vi.fn(),
@@ -539,6 +565,8 @@ function createProps(overrides: Partial<ComponentProps<typeof AppWorkbench>> = {
         onCheckInkscape: vi.fn(),
         onSetInkscapePath: vi.fn(),
         onJumpToLine: vi.fn(),
+        onSelectJsonSchema: vi.fn(),
+        onClearJsonSchema: vi.fn(),
       },
     },
     ambientSuggestions: {
@@ -547,6 +575,7 @@ function createProps(overrides: Partial<ComponentProps<typeof AppWorkbench>> = {
       onOpenPasteReview: vi.fn(),
     },
     statusBar: {
+      formatCapabilities: formatCapabilitiesFor('markdown'),
       autosaveStatus: 'saved',
       statusText: 'Saved',
       headingPath: [],

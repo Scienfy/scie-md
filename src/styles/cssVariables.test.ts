@@ -57,6 +57,11 @@ describe('style CSS variables', () => {
     expect(appCss).toMatch(/\.editor-mode-toggle button\.selected:hover:not\(:disabled\),\s*\.editor-mode-toggle button\.selected:active:not\(:disabled\)\s*{[\s\S]*background:\s*transparent;[\s\S]*color:\s*var\(--surface\);[\s\S]*transform:\s*none;/);
   });
 
+  it('keeps structured surface tabs visibly selected without the moving mode pill', () => {
+    expect(appCss).toMatch(/\.structured-surface-toggle button\.selected\s*{[\s\S]*border-color:\s*color-mix\(in srgb,\s*var\(--accent\),\s*var\(--border\)\s*22%\);[\s\S]*background:\s*color-mix\(in srgb,\s*var\(--accent\),\s*transparent\s*88%\);[\s\S]*color:\s*var\(--accent\);[\s\S]*font-weight:\s*750;/);
+    expect(appCss).toMatch(/\.structured-surface-toggle button\.selected:hover:not\(:disabled\),\s*\.structured-surface-toggle button\.selected:active:not\(:disabled\)\s*{[\s\S]*border-color:\s*var\(--accent\);[\s\S]*background:\s*color-mix\(in srgb,\s*var\(--accent\),\s*transparent\s*84%\);[\s\S]*color:\s*var\(--accent\);[\s\S]*transform:\s*none;/);
+  });
+
   it('keeps app tooltips legible at viewport edges', () => {
     expect(appCss).toMatch(/\.app-tooltip\s*{[\s\S]*width:\s*max-content;[\s\S]*max-width:\s*min\(320px,\s*calc\(100vw - 16px\)\);/);
     expect(appCss).toMatch(/\.app-tooltip\s*{[\s\S]*overflow-wrap:\s*break-word;[\s\S]*word-break:\s*normal;/);

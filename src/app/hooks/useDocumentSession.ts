@@ -10,6 +10,7 @@ import {
   buildUntitledDraftRestoreTransition,
   decideLaunchDuplicate,
   decideUntitledDraftRestore,
+  inferDocumentFormat,
   nextDirtyReplacementStep,
 } from '../documentSession/controller';
 import type { DocumentSessionState } from '../documentSession/controller';
@@ -27,7 +28,7 @@ import { useSaveOperations } from './useSaveOperations';
 import { useWindowCloseGuard } from './useWindowCloseGuard';
 import type { PersistedSettings } from '../../services/settingsService';
 import { normalizeVisualStyleId } from '../../services/visualStyleService';
-import { createScienfyTemplate } from '../../domain/document/templates';
+import { createScienfyTemplate, preferredTemplateMode, templateDefinitionFor, templateFormat } from '../../domain/document/templates';
 import type { ScienfyTemplateId } from '../../domain/document/templates';
 import { safeParseScienfyDocument } from '@sciemd/core';
 import type { AuthorshipMark } from '../../markdown/authorship';
@@ -47,9 +48,17 @@ import type { DocumentHost } from '../host/documentHost';
 import { desktopDocumentHost } from '../host/desktopDocumentHost';
 import type { StartupOpenFailureKind, StartupOpenFailureState } from '../startupOpenFailure';
 import { createStartupOpenFailure, startupOpenDiagnosticEvent } from '../startupOpenFailure';
+import type { DocumentFormat } from '@sciemd/core';
+import {
+  DEFAULT_STRUCTURED_SAVE_POLICY,
+  structuredSavePolicyEquals,
+  type StructuredSavePolicy,
+} from '../structuredSavePolicy';
 
 interface DocumentSessionParams {
-  initialMarkdown: string;
+  initialSourceText?: string;
+  /** @deprecated Use initialSourceText at generic document/session boundaries. */
+  initialMarkdown?: string;
   setSettings: Dispatch<SetStateAction<PersistedSettings>>;
   setAuthorshipMarks: Dispatch<SetStateAction<AuthorshipMark[]>>;
   onDocumentReplaced?: () => void;
@@ -73,6 +82,7 @@ const STARTUP_PATH_TIMEOUT_MS = 5_000;
 const LAUNCH_DUPLICATE_SUPPRESSION_MS = 3_000;
 
 export function useDocumentSession({
+  initialSourceText,
   initialMarkdown,
   setSettings,
   setAuthorshipMarks,
@@ -82,13 +92,18 @@ export function useDocumentSession({
   pushToast,
   host = desktopDocumentHost,
 }: DocumentSessionParams) {
+  const initialDocumentSourceText = initialSourceText ?? initialMarkdown ?? '';
   const draftRestoreCheckedRef = useRef(false);
-  const [markdown, setMarkdown] = useState(initialMarkdown);
-  const markdownRef = useRef(initialMarkdown);
+  const [sourceText, setSourceText] = useState(initialDocumentSourceText);
+  const sourceTextRef = useRef(initialDocumentSourceText);
   const documentHistoryRef = useRef(createDocumentHistory());
   const editorEditGroupTimerRef = useRef<number | null>(null);
   const initialOpenCheckedRef = useRef(false);
-  const [lastSavedMarkdown, setLastSavedMarkdown] = useState(initialMarkdown);
+  const [lastSavedSourceText, setLastSavedSourceText] = useState(initialDocumentSourceText);
+  const markdown = sourceText;
+  const lastSavedMarkdown = lastSavedSourceText;
+  const [format, setFormatState] = useState<DocumentFormat>('markdown');
+  const formatRef = useRef<DocumentFormat>('markdown');
   const [filePath, setFilePath] = useState<string | null>(null);
   const activeFilePathRef = useRef<string | null>(null);
   const documentIdentityVersionRef = useRef(0);
@@ -97,6 +112,8 @@ export function useDocumentSession({
   const [mode, setMode] = useState<EditorMode>('visual');
   const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>('idle');
   const [lastAutosavedAt, setLastAutosavedAt] = useState<number | null>(null);
+  const [structuredSavePolicy, setStructuredSavePolicyState] = useState<StructuredSavePolicy>(DEFAULT_STRUCTURED_SAVE_POLICY);
+  const structuredSavePolicyRef = useRef<StructuredSavePolicy>(DEFAULT_STRUCTURED_SAVE_POLICY);
   const [externalConflict, setExternalConflict] = useState(false);
   const [startupDocumentOpenPending, setStartupDocumentOpenPending] = useState(() => isTauriRuntime());
   const [startupDocumentOpenFailure, setStartupDocumentOpenFailure] = useState<StartupOpenFailureState | null>(null);
@@ -114,6 +131,9 @@ export function useDocumentSession({
   const lastDraftWarningRef = useRef('');
   const untitledDraftRestoreAttemptedRef = useRef(false);
   const visualRoundTripAcknowledgementKeyRef = useRef<string | null>(null);
+  const isMarkdownDocument = format === 'markdown';
+  const markdownFeatureText = isMarkdownDocument ? sourceText : '';
+  const markdownFeaturePath = isMarkdownDocument ? filePath : null;
 
   const {
     document: layerTwoDocument,
@@ -122,16 +142,23 @@ export function useDocumentSession({
     documentParsingPending,
     linkedVariableLoading,
     reloadBibliography,
-  } = useLayerTwoDocument(markdown, filePath, host);
-  const { validation, validateNow, validationPending } = useDocumentValidator(markdown, layerTwoDocument, parsedMarkdown);
-  const dirty = isDirty(markdown, lastSavedMarkdown);
-  const autosaveBlocked = false;
+  } = useLayerTwoDocument(markdownFeatureText, markdownFeaturePath, host);
+  const { validation, validateNow, validationPending } = useDocumentValidator(markdownFeatureText, layerTwoDocument, parsedMarkdown);
+  const dirty = isDirty(sourceText, lastSavedSourceText);
+  const autosaveBlocked = structuredSavePolicy.autosaveBlocked;
+
+  const updateStructuredSavePolicy = useCallback((nextPolicy: StructuredSavePolicy) => {
+    structuredSavePolicyRef.current = nextPolicy;
+    setStructuredSavePolicyState((currentPolicy) => (
+      structuredSavePolicyEquals(currentPolicy, nextPolicy) ? currentPolicy : nextPolicy
+    ));
+  }, []);
 
   // This handshake is intentionally mount-scoped. Cancelling it on ordinary
   // callback identity churn can leave Tauri startup permanently pending.
   useEffect(() => {
-    markdownRef.current = markdown;
-  }, [markdown]);
+    sourceTextRef.current = sourceText;
+  }, [sourceText]);
 
   useEffect(() => {
     activeFilePathRef.current = filePath;
@@ -151,10 +178,14 @@ export function useDocumentSession({
 
   const applyDocumentSessionState = useCallback((state: DocumentSessionState) => {
     visualRoundTripAcknowledgementKeyRef.current = null;
-    setMarkdown(state.markdown);
-    markdownRef.current = state.markdown;
+    const nextSourceText = state.sourceText ?? state.markdown;
+    const nextLastSavedSourceText = state.lastSavedSourceText ?? state.lastSavedMarkdown;
+    setSourceText(nextSourceText);
+    sourceTextRef.current = nextSourceText;
     resetDocumentHistory();
-    setLastSavedMarkdown(state.lastSavedMarkdown);
+    setLastSavedSourceText(nextLastSavedSourceText);
+    formatRef.current = state.format;
+    setFormatState(state.format);
     activeFilePathRef.current = state.filePath;
     setFilePath(state.filePath);
     setFileMetadata(state.fileMetadata);
@@ -223,21 +254,21 @@ export function useDocumentSession({
     }
   }, []);
 
-  const commitMarkdownEdit = useCallback((action: SetStateAction<string>) => {
+  const commitSourceTextEdit = useCallback((action: SetStateAction<string>) => {
     clearEditorEditGroup();
-    setMarkdown((current) => {
+    setSourceText((current) => {
       const next = typeof action === 'function'
         ? (action as (value: string) => string)(current)
         : action;
       if (next === current) return current;
       recordDocumentEdit(documentHistoryRef.current, current);
-      markdownRef.current = next;
+      sourceTextRef.current = next;
       return next;
     });
   }, [clearEditorEditGroup]);
 
-  const commitEditorMarkdownEdit = useCallback((next: string) => {
-    setMarkdown((current) => {
+  const commitEditorSourceTextEdit = useCallback((next: string) => {
+    setSourceText((current) => {
       if (next === current) return current;
       if (editorEditGroupTimerRef.current === null) {
         recordDocumentEdit(documentHistoryRef.current, current);
@@ -247,39 +278,50 @@ export function useDocumentSession({
       editorEditGroupTimerRef.current = window.setTimeout(() => {
         editorEditGroupTimerRef.current = null;
       }, 1000);
-      markdownRef.current = next;
+      sourceTextRef.current = next;
+      return next;
+    });
+  }, []);
+  const commitMarkdownEdit = commitSourceTextEdit;
+  const commitEditorMarkdownEdit = commitEditorSourceTextEdit;
+
+  const setDocumentMode = useCallback((action: SetStateAction<EditorMode>) => {
+    setMode((current) => {
+      const next = typeof action === 'function'
+        ? (action as (value: EditorMode) => EditorMode)(current)
+        : action;
       return next;
     });
   }, []);
 
   const undoDocumentEdit = useCallback(() => {
     clearEditorEditGroup();
-    const current = commitVisualEditorState(commitEditorMarkdownEdit) ?? markdownRef.current;
-    markdownRef.current = current;
+    const current = commitVisualEditorState(commitEditorSourceTextEdit) ?? sourceTextRef.current;
+    sourceTextRef.current = current;
     const previous = undoDocumentHistory(documentHistoryRef.current, current);
     if (previous === null) return false;
-    markdownRef.current = previous;
-    setMarkdown(previous);
+    sourceTextRef.current = previous;
+    setSourceText(previous);
     return true;
-  }, [clearEditorEditGroup, commitEditorMarkdownEdit]);
+  }, [clearEditorEditGroup, commitEditorSourceTextEdit]);
 
   const redoDocumentEdit = useCallback(() => {
     clearEditorEditGroup();
-    const current = commitVisualEditorState(commitEditorMarkdownEdit) ?? markdownRef.current;
-    markdownRef.current = current;
+    const current = commitVisualEditorState(commitEditorSourceTextEdit) ?? sourceTextRef.current;
+    sourceTextRef.current = current;
     const next = redoDocumentHistory(documentHistoryRef.current, current);
     if (next === null) return false;
-    markdownRef.current = next;
-    setMarkdown(next);
+    sourceTextRef.current = next;
+    setSourceText(next);
     return true;
-  }, [clearEditorEditGroup, commitEditorMarkdownEdit]);
+  }, [clearEditorEditGroup, commitEditorSourceTextEdit]);
 
   const confirmVisualRoundTripWrite = useCallback(async (
-    candidateMarkdown: string,
+    candidateSourceText: string,
     request: VisualRoundTripWriteRequest,
   ) => {
     if (mode !== 'visual' && request.reason !== 'mode-switch-to-visual') return true;
-    const issues = detectVisualRoundTripRisks(candidateMarkdown);
+    const issues = detectVisualRoundTripRisks(candidateSourceText);
     if (issues.length === 0) return true;
 
     const acknowledgementKey = visualRoundTripRiskKey(issues.map((issue) => issue.message));
@@ -332,12 +374,16 @@ export function useDocumentSession({
     if (untitledDraftRestoreAttemptedRef.current) return;
     untitledDraftRestoreAttemptedRef.current = true;
     const draft = await host.recovery.loadUntitledDraft();
-    if (isCancelled() || !draft || draft.markdown === initialMarkdown) return;
+    if (isCancelled() || !draft) return;
+    const draftSourceText = draft.sourceText ?? draft.markdown;
+    if (!draftSourceText || draftSourceText === initialDocumentSourceText) return;
     const restoreDecision = decideUntitledDraftRestore({
+      draftSourceText,
       draftMarkdown: draft.markdown,
-      initialMarkdown,
-      draftIsBundledWelcome: host.recovery.isBundledWelcomeMarkdown(draft.markdown),
-      initialIsBundledWelcome: host.recovery.isBundledWelcomeMarkdown(initialMarkdown),
+      initialSourceText: initialDocumentSourceText,
+      initialMarkdown: initialDocumentSourceText,
+      draftIsBundledWelcome: host.recovery.isBundledWelcomeMarkdown(draftSourceText),
+      initialIsBundledWelcome: host.recovery.isBundledWelcomeMarkdown(initialDocumentSourceText),
     });
     if (restoreDecision.action === 'skip') return;
     if (restoreDecision.action === 'clear-bundled-welcome') {
@@ -345,7 +391,7 @@ export function useDocumentSession({
       return;
     }
     const restoreBaselinePath = activeFilePathRef.current;
-    const restoreBaselineMarkdown = markdownRef.current;
+    const restoreBaselineSourceText = sourceTextRef.current;
     const shouldRestore = await confirmText({
       title: 'Restore unsaved draft?',
       message: 'An unsaved draft from the previous session was found. Restore it so it can be reviewed?',
@@ -358,16 +404,16 @@ export function useDocumentSession({
       pushToast('Previous unsaved draft discarded.', 'info');
       return;
     }
-    if (activeFilePathRef.current !== restoreBaselinePath || markdownRef.current !== restoreBaselineMarkdown) {
+    if (activeFilePathRef.current !== restoreBaselinePath || sourceTextRef.current !== restoreBaselineSourceText) {
       pushToast('Previous unsaved draft was kept because another document is now active.', 'warning');
       return;
     }
 
     onDocumentReplaced?.();
-    const transition = buildUntitledDraftRestoreTransition(draft.markdown, initialMarkdown);
+    const transition = buildUntitledDraftRestoreTransition(draftSourceText, initialDocumentSourceText, draft.format);
     applyDocumentSessionState(transition.state);
     pushToast(transition.toast.text, transition.toast.tone);
-  }, [applyDocumentSessionState, confirmText, host, initialMarkdown, onDocumentReplaced, pushToast]);
+  }, [applyDocumentSessionState, confirmText, host, initialDocumentSourceText, onDocumentReplaced, pushToast]);
 
   useEffect(() => {
     // Desktop startup owns draft restore after launch-path resolution settles.
@@ -390,39 +436,40 @@ export function useDocumentSession({
   useEffect(() => {
     if (filePath) {
       void host.recovery.clearUntitledDraftAsync();
-      if (markdown === lastSavedMarkdown) {
+      if (sourceText === lastSavedSourceText) {
         void host.recovery.clearFileDraftAsync(filePath);
         return undefined;
       }
       const timer = window.setTimeout(() => {
-        void host.recovery.saveFileDraftAsync(filePath, markdown, Date.now(), fileMetadata);
+        void host.recovery.saveFileDraftAsync(filePath, sourceText, Date.now(), fileMetadata, format);
       }, 600);
       return () => window.clearTimeout(timer);
     }
-    if (!host.recovery.shouldPersistUntitledDraft(markdown, initialMarkdown, { suppressBundledWelcome: true })) {
+    if (!host.recovery.shouldPersistUntitledDraft(sourceText, initialDocumentSourceText, { suppressBundledWelcome: true })) {
       void host.recovery.clearUntitledDraftAsync();
       return undefined;
     }
     const timer = window.setTimeout(() => {
-      void host.recovery.saveUntitledDraftAsync(markdown);
+      void host.recovery.saveUntitledDraftAsync(sourceText, Date.now(), format);
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [fileMetadata, filePath, host, initialMarkdown, lastSavedMarkdown, markdown]);
+  }, [fileMetadata, filePath, format, host, initialDocumentSourceText, lastSavedSourceText, sourceText]);
 
   useEffect(() => {
     const flushRecoveryDraft = () => {
-      const currentMarkdown = readVisualEditorState()?.markdown ?? markdownRef.current;
-      markdownRef.current = currentMarkdown;
+      const visualState = formatRef.current === 'markdown' ? readVisualEditorState() : null;
+      const currentSourceText = visualState?.markdown ?? sourceTextRef.current;
+      sourceTextRef.current = currentSourceText;
       if (filePath) {
-        if (currentMarkdown === lastSavedMarkdown) {
+        if (currentSourceText === lastSavedSourceText) {
           void host.recovery.clearFileDraftAsync(filePath);
         } else {
-          void host.recovery.saveFileDraftAsync(filePath, currentMarkdown, Date.now(), fileMetadata);
+          void host.recovery.saveFileDraftAsync(filePath, currentSourceText, Date.now(), fileMetadata, formatRef.current);
         }
         return;
       }
-      if (host.recovery.shouldPersistUntitledDraft(currentMarkdown, initialMarkdown, { suppressBundledWelcome: true })) {
-        void host.recovery.saveUntitledDraftAsync(currentMarkdown);
+      if (host.recovery.shouldPersistUntitledDraft(currentSourceText, initialDocumentSourceText, { suppressBundledWelcome: true })) {
+        void host.recovery.saveUntitledDraftAsync(currentSourceText, Date.now(), formatRef.current);
       } else {
         void host.recovery.clearUntitledDraftAsync();
       }
@@ -438,22 +485,28 @@ export function useDocumentSession({
       window.removeEventListener('pagehide', flushRecoveryDraft);
       window.removeEventListener('beforeunload', flushRecoveryDraft);
     };
-  }, [fileMetadata, filePath, host, initialMarkdown, lastSavedMarkdown]);
+  }, [fileMetadata, filePath, host, initialDocumentSourceText, lastSavedSourceText]);
 
   const { saveCurrent, ensureDocumentPathForAssets, resetBackupSession, saveQueueDepth } = useSaveOperations({
     filePath,
     fileMetadata,
-    markdown,
+    format,
+    sourceText,
     getDocumentIdentityVersion: () => documentIdentityVersionRef.current,
     setFilePath,
+    setFormat: (nextFormat) => {
+      formatRef.current = nextFormat;
+      setFormatState(nextFormat);
+    },
     setFileMetadata,
-    setLastSavedMarkdown,
+    setLastSavedSourceText,
     setAutosaveStatus,
     setLastAutosavedAt,
     setExternalConflict,
     setSettings,
-    commitMarkdownEdit: commitEditorMarkdownEdit,
+    commitSourceTextEdit: commitEditorSourceTextEdit,
     confirmVisualRoundTripWrite,
+    structuredSavePolicyRef,
     confirmText,
     pushToast,
     host,
@@ -464,25 +517,34 @@ export function useDocumentSession({
     content: string,
     metadata: FileMetadata,
     preferredMode?: EditorMode,
-    savedMarkdown = content,
-    options: CommitOpenedDocumentOptions = {},
+    savedSourceText = content,
+    documentFormatOrOptions?: DocumentFormat | CommitOpenedDocumentOptions,
+    maybeOptions: CommitOpenedDocumentOptions = {},
   ) => {
+    const documentFormat = typeof documentFormatOrOptions === 'string' ? documentFormatOrOptions : undefined;
+    const options = typeof documentFormatOrOptions === 'object' ? documentFormatOrOptions : maybeOptions;
     openRequestIdRef.current += 1;
     documentIdentityVersionRef.current += 1;
     if (!options.preserveStartupOpenFailure) {
       setStartupDocumentOpenFailure(null);
     }
-    const parsedDocument = metadata.lastKnownSizeBytes > SOURCE_ONLY_FILE_BYTES
+    const nextFormat = documentFormat ?? inferDocumentFormat(path, formatRef.current);
+    const parsedDocument = nextFormat !== 'markdown' || metadata.lastKnownSizeBytes > SOURCE_ONLY_FILE_BYTES
       ? undefined
       : safeParseScienfyDocument(content);
-    validateNow(content, metadata.lastKnownSizeBytes, parsedDocument);
+    validateNow(
+      nextFormat === 'markdown' ? content : '',
+      nextFormat === 'markdown' ? metadata.lastKnownSizeBytes : 0,
+      parsedDocument,
+    );
     onDocumentReplaced?.();
     const transition = buildOpenedDocumentTransition({
       path,
       content,
       metadata,
+      format: nextFormat,
       preferredMode,
-      savedMarkdown,
+      savedSourceText,
       parsedDocument: parsedDocument
         ? {
             visualStyle: parsedDocument.visualStyle,
@@ -521,7 +583,7 @@ export function useDocumentSession({
     return failure;
   }, [host.recovery]);
 
-  const recordStartupFallbackCommitted = useCallback((markdownForFallback: string) => {
+  const recordStartupFallbackCommitted = useCallback((sourceTextForFallback: string) => {
     recordDocumentOpenDiagnostic(
       host.recovery,
       'startup-open-fallback-committed',
@@ -529,18 +591,22 @@ export function useDocumentSession({
         ? 'Startup open fallback document committed after a launch failure.'
         : 'Startup fallback document committed after no startup document was provided.',
       startupDocumentOpenFailure?.path ?? null,
-      markdownForFallback,
+      sourceTextForFallback,
     );
   }, [host.recovery, startupDocumentOpenFailure]);
 
   const adoptReviewedDiskMerge = useCallback((content: string, diskContent: string, diskMetadata: FileMetadata) => {
-    const parsedDocument = safeParseScienfyDocument(content);
-    validateNow(content, diskMetadata.lastKnownSizeBytes, parsedDocument);
+    const parsedDocument = formatRef.current === 'markdown' ? safeParseScienfyDocument(content) : undefined;
+    validateNow(
+      formatRef.current === 'markdown' ? content : '',
+      formatRef.current === 'markdown' ? diskMetadata.lastKnownSizeBytes : 0,
+      parsedDocument,
+    );
     const transition = buildReviewedDiskMergeTransition(content, diskContent, diskMetadata);
-    setMarkdown(transition.state.markdown);
-    markdownRef.current = transition.state.markdown;
+    setSourceText(transition.state.sourceText);
+    sourceTextRef.current = transition.state.sourceText;
     resetDocumentHistory();
-    setLastSavedMarkdown(transition.state.lastSavedMarkdown);
+    setLastSavedSourceText(transition.state.lastSavedSourceText);
     setFileMetadata(transition.state.fileMetadata);
     setAutosaveStatus(transition.state.autosaveStatus);
     setLastAutosavedAt(transition.state.lastAutosavedAt);
@@ -564,27 +630,27 @@ export function useDocumentSession({
 
   const adoptSameContentExternalChange = useCallback((path: string, content: string, metadata: FileMetadata) => {
     if (activeFilePathRef.current !== path) return;
-    const visualState = readVisualEditorState();
-    const currentMarkdown = visualState?.markdown ?? markdownRef.current;
-    if (currentMarkdown !== content) return;
-    const committedMarkdown = commitVisualEditorReadResult(visualState, commitEditorMarkdownEdit);
-    markdownRef.current = committedMarkdown ?? content;
-    setMarkdown((current) => current === content ? current : content);
-    setLastSavedMarkdown(content);
+    const visualState = formatRef.current === 'markdown' ? readVisualEditorState() : null;
+    const currentSourceText = visualState?.markdown ?? sourceTextRef.current;
+    if (currentSourceText !== content) return;
+    const committedSourceText = commitVisualEditorReadResult(visualState, commitEditorSourceTextEdit);
+    sourceTextRef.current = committedSourceText ?? content;
+    setSourceText((current) => current === content ? current : content);
+    setLastSavedSourceText(content);
     setFileMetadata(metadata);
     setAutosaveStatus('saved');
     setLastAutosavedAt(null);
     setExternalConflict(false);
-  }, [commitEditorMarkdownEdit]);
+  }, [commitEditorSourceTextEdit]);
 
-  const getCurrentMarkdownForDiskCheck = useCallback(() => (
-    readVisualEditorState()?.markdown ?? markdownRef.current
+  const getCurrentSourceTextForDiskCheck = useCallback(() => (
+    (formatRef.current === 'markdown' ? readVisualEditorState() : null)?.markdown ?? sourceTextRef.current
   ), []);
 
   useExternalChangeDetection({
     filePath,
     fileMetadata,
-    getCurrentMarkdown: getCurrentMarkdownForDiskCheck,
+    getCurrentSourceText: getCurrentSourceTextForDiskCheck,
     onConflict: markExternalConflict,
     onSyncedExternalChange: adoptSameContentExternalChange,
     onCloudPlaceholder: (message) => pushToast(message, 'warning'),
@@ -593,7 +659,7 @@ export function useDocumentSession({
 
   const { cancelAutosave, flushAutosave, resumeAutosave } = useAutosaveTimer({
     filePath,
-    markdown,
+    sourceText,
     dirty,
     externalConflict,
     autosaveBlocked,
@@ -618,16 +684,17 @@ export function useDocumentSession({
 
   const preserveDirtyDraftBeforeExternalOpen = useCallback(() => {
     if (!dirty) return;
-    const currentMarkdown = readVisualEditorState()?.markdown ?? markdownRef.current;
-    markdownRef.current = currentMarkdown;
+    const visualState = formatRef.current === 'markdown' ? readVisualEditorState() : null;
+    const currentSourceText = visualState?.markdown ?? sourceTextRef.current;
+    sourceTextRef.current = currentSourceText;
     if (filePath) {
-      host.recovery.saveFileDraft(filePath, currentMarkdown, Date.now(), fileMetadata);
+      host.recovery.saveFileDraft(filePath, currentSourceText, Date.now(), fileMetadata, formatRef.current);
       return;
     }
-    if (host.recovery.shouldPersistUntitledDraft(currentMarkdown, initialMarkdown, { suppressBundledWelcome: true })) {
-      host.recovery.saveUntitledDraft(currentMarkdown);
+    if (host.recovery.shouldPersistUntitledDraft(currentSourceText, initialDocumentSourceText, { suppressBundledWelcome: true })) {
+      host.recovery.saveUntitledDraft(currentSourceText, Date.now(), formatRef.current);
     }
-  }, [dirty, fileMetadata, filePath, host, initialMarkdown]);
+  }, [dirty, fileMetadata, filePath, host, initialDocumentSourceText]);
 
   const handleCloseCancel = useCallback(() => {
     setCloseDialogOpen(false);
@@ -646,7 +713,7 @@ export function useDocumentSession({
       setSettings,
       isLatestOpenRequest: () => openRequestIdRef.current === requestId,
       isExternalLaunchDocumentCurrent: (path) => activeFilePathRef.current === path,
-      getCurrentMarkdown: () => markdownRef.current,
+      getCurrentSourceText: () => sourceTextRef.current,
       settleDirtyDocumentBeforeReplace,
       preserveDirtyDraftBeforeExternalOpen,
       showDocumentOpenStatus,
@@ -682,7 +749,7 @@ export function useDocumentSession({
         launchDecision.diagnosticMessage,
         launchDecision.path,
       );
-      await host.launch.clearPendingMarkdownOpen(launchDecision.path).catch((error) => {
+      await host.launch.clearPendingDocumentOpen(launchDecision.path).catch((error) => {
         console.warn('Could not clear pending document-open event.', error);
       });
       return true;
@@ -692,7 +759,7 @@ export function useDocumentSession({
       const opened = await handleExternalOpen(launchDecision.path);
       if (opened) {
         lastLaunchOpenRef.current = { path: launchDecision.path, pathKey: launchDecision.pathKey, openedAt: Date.now() };
-        await host.launch.clearPendingMarkdownOpen(launchDecision.path).catch((error) => {
+        await host.launch.clearPendingDocumentOpen(launchDecision.path).catch((error) => {
           console.warn('Could not clear pending document-open event.', error);
         });
       } else if (options.markStartupFailure) {
@@ -713,7 +780,7 @@ export function useDocumentSession({
     if (pendingLaunchDrainInFlightRef.current) return false;
     pendingLaunchDrainInFlightRef.current = true;
     try {
-      const pendingPath = await host.launch.peekPendingMarkdownOpen();
+      const pendingPath = await host.launch.peekPendingDocumentOpen();
       if (!pendingPath?.trim()) return false;
       return openLaunchPathAndClear(pendingPath);
     } catch (error) {
@@ -750,7 +817,7 @@ export function useDocumentSession({
       try {
         setStartupDocumentOpenFailure(null);
         const path = await withTimeout(
-          host.launch.getInitialMarkdownPath(),
+          host.launch.getInitialDocumentPath(),
           STARTUP_PATH_TIMEOUT_MS,
           'Startup document path lookup took too long.',
         );
@@ -772,7 +839,7 @@ export function useDocumentSession({
           }
           return;
         }
-        if (!cancelled && !activeFilePathRef.current && markdownRef.current === initialMarkdown) {
+        if (!cancelled && !activeFilePathRef.current && sourceTextRef.current === initialDocumentSourceText) {
           await restoreUntitledDraftIfAvailable(() => cancelled);
         }
       } catch (error) {
@@ -844,7 +911,7 @@ export function useDocumentSession({
         return opened;
       }
       const path = await withTimeout(
-        host.launch.getInitialMarkdownPath(),
+        host.launch.getInitialDocumentPath(),
         STARTUP_PATH_TIMEOUT_MS,
         'Startup document path lookup took too long.',
       );
@@ -894,7 +961,8 @@ export function useDocumentSession({
     try {
       openRequestIdRef.current += 1;
       if (!(await settleDirtyDocumentBeforeReplace())) return;
-      commitOpenedDocument(null, '', DEFAULT_METADATA, 'visual');
+      const content = createScienfyTemplate('blank-markdown');
+      commitOpenedDocument(null, content, DEFAULT_METADATA, 'visual', content, 'markdown');
     } catch (error) {
       console.warn('New document command failed.', error);
       pushToast(error instanceof Error ? error.message : 'Could not create a new document.', 'error');
@@ -906,8 +974,10 @@ export function useDocumentSession({
       openRequestIdRef.current += 1;
       if (!(await settleDirtyDocumentBeforeReplace())) return;
       const content = createScienfyTemplate(template);
-      commitOpenedDocument(null, content, DEFAULT_METADATA);
-      pushToast('Layer II template created', 'success');
+      const format = templateFormat(template);
+      const definition = templateDefinitionFor(template);
+      commitOpenedDocument(null, content, DEFAULT_METADATA, preferredTemplateMode(template), content, format);
+      pushToast(`${definition.label} created`, 'success');
     } catch (error) {
       console.warn('New document from template command failed.', error);
       pushToast(error instanceof Error ? error.message : 'Could not create a document from this template.', 'error');
@@ -942,18 +1012,26 @@ export function useDocumentSession({
   }, [closeWindow, filePath, host, pushToast, setCloseDialogOpen]);
 
   return {
+    sourceText,
+    setSourceText,
+    commitSourceTextEdit,
+    commitEditorSourceTextEdit,
     markdown,
-    setMarkdown,
+    setMarkdown: setSourceText,
     commitMarkdownEdit,
     commitEditorMarkdownEdit,
     undoDocumentEdit,
     redoDocumentEdit,
+    lastSavedSourceText,
     lastSavedMarkdown,
+    format,
     filePath,
     fileMetadata,
     mode,
-    setMode,
+    setMode: setDocumentMode,
     autosaveStatus,
+    structuredSavePolicy,
+    updateStructuredSavePolicy,
     lastAutosavedAt,
     saveQueueDepth,
     startupDocumentOpenPending,

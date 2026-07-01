@@ -11,3 +11,4 @@ pub mod path_grants;
 pub mod path_utils;
 pub mod process;
 pub mod reveal;
+pub mod toml_source_map;

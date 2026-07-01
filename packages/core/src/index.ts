@@ -6,6 +6,7 @@ export * from './domain/document/frontmatter.js';
 export * from './domain/references/crossReferenceIndex.js';
 export * from './domain/variables/variableEditing.js';
 export * from './domain/variables/variableIndex.js';
+export * from './formats/index.js';
 export * from './markdown/diffReview.js';
 export * from './markdown/editorComments.js';
 export * from './markdown/lockRanges.js';

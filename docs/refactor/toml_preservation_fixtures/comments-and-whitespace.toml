@@ -1,0 +1,11 @@
+# Project metadata fixture
+
+[project]
+name    = "ScieMD"
+version = "1.0.12" # inline release comment
+
+  # Indented table comment should remain in place.
+[project.metadata]
+authors = [ "Scienfy Inc.", "Lab team" ]
+license = "AGPL-3.0-or-later"
+

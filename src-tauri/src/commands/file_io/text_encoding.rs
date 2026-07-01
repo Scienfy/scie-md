@@ -36,6 +36,14 @@ pub(super) fn readable_file_kind(path: &Path) -> Option<&'static str> {
     let extension = path.extension()?.to_str()?.to_ascii_lowercase();
     match extension.as_str() {
         "md" | "markdown" => Some("markdown"),
+        "json" => Some("json"),
+        "jsonl" | "ndjson" => Some("jsonl"),
+        "yaml" | "yml" => Some("yaml"),
+        "toml" => Some("toml"),
+        "xml" => Some("xml"),
+        "csv" => Some("csv"),
+        "tsv" => Some("tsv"),
+        "txt" | "text" => Some("plainText"),
         _ => None,
     }
 }

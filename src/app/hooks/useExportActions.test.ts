@@ -100,7 +100,7 @@ describe('createStyledExportHtml', () => {
     expect(appendDiagnosticsEvent).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'html-export-preflight-blocked',
       documentPath: null,
-      markdownBytes: expect.any(Number),
+      sourceTextBytes: expect.any(Number),
     }));
     expect(onExportLog).toHaveBeenCalledWith(expect.arrayContaining([
       expect.objectContaining({ level: 'error', phase: 'validate' }),

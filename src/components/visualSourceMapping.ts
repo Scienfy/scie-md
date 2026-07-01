@@ -30,11 +30,10 @@ export function textblockIndexAtPosition(doc: ProseNode, position: number): numb
 }
 
 export function markdownTextblockStartLines(markdown: string): number[] {
-  const normalized = markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const frontmatter = parseFrontmatter(normalized);
-  const body = frontmatter.hasFrontmatter && !frontmatter.error ? frontmatter.body : normalized;
+  const frontmatter = parseFrontmatter(markdown);
+  const body = frontmatter.hasFrontmatter && !frontmatter.error ? frontmatter.body : markdown;
   const baseLine = frontmatter.hasFrontmatter && !frontmatter.error ? frontmatter.endLine + 1 : 1;
-  const lines = body.split('\n');
+  const lines = splitMarkdownLines(body);
   const starts: number[] = [];
   let inParagraph = false;
   let inScieMDComment = false;
@@ -123,6 +122,10 @@ export function markdownTextblockStartLines(markdown: string): number[] {
   });
 
   return starts;
+}
+
+function splitMarkdownLines(markdown: string): string[] {
+  return markdown.split(/\r\n|\n|\r/);
 }
 
 function isTextblockStartLine(line: string): boolean {

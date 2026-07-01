@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { EditorMode, FileMetadata, ReadTextFileResponse } from '../documentState';
+import type { DocumentFormat } from '@sciemd/core';
 import type { DocumentOpenPhase } from '../documentOpenStatus';
 import { shouldRestoreExternalLaunchDraft } from '../documentSessionPolicy';
 import type { DocumentHost, RecoveryHost } from '../host/documentHost';
@@ -38,7 +39,8 @@ export type CommitOpenedDocument = (
   content: string,
   metadata: FileMetadata,
   preferredMode?: EditorMode,
-  savedMarkdown?: string,
+  savedSourceText?: string,
+  format?: DocumentFormat,
 ) => void;
 
 export interface OpenDocumentForSessionInput {
@@ -50,7 +52,7 @@ export interface OpenDocumentForSessionInput {
   setSettings: Dispatch<SetStateAction<PersistedSettings>>;
   isLatestOpenRequest: () => boolean;
   isExternalLaunchDocumentCurrent: (path: string) => boolean;
-  getCurrentMarkdown: () => string;
+  getCurrentSourceText: () => string;
   settleDirtyDocumentBeforeReplace: () => Promise<boolean>;
   preserveDirtyDraftBeforeExternalOpen: () => void;
   showDocumentOpenStatus: (path: string, phase: DocumentOpenPhase, options?: { immediate?: boolean }) => number;
@@ -68,7 +70,7 @@ export async function openDocumentForSession({
   setSettings,
   isLatestOpenRequest,
   isExternalLaunchDocumentCurrent,
-  getCurrentMarkdown,
+  getCurrentSourceText,
   settleDirtyDocumentBeforeReplace,
   preserveDirtyDraftBeforeExternalOpen,
   showDocumentOpenStatus,
@@ -101,7 +103,7 @@ export async function openDocumentForSession({
     }
     if (!isLatestOpenRequest()) return false;
 
-    selectedPath = explicitPath ?? (await host.dialog.pickMarkdownFile());
+    selectedPath = explicitPath ?? (await host.dialog.pickDocumentFile());
     if (!selectedPath) return false;
     if (!isLatestOpenRequest()) return false;
 
@@ -146,7 +148,7 @@ export async function openDocumentForSession({
           response,
           preferredMode: options.preferredMode,
           isStillCurrentDocument: () => isExternalLaunchDocumentCurrent(launchPath),
-          getCurrentMarkdown,
+          getCurrentSourceText,
           commitOpenedDocument,
           pushToast,
           draftRestoreTimeoutMs: timeouts.draftRestoreMs,
@@ -164,7 +166,7 @@ export async function openDocumentForSession({
       if (options.draftRestore === 'auto') {
         showOpeningPhase('restoring', { immediate: true });
         if (!isLatestOpenRequest()) return false;
-        commitOpenedDocument(selectedPath, draft.markdown, response.metadata, options.preferredMode, response.content);
+        commitOpenedDocument(selectedPath, draft.markdown, response.metadata, options.preferredMode, response.content, draft.format);
         committedDocument = true;
         pushToast('Restored unsaved file draft.', 'warning');
         return true;
@@ -182,7 +184,7 @@ export async function openDocumentForSession({
       if (restoreDraft) {
         showOpeningPhase('restoring', { immediate: true });
         if (!isLatestOpenRequest()) return false;
-        commitOpenedDocument(selectedPath, draft.markdown, response.metadata, options.preferredMode ?? 'visual', response.content);
+        commitOpenedDocument(selectedPath, draft.markdown, response.metadata, options.preferredMode ?? 'visual', response.content, draft.format);
         committedDocument = true;
         pushToast('Restored unsaved file draft.', 'warning');
         return true;
@@ -233,7 +235,7 @@ export interface RestoreExternalLaunchDraftInput {
   response: ReadTextFileResponse;
   preferredMode: EditorMode | undefined;
   isStillCurrentDocument: () => boolean;
-  getCurrentMarkdown: () => string;
+  getCurrentSourceText: () => string;
   commitOpenedDocument: CommitOpenedDocument;
   pushToast: (text: string, tone?: 'info' | 'success' | 'warning' | 'error') => void;
   draftRestoreTimeoutMs?: number;
@@ -245,7 +247,7 @@ export async function restoreExternalLaunchDraftAfterCommit({
   response,
   preferredMode,
   isStillCurrentDocument,
-  getCurrentMarkdown,
+  getCurrentSourceText,
   commitOpenedDocument,
   pushToast,
   draftRestoreTimeoutMs = DEFAULT_DOCUMENT_OPEN_TIMEOUTS.draftRestoreMs,
@@ -257,20 +259,20 @@ export async function restoreExternalLaunchDraftAfterCommit({
 
   if (shouldRestoreExternalLaunchDraft({
     stillCurrentDocument,
-    currentMarkdown: getCurrentMarkdown(),
-    diskMarkdown: response.content,
-    draftMarkdown: draft?.markdown ?? null,
+    currentSourceText: getCurrentSourceText(),
+    diskSourceText: response.content,
+    draftSourceText: draft?.sourceText ?? draft?.markdown ?? null,
     draftRestoreOfferable: draft ? recoveryHost.shouldOfferFileDraftRestore(draft, response.metadata) : false,
   })) {
-    const draftMarkdown = draft?.markdown;
-    if (draftMarkdown === undefined) return;
-    commitOpenedDocument(path, draftMarkdown, response.metadata, preferredMode, response.content);
+    if (!draft) return;
+    const draftSourceText = draft.sourceText ?? draft.markdown;
+    commitOpenedDocument(path, draftSourceText, response.metadata, preferredMode, response.content, draft.format);
     recordDocumentOpenDiagnostic(
       recoveryHost,
       'document-open-draft-restored',
       'Launch document recovery draft restored after disk document opened.',
       path,
-      draftMarkdown,
+      draftSourceText,
     );
     pushToast('Restored unsaved file draft.', 'warning');
     return;

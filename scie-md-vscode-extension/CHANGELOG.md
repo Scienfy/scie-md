@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0
+
+- Added command-based structured previews for JSON, JSONL/NDJSON, YAML, TOML, and
+  XML files without taking over VS Code's default structured-data editors.
+- Added opt-in validated JSON/JSONL clipboard replacement commands.
+- Updated the packaged webview/editor shell to match the ScieMD desktop structured
+  data surfaces and shared core package.
+
 ## 1.0.8
 
 - Updated the Marketplace README opening to emphasize Markdown editing, reading, hybrid LLM writing, and direct document comments.

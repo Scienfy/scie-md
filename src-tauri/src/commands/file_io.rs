@@ -10,8 +10,9 @@ use std::{
 };
 
 use super::path_grants::{
-    assert_directory_read_allowed, assert_file_read_allowed, assert_file_write_allowed, grant_file,
-    grant_file_and_parent, sync_document_image_grants_for_markdown,
+    assert_directory_read_allowed, assert_file_read_allowed, assert_file_write_allowed,
+    clear_document_image_grants_for_document, grant_file, grant_file_and_parent,
+    sync_document_image_grants_for_markdown,
 };
 
 mod text_encoding;
@@ -96,7 +97,7 @@ fn read_text_file_checked(path: &Path) -> Result<ReadTextFileResponse, String> {
     let decoded = decode_text_bytes(&bytes)?;
     let line_endings = detect_line_endings(&decoded.raw);
     let content = normalize_to_lf(&decoded.raw);
-    sync_document_image_grants_for_markdown(path, &content)?;
+    sync_markdown_image_grants_if_markdown(path, &content)?;
     let metadata = metadata_from_file_metadata(
         path,
         &file_metadata,
@@ -303,7 +304,7 @@ pub fn write_text_file_atomic(
 
     sync_file(&path)?;
     sync_parent_dir(parent)?;
-    sync_document_image_grants_for_markdown(&path, &markdown)?;
+    sync_markdown_image_grants_if_markdown(&path, &markdown)?;
     metadata_from_path(&path, line_ending, encoding, has_bom, false, true)
 }
 
@@ -318,7 +319,7 @@ pub fn write_text_file_create_new(
     let path = PathBuf::from(path);
     assert_file_write_allowed(&path)?;
     let metadata = create_new_text_file(&path, &markdown, &line_ending, &encoding, has_bom)?;
-    sync_document_image_grants_for_markdown(&path, &markdown)?;
+    sync_markdown_image_grants_if_markdown(&path, &markdown)?;
     Ok(metadata)
 }
 
@@ -385,6 +386,13 @@ fn create_new_text_file(
         false,
         true,
     )
+}
+
+fn sync_markdown_image_grants_if_markdown(path: &Path, content: &str) -> Result<usize, String> {
+    if readable_file_kind(path) == Some("markdown") {
+        return sync_document_image_grants_for_markdown(path, content);
+    }
+    clear_document_image_grants_for_document(path)
 }
 
 fn generated_artifact_file_name(artifact_kind: &str) -> Result<&'static str, String> {
@@ -799,8 +807,8 @@ fn sync_parent_dir(parent: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::commands::path_grants::{
-        assert_file_read_allowed, assert_file_write_allowed, grant_directory, grant_file,
-        grant_file_and_parent, isolate_test_path_grants,
+        assert_file_read_allowed, assert_file_write_allowed, grant_directory,
+        grant_document_image_asset, grant_file, grant_file_and_parent, isolate_test_path_grants,
     };
     use filetime::{set_file_mtime, FileTime};
     use std::{env, fs};
@@ -1098,6 +1106,33 @@ mod tests {
     }
 
     #[test]
+    fn read_text_file_for_edit_clears_document_image_grants_for_json() {
+        let _grants = isolate_test_path_grants();
+        let dir = env::temp_dir().join(format!("scie-md-json-edit-images-{}", temp_suffix()));
+        let assets = dir.join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        let path = dir.join("results.json");
+        let referenced = assets.join("figure.png");
+        fs::write(&path, br#"{"preview":"![Figure](assets/figure.png)"}"#).unwrap();
+        fs::write(
+            &referenced,
+            [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a],
+        )
+        .unwrap();
+        grant_file(&path).unwrap();
+        grant_document_image_asset(&path, &referenced).unwrap();
+        assert!(assert_file_read_allowed(&referenced).is_ok());
+
+        let read = read_text_file_for_edit(path.to_string_lossy().to_string()).unwrap();
+
+        assert!(read.content.contains("assets/figure.png"));
+        assert!(assert_file_read_allowed(&referenced).is_err());
+        assert!(assert_file_write_allowed(&path).is_ok());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn atomic_write_replaces_document_image_grants() {
         let _grants = isolate_test_path_grants();
         let dir = env::temp_dir().join(format!("scie-md-write-images-{}", temp_suffix()));
@@ -1127,6 +1162,35 @@ mod tests {
 
         assert!(assert_file_read_allowed(&first).is_err());
         assert!(assert_file_read_allowed(&second).is_ok());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn create_new_write_does_not_grant_document_images_for_json() {
+        let _grants = isolate_test_path_grants();
+        let dir = env::temp_dir().join(format!("scie-md-json-write-images-{}", temp_suffix()));
+        let assets = dir.join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        let path = dir.join("results.json");
+        let referenced = assets.join("figure.png");
+        fs::write(
+            &referenced,
+            [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a],
+        )
+        .unwrap();
+        grant_file_and_parent(&path).unwrap();
+
+        write_text_file_create_new(
+            path.to_string_lossy().to_string(),
+            "{\"preview\":\"![Figure](assets/figure.png)\"}\n".to_string(),
+            "lf".to_string(),
+            "utf8".to_string(),
+            false,
+        )
+        .unwrap();
+
+        assert!(assert_file_read_allowed(&referenced).is_err());
 
         let _ = fs::remove_dir_all(dir);
     }
@@ -1304,21 +1368,50 @@ mod tests {
     }
 
     #[test]
-    fn list_readable_files_returns_directories_and_markdown_files_only() {
+    fn list_readable_files_returns_supported_text_documents() {
         let _grants = isolate_test_path_grants();
         let dir = env::temp_dir().join(format!("scie-md-explorer-{}", temp_suffix()));
         fs::create_dir_all(dir.join("notes")).unwrap();
         fs::write(dir.join("a.md"), b"# A").unwrap();
         fs::write(dir.join("a.markdown"), b"# A2").unwrap();
         fs::write(dir.join("b.txt"), b"B").unwrap();
+        fs::write(dir.join("c.json"), b"{}").unwrap();
+        fs::write(dir.join("d.jsonl"), br#"{"a":1}"#).unwrap();
+        fs::write(dir.join("e.ndjson"), br#"{"a":2}"#).unwrap();
+        fs::write(dir.join("f.yaml"), b"title: A").unwrap();
+        fs::write(dir.join("g.yml"), b"title: B").unwrap();
+        fs::write(dir.join("h.toml"), b"title = \"A\"").unwrap();
+        fs::write(dir.join("i.xml"), b"<root/>").unwrap();
+        fs::write(dir.join("j.csv"), b"id,count\n1,2").unwrap();
+        fs::write(dir.join("k.tsv"), b"id\tcount\n1\t2").unwrap();
         fs::write(dir.join("c.png"), [1_u8, 2, 3]).unwrap();
-        fs::write(dir.join("d.pdf"), b"PDF").unwrap();
+        fs::write(dir.join("l.pdf"), b"PDF").unwrap();
         grant_directory(&dir).unwrap();
 
         let entries = list_readable_files(dir.to_string_lossy().to_string()).unwrap();
-        let names: Vec<String> = entries.into_iter().map(|entry| entry.name).collect();
+        let names_and_kinds: Vec<(String, String)> = entries
+            .into_iter()
+            .map(|entry| (entry.name, entry.kind))
+            .collect();
 
-        assert_eq!(names, vec!["notes", "a.markdown", "a.md"]);
+        assert_eq!(
+            names_and_kinds,
+            vec![
+                ("notes".to_string(), "directory".to_string()),
+                ("a.markdown".to_string(), "markdown".to_string()),
+                ("a.md".to_string(), "markdown".to_string()),
+                ("b.txt".to_string(), "plainText".to_string()),
+                ("c.json".to_string(), "json".to_string()),
+                ("d.jsonl".to_string(), "jsonl".to_string()),
+                ("e.ndjson".to_string(), "jsonl".to_string()),
+                ("f.yaml".to_string(), "yaml".to_string()),
+                ("g.yml".to_string(), "yaml".to_string()),
+                ("h.toml".to_string(), "toml".to_string()),
+                ("i.xml".to_string(), "xml".to_string()),
+                ("j.csv".to_string(), "csv".to_string()),
+                ("k.tsv".to_string(), "tsv".to_string()),
+            ]
+        );
 
         let _ = fs::remove_dir_all(dir);
     }

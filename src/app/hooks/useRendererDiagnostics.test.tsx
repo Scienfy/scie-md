@@ -8,7 +8,7 @@ import {
 } from '../backgroundJobs';
 import { recordRendererHeartbeat } from '../../services/nativeRecoveryService';
 import {
-  summarizeMarkdownForDiagnostics,
+  summarizeSourceTextForDiagnostics,
   useRendererDiagnostics,
   type RendererDocumentMetrics,
 } from './useRendererDiagnostics';
@@ -47,10 +47,10 @@ describe('useRendererDiagnostics', () => {
   });
 
   it('caches full-document metrics outside the heartbeat interval', async () => {
-    const metricsFactory = vi.fn<(markdown: string) => RendererDocumentMetrics>((markdown) => summarizeMarkdownForDiagnostics(markdown));
+    const metricsFactory = vi.fn<(sourceText: string) => RendererDocumentMetrics>((sourceText) => summarizeSourceTextForDiagnostics(sourceText));
 
     renderHarness({
-      markdown: '# Paper\n\n![Figure](figure.png)\n\nInline $x$',
+      sourceText: '# Paper\n\n![Figure](figure.png)\n\nInline $x$',
       createDocumentMetrics: metricsFactory,
     });
     await flushEffects();
@@ -66,7 +66,7 @@ describe('useRendererDiagnostics', () => {
     expect(metricsFactory).toHaveBeenCalledTimes(1);
 
     renderHarness({
-      markdown: '# Revised\n\n<img src="plot.png">\n\n$$y$$',
+      sourceText: '# Revised\n\n<img src="plot.png">\n\n$$y$$',
       createDocumentMetrics: metricsFactory,
     });
     await flushEffects();
@@ -81,7 +81,7 @@ describe('useRendererDiagnostics', () => {
     ], startedAtById, 1_000);
 
     renderHarness({
-      markdown: '# Paper',
+      sourceText: '# Paper',
       backgroundJobs,
       now: () => 1_750,
     });
@@ -97,15 +97,15 @@ describe('useRendererDiagnostics', () => {
   });
 
   function renderHarness(props: {
-    markdown: string;
+    sourceText: string;
     backgroundJobs?: BackgroundJobSnapshot;
-    createDocumentMetrics?: (markdown: string) => RendererDocumentMetrics;
+    createDocumentMetrics?: (sourceText: string) => RendererDocumentMetrics;
     now?: () => number;
   }) {
     act(() => {
       root.render(
         <Harness
-          markdown={props.markdown}
+          sourceText={props.sourceText}
           backgroundJobs={props.backgroundJobs ?? EMPTY_BACKGROUND_JOB_SNAPSHOT}
           createDocumentMetrics={props.createDocumentMetrics}
           now={props.now}
@@ -116,18 +116,18 @@ describe('useRendererDiagnostics', () => {
 });
 
 function Harness({
-  markdown,
+  sourceText,
   backgroundJobs,
   createDocumentMetrics,
   now,
 }: {
-  markdown: string;
+  sourceText: string;
   backgroundJobs: BackgroundJobSnapshot;
-  createDocumentMetrics?: (markdown: string) => RendererDocumentMetrics;
+  createDocumentMetrics?: (sourceText: string) => RendererDocumentMetrics;
   now?: () => number;
 }) {
   useRendererDiagnostics({
-    markdown,
+    sourceText,
     filePath: 'C:\\Lab\\paper.md',
     mode: 'visual',
     warningCount: 0,

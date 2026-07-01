@@ -30,6 +30,11 @@ try {
   }
 } finally {
   writeFileSync(manifestPath, originalManifestText);
+  const restoredManifestText = readFileSync(manifestPath, 'utf8');
+  if (restoredManifestText !== originalManifestText) {
+    console.error('[package:vscode] package.json was not restored after VSIX packaging.');
+    process.exitCode = 1;
+  }
 }
 
 function sanitizeManifest(manifest) {

@@ -1,6 +1,14 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  createJsonContent,
+  createStructuredPreviewModel,
+  findStructuredNodeByPath,
+  parseJsonDocument,
+  parseJsonlDocument,
+  createJsonlContent,
+} from '@sciemd/core';
 import { parseScienfyDocumentAsync } from '../domain/document/documentParserWorker';
 import { renderMarkdownHtmlFragment, createHtmlDocument } from '../markdown/htmlExport';
 import { captureEditorHtmlForExport } from '../export/renderCapture';
@@ -15,12 +23,17 @@ import {
 } from '../services/rawDocumentRescue';
 import { createBackgroundJobSnapshot, summarizeBackgroundJobs } from '../app/backgroundJobs';
 import { summarizeMarkdownForDiagnostics } from '../app/hooks/useRendererDiagnostics';
+import { parseSourceFormatDiagnostics } from '../app/formatDiagnostics';
 import {
   LARGE_DOCUMENT_STRESS_BIBTEX,
   LARGE_DOCUMENT_STRESS_CITATION_ENTRY,
+  createLargeCsvStressFixture,
   createLargeDocumentStressFixture,
+  createLargeJsonStressFixture,
+  createLargeJsonlStressFixture,
   createRecoveryStressMarkdown,
   createVisualExportStressRoot,
+  createYamlTomlLossyStressFixtures,
 } from './largeDocumentStressFixtures';
 
 vi.mock('../services/fileService', () => ({
@@ -46,12 +59,14 @@ const STRESS_TIMEOUT_MS = numberFromEnv('SCIEMD_LARGE_DOCUMENT_STRESS_TIMEOUT_MS
 const PARSER_SECTION_COUNT = numberFromEnv('SCIEMD_LARGE_DOCUMENT_STRESS_SECTIONS', 900);
 const EXPORT_SECTION_COUNT = numberFromEnv('SCIEMD_LARGE_DOCUMENT_STRESS_EXPORT_SECTIONS', 180);
 const VISUAL_IMAGE_COUNT = numberFromEnv('SCIEMD_LARGE_DOCUMENT_STRESS_VISUAL_IMAGES', 48);
+const STRUCTURED_RECORD_COUNT = numberFromEnv('SCIEMD_LARGE_DOCUMENT_STRESS_STRUCTURED_RECORDS', 3200);
 
 interface StressReport {
   ok: boolean;
   sectionCount: number;
   exportSectionCount: number;
   visualImageCount: number;
+  structuredRecordCount: number;
   fixtureBytes: number;
   steps: StressReportStep[];
 }
@@ -68,6 +83,7 @@ const stressReport: StressReport = {
   sectionCount: PARSER_SECTION_COUNT,
   exportSectionCount: EXPORT_SECTION_COUNT,
   visualImageCount: VISUAL_IMAGE_COUNT,
+  structuredRecordCount: STRUCTURED_RECORD_COUNT,
   fixtureBytes: 0,
   steps: [],
 };
@@ -113,9 +129,9 @@ describe('large document OOM stress gate', () => {
     const metrics = await recordStep('diagnostics-heartbeat-input', async () => (
       summarizeMarkdownForDiagnostics(parserFixture.markdown)
     ), {
-      markdownBytes: parserFixture.expected.markdownBytes,
+      sourceTextBytes: parserFixture.expected.markdownBytes,
     });
-    expect(metrics.markdownBytes).toBe(parserFixture.expected.markdownBytes);
+    expect(metrics.sourceTextBytes).toBe(parserFixture.expected.markdownBytes);
     expect(metrics.lineCount).toBe(parserFixture.expected.lineCount);
     expect(metrics.imageCount).toBe(parserFixture.expected.imageCount);
     expect(metrics.mathCount).toBe(parserFixture.expected.mathCount);
@@ -144,6 +160,111 @@ describe('large document OOM stress gate', () => {
         'Document parser stress fixture',
       ],
     });
+
+    const largeJsonFixture = createLargeJsonStressFixture({ recordCount: STRUCTURED_RECORD_COUNT });
+    const jsonDiagnostics = await recordStep('structured-json-source-only-diagnostics', async () => (
+      parseSourceFormatDiagnostics('json', largeJsonFixture.text, 'C:\\Lab\\stress\\large.json')
+    ), {
+      jsonBytes: largeJsonFixture.expected.byteLength,
+      recordCount: largeJsonFixture.expected.recordCount,
+    });
+    expect(jsonDiagnostics.jsonAnalysis?.status).toBe('source-only');
+    expect(jsonDiagnostics.diagnostics.some((diagnostic) => diagnostic.code === 'json-source-only-large-file')).toBe(true);
+
+    const sourceMapRecordCount = Math.min(900, Math.max(50, Math.floor(STRUCTURED_RECORD_COUNT / 4)));
+    const smallerMappedJson = createLargeJsonStressFixture({ recordCount: sourceMapRecordCount });
+    const jsonParseResult = await recordStep('structured-json-source-map', async () => (
+      parseJsonDocument(createJsonContent(smallerMappedJson.text, 'C:\\Lab\\stress\\mapped.json'))
+    ), {
+      jsonBytes: smallerMappedJson.expected.byteLength,
+      recordCount: smallerMappedJson.expected.recordCount,
+    });
+    expect(jsonParseResult.parsed).not.toBeNull();
+    expect(jsonParseResult.parsed?.sourceMap.nodes.length).toBeGreaterThan(smallerMappedJson.expected.recordCount);
+    const mappedNode = jsonParseResult.parsed
+      ? findStructuredNodeByPath(jsonParseResult.parsed.sourceMap, ['records', smallerMappedJson.expected.recordCount - 1, 'measurements', 2, 'value'])
+      : null;
+    expect(mappedNode?.valueSpan?.length).toBeGreaterThan(0);
+
+    const jsonlFixture = createLargeJsonlStressFixture({
+      recordCount: STRUCTURED_RECORD_COUNT,
+      invalidEvery: 97,
+      longTextEvery: 53,
+    });
+    const jsonlParseResult = await recordStep('structured-jsonl-preview-budget', async () => (
+      parseJsonlDocument(createJsonlContent(jsonlFixture.text, 'C:\\Lab\\stress\\records.jsonl'))
+    ), {
+      jsonlBytes: jsonlFixture.expected.byteLength,
+      recordCount: jsonlFixture.expected.recordCount,
+      invalidLineCount: jsonlFixture.expected.invalidLineCount ?? 0,
+    });
+    const expectedJsonlSourceLineCount = jsonlFixture.expected.sourceLineCount ?? jsonlFixture.expected.recordCount;
+    if (jsonlParseResult.parsed?.recordCountIsEstimated) {
+      expect(jsonlParseResult.parsed.recordCount).toBeLessThan(jsonlFixture.expected.recordCount);
+      expect(jsonlParseResult.parsed.totalLineCount).toBeLessThan(expectedJsonlSourceLineCount);
+      expect(jsonlParseResult.parsed.scannedLineCount).toBe(jsonlParseResult.parsed.scanLineLimit);
+      expect(jsonlParseResult.diagnostics.some((diagnostic) => diagnostic.code === 'jsonl-parser-sampled')).toBe(true);
+    } else {
+      expect(jsonlParseResult.parsed?.recordCount).toBe(jsonlFixture.expected.recordCount);
+      expect(jsonlParseResult.parsed?.totalLineCount).toBe(expectedJsonlSourceLineCount);
+      expect(jsonlParseResult.parsed?.invalidLineCount).toBe(jsonlFixture.expected.invalidLineCount);
+    }
+    expect(jsonlParseResult.parsed?.previewTruncated).toBe(true);
+    expect(jsonlParseResult.parsed?.lines.length).toBeLessThan(jsonlFixture.expected.recordCount);
+    expect(jsonlParseResult.parsed?.previewPageInfo.previewTruncated).toBe(true);
+    expect(jsonlParseResult.diagnostics.length).toBeGreaterThan(0);
+
+    const csvFixture = createLargeCsvStressFixture({
+      recordCount: STRUCTURED_RECORD_COUNT,
+      columnCount: 18,
+      embeddedNewlineEvery: 29,
+      longTextEvery: 41,
+    });
+    const csvDiagnostics = await recordStep('structured-csv-preview-budget', async () => (
+      parseSourceFormatDiagnostics('csv', csvFixture.text, 'C:\\Lab\\stress\\table.csv')
+    ), {
+      csvBytes: csvFixture.expected.byteLength,
+      recordCount: csvFixture.expected.recordCount,
+      columnCount: csvFixture.expected.columnCount ?? 0,
+      embeddedNewlineRowCount: csvFixture.expected.embeddedNewlineRowCount ?? 0,
+    });
+    expect(csvDiagnostics.tabularAnalysis?.status).toBe('preview-truncated');
+    expect(csvDiagnostics.tabularAnalysis?.dataRowCount).toBeLessThan(csvFixture.expected.recordCount);
+    if (csvDiagnostics.tabularAnalysis?.parseResult.parsed?.totalDataRowCountIsEstimated) {
+      expect(csvDiagnostics.tabularAnalysis.parseResult.parsed.totalDataRowCount).toBeLessThan(csvFixture.expected.recordCount);
+      expect(csvDiagnostics.tabularAnalysis.parseResult.parsed.scannedRowCount).toBe(csvDiagnostics.tabularAnalysis.parseResult.parsed.scanRowLimit);
+    } else {
+      expect(csvDiagnostics.tabularAnalysis?.parseResult.parsed?.totalDataRowCount).toBe(csvFixture.expected.recordCount);
+    }
+    expect(csvDiagnostics.tabularAnalysis?.parseResult.parsed?.columnCount).toBe(csvFixture.expected.columnCount);
+    expect(csvDiagnostics.tabularAnalysis?.parseResult.parsed?.previewPageInfo.previewTruncated).toBe(true);
+
+    const lossyFixtures = createYamlTomlLossyStressFixtures({ recordCount: Math.max(50, Math.floor(STRUCTURED_RECORD_COUNT / 10)) });
+    const yamlPreview = await recordStep('structured-yaml-lossy-preview', async () => (
+      createStructuredPreviewModel({
+        format: 'yaml',
+        text: lossyFixtures.yaml.text,
+        path: 'C:\\Lab\\stress\\config.yaml',
+      })
+    ), {
+      yamlBytes: lossyFixtures.yaml.expected.byteLength,
+      recordCount: lossyFixtures.yaml.expected.recordCount,
+    });
+    expect(yamlPreview.editPolicy.canApplyClipboardReplace).toBe(false);
+    expect(yamlPreview.diagnostics.some((diagnostic) => diagnostic.category === 'preservation')).toBe(true);
+
+    const tomlPreview = await recordStep('structured-toml-lossy-preview', async () => (
+      createStructuredPreviewModel({
+        format: 'toml',
+        text: lossyFixtures.toml.text,
+        path: 'C:\\Lab\\stress\\config.toml',
+      })
+    ), {
+      tomlBytes: lossyFixtures.toml.expected.byteLength,
+      recordCount: lossyFixtures.toml.expected.recordCount,
+    });
+    expect(tomlPreview.editPolicy.canApplyClipboardReplace).toBe(false);
+    expect(tomlPreview.diagnostics.some((diagnostic) => diagnostic.category === 'preservation')).toBe(true);
 
     const exportFixture = createLargeDocumentStressFixture({ sectionCount: EXPORT_SECTION_COUNT });
     const fragment = await recordStep('html-export-fragment', async () => (

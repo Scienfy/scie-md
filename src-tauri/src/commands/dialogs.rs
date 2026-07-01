@@ -11,6 +11,18 @@ use super::path_grants::{
 };
 
 const MARKDOWN_EXTENSIONS: &[&str] = &["md", "markdown"];
+const JSON_EXTENSIONS: &[&str] = &["json"];
+const JSONL_EXTENSIONS: &[&str] = &["jsonl", "ndjson"];
+const YAML_EXTENSIONS: &[&str] = &["yaml", "yml"];
+const TOML_EXTENSIONS: &[&str] = &["toml"];
+const XML_EXTENSIONS: &[&str] = &["xml"];
+const CSV_EXTENSIONS: &[&str] = &["csv"];
+const TSV_EXTENSIONS: &[&str] = &["tsv"];
+const PLAIN_TEXT_EXTENSIONS: &[&str] = &["txt", "text"];
+const SCIEMD_TEXT_DOCUMENT_EXTENSIONS: &[&str] = &[
+    "md", "markdown", "json", "jsonl", "ndjson", "yaml", "yml", "toml", "xml", "csv", "tsv", "txt", "text",
+];
+const JSON_SCHEMA_EXTENSIONS: &[&str] = &["json"];
 const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff"];
 const CSL_EXTENSIONS: &[&str] = &["csl"];
 
@@ -22,6 +34,52 @@ pub async fn pick_markdown_file<R: Runtime>(app: AppHandle<R>) -> Result<Option<
         "Markdown",
         MARKDOWN_EXTENSIONS,
         GrantMode::FileAndParent,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn pick_document_file<R: Runtime>(app: AppHandle<R>) -> Result<Option<String>, String> {
+    let selected = thread::spawn(move || {
+        app.dialog()
+            .file()
+            .set_title("Open ScieMD Document")
+            .add_filter("Markdown", MARKDOWN_EXTENSIONS)
+            .add_filter("JSON", JSON_EXTENSIONS)
+            .add_filter("JSON Lines", JSONL_EXTENSIONS)
+            .add_filter("YAML", YAML_EXTENSIONS)
+            .add_filter("TOML", TOML_EXTENSIONS)
+            .add_filter("XML", XML_EXTENSIONS)
+            .add_filter("CSV", CSV_EXTENSIONS)
+            .add_filter("TSV", TSV_EXTENSIONS)
+            .add_filter("Plain Text", PLAIN_TEXT_EXTENSIONS)
+            .add_filter(
+                "All supported ScieMD text documents",
+                SCIEMD_TEXT_DOCUMENT_EXTENSIONS,
+            )
+            .blocking_pick_file()
+    })
+    .join()
+    .map_err(|_| "Could not open file picker.".to_string())?;
+
+    let Some(path) = selected else {
+        return Ok(None);
+    };
+    let path = into_path(path)?;
+    grant_file_and_parent(&path)?;
+    Ok(Some(path.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+pub async fn pick_json_schema_file<R: Runtime>(
+    app: AppHandle<R>,
+) -> Result<Option<String>, String> {
+    pick_file(
+        app,
+        "Choose JSON Schema",
+        "JSON Schema",
+        JSON_SCHEMA_EXTENSIONS,
+        GrantMode::ReadOnlyFile,
     )
     .await
 }
@@ -75,13 +133,15 @@ pub async fn pick_folder<R: Runtime>(app: AppHandle<R>) -> Result<Option<String>
 pub async fn pick_save_path<R: Runtime>(
     app: AppHandle<R>,
     default_path: Option<String>,
+    format: Option<String>,
 ) -> Result<Option<String>, String> {
+    let policy = save_dialog_policy(format.as_deref());
     pick_save_file(
         app,
         default_path,
-        "Save Markdown File",
-        "Markdown",
-        MARKDOWN_EXTENSIONS,
+        policy.title,
+        policy.filter_name,
+        policy.extensions,
     )
     .await
 }
@@ -208,4 +268,93 @@ enum GrantMode {
     File,
     ReadOnlyFile,
     FileAndParent,
+}
+
+struct SaveDialogPolicy {
+    title: &'static str,
+    filter_name: &'static str,
+    extensions: &'static [&'static str],
+}
+
+fn save_dialog_policy(format: Option<&str>) -> SaveDialogPolicy {
+    match format.unwrap_or("markdown") {
+        "json" => SaveDialogPolicy {
+            title: "Save JSON File",
+            filter_name: "JSON",
+            extensions: JSON_EXTENSIONS,
+        },
+        "jsonl" => SaveDialogPolicy {
+            title: "Save JSON Lines File",
+            filter_name: "JSON Lines",
+            extensions: JSONL_EXTENSIONS,
+        },
+        "yaml" => SaveDialogPolicy {
+            title: "Save YAML File",
+            filter_name: "YAML",
+            extensions: YAML_EXTENSIONS,
+        },
+        "toml" => SaveDialogPolicy {
+            title: "Save TOML File",
+            filter_name: "TOML",
+            extensions: TOML_EXTENSIONS,
+        },
+        "xml" => SaveDialogPolicy {
+            title: "Save XML File",
+            filter_name: "XML",
+            extensions: XML_EXTENSIONS,
+        },
+        "csv" => SaveDialogPolicy {
+            title: "Save CSV File",
+            filter_name: "CSV",
+            extensions: CSV_EXTENSIONS,
+        },
+        "tsv" => SaveDialogPolicy {
+            title: "Save TSV File",
+            filter_name: "TSV",
+            extensions: TSV_EXTENSIONS,
+        },
+        "plainText" => SaveDialogPolicy {
+            title: "Save Text File",
+            filter_name: "Plain Text",
+            extensions: PLAIN_TEXT_EXTENSIONS,
+        },
+        _ => SaveDialogPolicy {
+            title: "Save Markdown File",
+            filter_name: "Markdown",
+            extensions: MARKDOWN_EXTENSIONS,
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{save_dialog_policy, JSONL_EXTENSIONS, TOML_EXTENSIONS, XML_EXTENSIONS, YAML_EXTENSIONS};
+
+    #[test]
+    fn save_dialog_policy_uses_format_specific_filters() {
+        let jsonl = save_dialog_policy(Some("jsonl"));
+        assert_eq!(jsonl.title, "Save JSON Lines File");
+        assert_eq!(jsonl.filter_name, "JSON Lines");
+        assert_eq!(jsonl.extensions, JSONL_EXTENSIONS);
+
+        let yaml = save_dialog_policy(Some("yaml"));
+        assert_eq!(yaml.filter_name, "YAML");
+        assert_eq!(yaml.extensions, YAML_EXTENSIONS);
+
+        let toml = save_dialog_policy(Some("toml"));
+        assert_eq!(toml.filter_name, "TOML");
+        assert_eq!(toml.extensions, TOML_EXTENSIONS);
+
+        let xml = save_dialog_policy(Some("xml"));
+        assert_eq!(xml.filter_name, "XML");
+        assert_eq!(xml.extensions, XML_EXTENSIONS);
+    }
+
+    #[test]
+    fn save_dialog_policy_defaults_to_markdown_for_unknown_formats() {
+        let policy = save_dialog_policy(Some("unknown"));
+
+        assert_eq!(policy.title, "Save Markdown File");
+        assert_eq!(policy.filter_name, "Markdown");
+    }
 }

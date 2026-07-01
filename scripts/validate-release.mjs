@@ -15,9 +15,11 @@ const steps = [
   { label: 'Visual export smoke validation', command: npmCommand, args: ['run', 'validate:export'] },
   { label: 'Visual style smoke validation', command: npmCommand, args: ['run', 'validate:styles'] },
   { label: 'UX workflow smoke validation', command: npmCommand, args: ['run', 'validate:ux'] },
+  { label: 'Structured workflow validation', command: npmCommand, args: ['run', 'validate:structured-workflows'] },
   { label: 'Vitest + strict round-trip validation', command: npmCommand, args: ['run', 'test:all'] },
   { label: 'VS Code extension tests', command: npmCommand, args: ['--prefix', 'scie-md-vscode-extension', 'test'] },
   { label: 'VS Code extension build', command: npmCommand, args: ['--prefix', 'scie-md-vscode-extension', 'run', 'build'] },
+  { label: 'Release package budget guard', command: npmCommand, args: ['run', 'validate:package-budgets'] },
   { label: 'Rust tests', command: cargoCommand, args: ['test'], cwd: 'src-tauri' },
   { label: 'Rust clippy', command: cargoCommand, args: ['clippy', '--all-targets', '--', '-D', 'warnings'], cwd: 'src-tauri' },
 ];

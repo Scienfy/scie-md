@@ -1,0 +1,21 @@
+sample_id	batch	substrate	operator	condition_group	flow_rate_ml_min	stage_speed_mm_s	passes	anneal_profile	metrics_json	qc_status	flags	next_action
+S-001	B-2026-06-A	glass	AR	baseline	0.18	8.5	3	25|60|85|85|40	{"thickness_nm":118.4,"roughness_nm":7.8,"coverage_percent":98.7}	pass		repeat_with_additive_A
+S-002	B-2026-06-A	glass	MC	roughness_screen	0.22	8.5	3	25|60|85|85|40	{"thickness_nm":141.2,"roughness_nm":12.4,"coverage_percent":97.9}	review	roughness_high	collect_second_sem_field
+S-003	B-2026-06-B	silicon	AR	best_candidate	0.16	10.0	4	25|70|90|90|45	{"thickness_nm":109.9,"roughness_nm":6.4,"coverage_percent":99.1}	pass	best_candidate	repeat_with_n3
+S-004	B-2026-06-B	silicon	MC	reject	0.30	6.0	2	25|55|80|80|40	{"thickness_nm":165.5,"roughness_nm":19.7,"coverage_percent":95.4}	fail	too_thick|roughness_out_of_range	remove_from_model_training
+S-005	B-2026-06-C	polyimide	AR	flexible_substrate	0.14	9.5	5	25|65|85|85|40	{"thickness_nm":101.8,"roughness_nm":8.1,"coverage_percent":98.2}	pass		monitor_substrate_curl
+S-006	B-2026-06-C	polyimide	MC	flexible_substrate	0.24	7.0	3	25|65|85|85|40	{"thickness_nm":149.6,"roughness_nm":14.2,"coverage_percent":96.8}	review	edge_beading	repeat_edge_masked
+S-007	B-2026-06-D	glass	AR	flow_midpoint	0.20	8.0	4	25|60|85|85|40	{"thickness_nm":132.0,"roughness_nm":9.3,"coverage_percent":98.4}	pass		use_for_model_holdout
+S-008	B-2026-06-D	glass	MC	flow_midpoint	0.26	8.0	4	25|60|85|85|40	{"thickness_nm":151.4,"roughness_nm":16.0,"coverage_percent":96.1}	review	roughness_high|coverage_low	check_atomizer_alignment
+S-009	B-2026-06-E	silicon	AR	thin_film	0.12	11.0	5	25|70|90|90|45	{"thickness_nm":94.5,"roughness_nm":5.9,"coverage_percent":99.4}	pass	thin	compare_against_S003
+S-010	B-2026-06-E	silicon	MC	reject	0.32	5.5	2	25|55|80|80|40	{"thickness_nm":171.2,"roughness_nm":22.4,"coverage_percent":94.0}	fail	too_thick|defect_density_high	remove_from_model_training
+S-011	B-2026-06-F	glass	AR	high_speed	0.12	12.0	6	25|60|85|85|40	{"thickness_nm":91.2,"roughness_nm":6.1,"coverage_percent":98.9}	pass	leading_zero_id	replicate_high_speed
+S-012	B-2026-06-F	glass	MC	missing_value	0.19	9.0	3	25|60|85|85|40	{"thickness_nm":120.0,"roughness_nm":null,"coverage_percent":98.0}	review	missing_roughness	remeasure_roughness
+S-013	B-2026-06-G	steel	AR	steel_exploratory	0.21	7.5	3	25|60|85|85|40	{"thickness_nm":130.6,"roughness_nm":10.4,"coverage_percent":97.2}	pass		add_to_exploratory_set
+S-014	B-2026-06-G	steel	MC	steel_exploratory	0.27	7.5	3	25|60|85|85|40	{"thickness_nm":158.9,"roughness_nm":18.5,"coverage_percent":95.8}	review	borderline|defect_density_high	review_under_microscope
+S-015	B-2026-06-H	glass	AR	repeat_baseline	0.17	8.5	3	25|60|85|85|40	{"thickness_nm":116.1,"roughness_nm":7.1,"coverage_percent":99.0}	pass		merge_with_baseline_group
+S-016	B-2026-06-H	glass	MC	repeat_review	0.23	8.5	3	25|60|85|85|40	{"thickness_nm":144.7,"roughness_nm":13.0,"coverage_percent":97.5}	review	roughness_high	compare_against_S002
+S-017	B-2026-06-I	polyimide	AR	flexible_candidate	0.15	10.5	4	25|65|85|85|40	{"thickness_nm":104.2,"roughness_nm":7.6,"coverage_percent":98.6}	pass		flex_test_next
+S-018	B-2026-06-I	polyimide	MC	reject	0.28	6.5	2	25|65|85|85|40	{"thickness_nm":160.3,"roughness_nm":18.2,"coverage_percent":95.9}	fail	roughness_out_of_range|coverage_low	remove_from_model_training
+S-019	B-2026-06-J	silicon	AR	thin_repeat	0.13	10.0	5	25|70|90|90|45	{"thickness_nm":98.8,"roughness_nm":6.8,"coverage_percent":99.2}	pass		evaluate_long_term_stability
+S-020	B-2026-06-J	silicon	MC	alignment_check	0.25	8.0	3	25|70|90|90|45	{"thickness_nm":150.1,"roughness_nm":15.2,"coverage_percent":96.7}	review	roughness_high	run_alignment_check

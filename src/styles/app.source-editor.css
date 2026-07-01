@@ -26,6 +26,50 @@
   line-height: var(--editor-line-height);
 }
 
+.source-editor-status-strip {
+  position: absolute;
+  top: calc(8px + var(--editor-floating-top-safe));
+  right: 14px;
+  left: auto;
+  z-index: 7;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+  max-width: min(720px, calc(100% - 28px));
+  pointer-events: none;
+}
+
+.source-editor-status-badge {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: color-mix(in srgb, var(--surface), transparent 7%);
+  color: var(--text-muted);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--shadow), transparent 35%);
+  font-family: var(--ui-font);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.25;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+}
+
+.source-editor-status-badge.success {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 45%);
+  color: var(--accent);
+}
+
+.source-editor-status-badge.warning {
+  border-color: color-mix(in srgb, var(--warning), var(--border) 35%);
+  color: var(--warning);
+}
+
+.source-editor-status-badge.error {
+  border-color: color-mix(in srgb, var(--error), var(--border) 35%);
+  color: var(--error);
+}
+
 .ai-authorship-highlight {
   border-radius: 3px;
   background: color-mix(in srgb, var(--accent-soft), transparent 62%);
@@ -81,4 +125,9 @@
 .save-pill.conflict i {
   opacity: 1;
   background: var(--error);
+}
+
+.save-pill.paused {
+  border-color: color-mix(in srgb, var(--warning), var(--border) 35%);
+  color: var(--warning);
 }

@@ -1,10 +1,17 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { DocumentFormat } from '@sciemd/core';
 import { isTauriRuntime } from '../app/runtime';
 
 export interface NativeRecoverySnapshot {
+  schemaVersion?: number;
+  sourceText?: string;
+  /** @deprecated Native snapshots keep this field for recovery compatibility. */
   markdown: string;
   filePath: string | null;
+  format?: DocumentFormat;
   updatedAtMs: number;
+  sourceTextBytes?: number;
+  /** @deprecated Native diagnostics payloads still serialize this as markdownBytes. */
   markdownBytes: number;
 }
 
@@ -12,7 +19,7 @@ export interface RendererHeartbeatMetrics {
   sessionId: string;
   documentPath: string | null;
   mode: string | null;
-  markdownBytes: number;
+  sourceTextBytes: number;
   lineCount: number;
   imageCount: number;
   mathCount: number;
@@ -47,21 +54,28 @@ export interface DiagnosticsEvent {
   message: string;
   documentPath?: string | null;
   mode?: string | null;
+  sourceTextBytes?: number | null;
+  /** @deprecated Use sourceTextBytes at app/service boundaries. */
   markdownBytes?: number | null;
   componentStack?: string | null;
 }
 
 export async function writeNativeRecoverySnapshot(snapshot: {
-  markdown: string;
+  sourceText?: string;
+  markdown?: string;
   filePath: string | null;
+  format?: DocumentFormat;
   updatedAtMs: number;
 }): Promise<boolean> {
   if (!canUseNativeDiagnostics()) return false;
+  const sourceText = snapshot.sourceText ?? snapshot.markdown ?? '';
   try {
     await invoke('write_recovery_snapshot', {
       payload: {
-        markdown: snapshot.markdown,
+        schemaVersion: 2,
+        markdown: sourceText,
         filePath: snapshot.filePath,
+        format: snapshot.format ?? 'markdown',
         updatedAtMs: snapshot.updatedAtMs,
       },
     });
@@ -72,10 +86,13 @@ export async function writeNativeRecoverySnapshot(snapshot: {
   }
 }
 
-export async function readNativeRecoverySnapshot(): Promise<NativeRecoverySnapshot | null> {
+export async function readNativeRecoverySnapshot(filePath?: string | null): Promise<NativeRecoverySnapshot | null> {
   if (!canUseNativeDiagnostics()) return null;
   try {
-    const snapshot = await invoke<NativeRecoverySnapshot | null>('read_recovery_snapshot');
+    const snapshot = await invoke<NativeRecoverySnapshot | null>('read_recovery_snapshot', {
+      filePath: filePath ?? null,
+      latest: filePath === undefined,
+    });
     return snapshot;
   } catch (error) {
     console.warn('Native recovery snapshot read failed.', error);
@@ -83,10 +100,13 @@ export async function readNativeRecoverySnapshot(): Promise<NativeRecoverySnapsh
   }
 }
 
-export async function clearNativeRecoverySnapshot(): Promise<boolean> {
+export async function clearNativeRecoverySnapshot(filePath?: string | null): Promise<boolean> {
   if (!canUseNativeDiagnostics()) return false;
   try {
-    await invoke('clear_recovery_snapshot');
+    await invoke('clear_recovery_snapshot', {
+      filePath: filePath ?? null,
+      latest: filePath === undefined,
+    });
     return true;
   } catch (error) {
     console.warn('Native recovery snapshot cleanup failed.', error);
@@ -97,7 +117,12 @@ export async function clearNativeRecoverySnapshot(): Promise<boolean> {
 export async function recordRendererHeartbeat(metrics: RendererHeartbeatMetrics): Promise<RendererHeartbeatStatus | null> {
   if (!canUseNativeDiagnostics()) return null;
   try {
-    return await invoke<RendererHeartbeatStatus>('record_renderer_heartbeat', { payload: metrics });
+    return await invoke<RendererHeartbeatStatus>('record_renderer_heartbeat', {
+      payload: {
+        ...metrics,
+        markdownBytes: metrics.sourceTextBytes,
+      },
+    });
   } catch (error) {
     console.warn('Renderer heartbeat write failed.', error);
     return null;
@@ -123,7 +148,7 @@ export async function appendDiagnosticsEvent(event: DiagnosticsEvent): Promise<b
         message: event.message,
         documentPath: event.documentPath ?? null,
         mode: event.mode ?? null,
-        markdownBytes: event.markdownBytes ?? null,
+        markdownBytes: event.sourceTextBytes ?? event.markdownBytes ?? null,
         componentStack: event.componentStack ?? null,
       },
     });

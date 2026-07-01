@@ -1,7 +1,23 @@
 export function lineStartOffsets(text: string): number[] {
   const starts = [0];
-  for (let index = 0; index < text.length; index += 1) {
-    if (text[index] === '\n') starts.push(index + 1);
+  let index = 0;
+  while (index < text.length) {
+    const char = text[index];
+    if (char === '\r') {
+      if (text[index + 1] === '\n') {
+        index += 2;
+      } else {
+        index += 1;
+      }
+      starts.push(index);
+      continue;
+    }
+    if (char === '\n') {
+      index += 1;
+      starts.push(index);
+      continue;
+    }
+    index += 1;
   }
   return starts;
 }

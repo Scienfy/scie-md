@@ -1,7 +1,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ExtensionToWebviewMessage, WebviewToExtensionMessage } from '../shared/webviewProtocol';
+import type { ExtensionToWebviewMessage, ScieMDDocumentSnapshot, WebviewToExtensionMessage } from '../shared/webviewProtocol';
 import { App } from './App';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -313,6 +313,81 @@ describe('VS Code webview App protocol', () => {
     expect(menuByLabel('Theme options')).not.toBeNull();
   });
 
+  it('renders structured JSON snapshots as read-only tree and source previews', () => {
+    renderWebview();
+    sendDocumentUpdate('{"cohort":{"n":12,"arm":"control"},"active":true}\n', {
+      fileName: 'cohort.json',
+      format: 'json',
+      isReadonly: true,
+      readonlyReason: 'Structured preview is read-only.',
+    });
+
+    expect(container.querySelector('[data-testid="structured-preview-stage"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="structured-operation-summary"]')?.textContent).toContain('Source reveal');
+    expect(container.querySelector('[data-testid="structured-operation-summary"]')?.textContent).toContain('Apply clipboard replacement');
+    expect(container.querySelector('[data-testid="structured-operation-summary"]')?.textContent).toContain('Opt-in');
+    expect(container.querySelector('[data-testid="structured-tree-preview"]')?.textContent).toContain('cohort');
+    expect(container.querySelector('[data-testid="visual-editor"]')).toBeNull();
+    expect(container.querySelector('[data-testid="source-editor"]')).toBeNull();
+    expect(container.textContent).toContain('JSON');
+    expect(container.textContent).toContain('No errors');
+    expect(container.textContent).not.toContain('Insert note');
+
+    clickButton('Source');
+
+    expect(container.querySelector('[data-testid="structured-source-preview"]')?.textContent).toContain('"active":true');
+    expect(queryButtonByText('Save')).toBeUndefined();
+  });
+
+  it('renders JSONL, YAML, TOML, and XML structured snapshots through the shared preview model', () => {
+    renderWebview();
+    sendDocumentUpdate('{"id":1,"name":"Alpha"}\n{"id":2}\n', {
+      fileName: 'records.jsonl',
+      format: 'jsonl',
+      isReadonly: true,
+      readonlyReason: 'Structured preview is read-only.',
+    });
+
+    expect(container.textContent).toContain('JSON Lines');
+    expect(container.textContent).toContain('2 records');
+    expect(container.querySelector('[data-testid="structured-tree-preview"]')?.textContent).toContain('Alpha');
+    expect(queryButtonByText('Save')).toBeUndefined();
+
+    sendDocumentUpdate('sample:\n  name: Alpha\n', {
+      fileName: 'sample.yaml',
+      format: 'yaml',
+      isReadonly: true,
+      readonlyReason: 'Structured preview is read-only.',
+      version: 2,
+    });
+
+    expect(container.textContent).toContain('YAML');
+    expect(container.querySelector('[data-testid="structured-tree-preview"]')?.textContent).toContain('sample');
+
+    sendDocumentUpdate('[sample]\nname = "Alpha"\n', {
+      fileName: 'sample.toml',
+      format: 'toml',
+      isReadonly: true,
+      readonlyReason: 'Structured preview is read-only.',
+      version: 3,
+    });
+
+    expect(container.textContent).toContain('TOML');
+    expect(container.querySelector('[data-testid="structured-tree-preview"]')?.textContent).toContain('Alpha');
+    expect(container.querySelector('[data-testid="structured-operation-summary"]')?.textContent).toContain('source-preserving visual writes are not available');
+
+    sendDocumentUpdate('<study><sample id="S-001">Alpha</sample></study>\n', {
+      fileName: 'study.xml',
+      format: 'xml',
+      isReadonly: true,
+      readonlyReason: 'Structured preview is read-only.',
+      version: 4,
+    });
+
+    expect(container.textContent).toContain('XML');
+    expect(container.querySelector('[data-testid="structured-tree-preview"]')?.textContent).toContain('sample');
+  });
+
   it('renders quick-outline headings and marks the active heading from the current editor line', () => {
     renderWebview();
     sendDocumentUpdate('# Intro\n\n## Methods\n\n## Results\n');
@@ -545,6 +620,8 @@ function sendDocumentUpdate(
     isReadonly: boolean;
     readonlyReason: string;
     sourceEditId: string | null;
+    fileName: string;
+    format: ScieMDDocumentSnapshot['format'];
   }> = {},
 ): void {
   const {
@@ -555,16 +632,19 @@ function sendDocumentUpdate(
     isReadonly = false,
     readonlyReason,
     sourceEditId,
+    fileName = 'paper.md',
+    format = 'markdown',
   } = overrides;
   const message: ExtensionToWebviewMessage = {
     type: 'documentUpdate',
     panelId,
     reason,
     sourceEditId,
-    snapshot: {
-      uri: 'file:///C:/docs/paper.md',
-      fileName: 'paper.md',
-      text,
+      snapshot: {
+        uri: 'file:///C:/docs/paper.md',
+        fileName,
+        format,
+        text,
       version,
       isDirty,
       isReadonly,
@@ -655,10 +735,14 @@ function clickDataSidebarButton(label: string): void {
 }
 
 function buttonByText(label: string): HTMLButtonElement {
-  const button = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-    .find((candidate) => candidate.textContent === label);
+  const button = queryButtonByText(label);
   expect(button, `button "${label}"`).not.toBeUndefined();
   return button as HTMLButtonElement;
+}
+
+function queryButtonByText(label: string): HTMLButtonElement | undefined {
+  return Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+    .find((candidate) => candidate.textContent === label);
 }
 
 function clickButtonByAriaLabel(label: string): void {

@@ -123,6 +123,14 @@
   margin: 8px 0;
 }
 
+.structured-context-actions {
+  grid-template-columns: 1fr;
+}
+
+.structured-context-actions .inspector-action {
+  gap: 8px;
+}
+
 .readiness-card {
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--surface-soft), var(--accent) 6%), transparent 62%),
@@ -194,6 +202,51 @@
   margin: 6px 0 0;
   color: #16825d !important;
   font-weight: 700;
+}
+
+.json-health-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.json-health-status.valid {
+  border-color: color-mix(in srgb, #16825d, transparent 55%);
+  color: #16825d;
+}
+
+.json-health-status.invalid,
+.json-health-status.too-large {
+  border-color: color-mix(in srgb, var(--warning), transparent 40%);
+  color: var(--warning);
+}
+
+.json-health-grid {
+  grid-template-columns: 1fr 1fr;
+}
+
+.json-health-subsection {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.json-health-subsection > strong {
+  color: var(--text-strong);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.json-health-subsection small {
+  color: var(--text-muted);
 }
 
 .inspector-toggle {
@@ -482,6 +535,10 @@
   background: #b7791f;
 }
 
+.status-dot.paused {
+  background: #b7791f;
+}
+
 .status-dot.saving {
   background: #2563eb;
 }
@@ -504,6 +561,27 @@
 .status-warning {
   color: var(--warning);
   font-weight: 650;
+}
+
+.local-panel-error {
+  margin: 8px 0;
+  border: 1px solid color-mix(in srgb, var(--warning), var(--border) 38%);
+  border-radius: 8px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--warning), var(--surface) 90%);
+  color: var(--text);
+}
+
+.local-panel-error div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.local-panel-error p {
+  margin: 6px 0 10px;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .status-readiness {

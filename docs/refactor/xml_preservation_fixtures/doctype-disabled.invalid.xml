@@ -1,0 +1,5 @@
+<!DOCTYPE study [
+  <!ENTITY local SYSTEM "file:///etc/passwd">
+]>
+<study>&local;</study>
+

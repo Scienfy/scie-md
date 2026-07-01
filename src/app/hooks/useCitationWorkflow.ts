@@ -168,7 +168,7 @@ export function useCitationWorkflow({
   };
 }
 
-function ensureBibliographyFrontmatter(markdown: string, bibliographyFile: string): string {
+export function ensureBibliographyFrontmatter(markdown: string, bibliographyFile: string): string {
   const frontmatter = parseFrontmatter(markdown);
   if (frontmatter.error) {
     throw new Error('Fix the front matter YAML before ScieMD can add a bibliography file.');
@@ -177,5 +177,9 @@ function ensureBibliographyFrontmatter(markdown: string, bibliographyFile: strin
   return serializeFrontmatter(
     { ...frontmatter.data, bibliography: bibliographyFile },
     frontmatter.hasFrontmatter ? frontmatter.body : markdown,
+    {
+      lineEnding: frontmatter.lineEnding,
+      closingFence: frontmatter.closingFence || '---',
+    },
   );
 }

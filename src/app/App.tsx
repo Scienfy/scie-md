@@ -27,19 +27,58 @@ import {
 } from './documentLaunch';
 import { useAppCommands } from './hooks/useAppCommands';
 import { useDocumentDropPaste } from './hooks/useDocumentDropPaste';
-import type { PasteReviewState } from './hooks/useDocumentDropPaste';
+import type { PasteReviewState, TabularPasteState } from './hooks/useDocumentDropPaste';
 import { useDocumentSession } from './hooks/useDocumentSession';
+import { labelForDocumentFormat } from './documentConflictPolicy';
+import { formatCapabilitiesFor } from './formatCapabilities';
+import { formatDiagnosticsToValidationIssues } from './formatDiagnostics';
 import { useAuthorshipMaintenance } from './hooks/useAuthorshipMaintenance';
 import { useDerivedDocumentInsights } from './hooks/useDerivedDocumentInsights';
 import { useDocumentNavigation } from './hooks/useDocumentNavigation';
 import { useFileExplorer } from './hooks/useFileExplorer';
 import { useImageInsertion } from './hooks/useImageInsertion';
+import { useJsonSchemaDiscovery } from './hooks/useJsonSchemaDiscovery';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useLayoutAttributes, useThemeAttribute } from './hooks/useResolvedTheme';
 import { useRendererDiagnostics } from './hooks/useRendererDiagnostics';
 import { useExportActions } from './hooks/useExportActions';
 import { useExportWorkflow } from './hooks/useExportWorkflow';
 import { useExternalConflictReviewWorkflow } from './hooks/useExternalConflictReviewWorkflow';
+import { useSourceFormatDiagnostics } from './hooks/useSourceFormatDiagnostics';
+import {
+  createJsonEditReviewState,
+  jsonVisualEditNeedsReview,
+  resolveJsonEditReviewApply,
+  type JsonEditReviewState,
+} from './jsonEditReview';
+import {
+  appendStructuredEditJournalEntry,
+  createStructuredEditJournalEntry,
+  type StructuredEditJournalEntry,
+} from './structuredEditJournal';
+import {
+  canCreateStructuredContextPackets,
+  canCreateStructuredTableSamplePacket,
+  createCurrentParserDiagnosticsContext,
+  createCurrentRedactedStructuredPreview,
+  createCurrentSchemaSummaryContext,
+  createCurrentSelectedStructureContext,
+  createCurrentStructuredTableSampleContext,
+  createCurrentStructuredHealthContext,
+  createCurrentWholeStructuredContext,
+  type StructuredContextCommandState,
+} from './structuredContextCommands';
+import { createStructuredSavePolicy } from './structuredSavePolicy';
+import { sourceSelectionForStructuredNode } from './structuredOperations';
+import {
+  createStructuredSurfaceNavigationModel,
+  type StructuredSurfaceId,
+} from './structuredSurfaceNavigation';
+import {
+  createStructuredNavigationIndex,
+  structuredNavigationTargetKey,
+  type StructuredNavigationTarget,
+} from './structuredNavigation';
 import { useCitationWorkflow } from './hooks/useCitationWorkflow';
 import { useMissingImageDetection } from './hooks/useMissingImageDetection';
 import { useLlmWorkflow } from './hooks/useLlmWorkflow';
@@ -60,7 +99,22 @@ import type { VisualStyleId } from '../services/visualStyleService';
 import type { AuthorshipMark } from '../markdown/authorship';
 import { analyzeMarkdownDocument } from '../markdown/documentIntelligence';
 import { assessManuscriptReadiness } from '../markdown/manuscriptReadiness';
-import { extractHeadings } from '@sciemd/core';
+import {
+  createJsonArrayTableModel,
+  extractHeadings,
+  jsonlSourceHash,
+  planJsonVisualEdit,
+  planJsonlVisualEdit,
+  planTabularVisualEdit,
+  structuredAnalysisCanRenderSurface,
+  structuredEditTransactionFromJsonEdit,
+  structuredEditTransactionFromJsonlEdit,
+  structuredEditTransactionFromTabularEdit,
+  tabularSourceHash,
+  validateStructuredPasteBack,
+} from '@sciemd/core';
+import type { JsonVisualEditIntent, JsonlVisualEditIntent, StructuredContextFormat, StructuredContextPacket, StructuredEditTransaction, StructuredNodeRef, TabularVisualEditIntent } from '@sciemd/core';
+import type { DelimitedTextConversionFormat } from '@sciemd/core';
 import { normalizeScientificTypography } from '../markdown/scientificTypography';
 import { toggleMarkdownHeadingSelection } from '../markdown/headingToggle';
 import { createSemanticBlockMarkdown } from '@sciemd/core';
@@ -72,6 +126,8 @@ import { createAnchoredVariantGroupSnippet, createVariantGroupSnippet, parseVari
 import { createProtectedAnchorSnippet, createProtectedBlockSnippet, detectProtectedChanges, parseProtectedBlocks } from '@sciemd/core';
 import { syncGeneratedBibliography } from '@sciemd/core';
 import type { ScienfyTemplateId } from '../domain/document/templates';
+import type { StructuredConversionRequest } from './structuredConversionActions';
+import { suggestedDocumentSavePath } from './hooks/useSaveOperations';
 import { createVariableToken, nextVariableName, renameVariableAndUpdateUsages, upsertFrontmatterVariable, upsertScienfyVariablesFile } from '@sciemd/core';
 import { captureEditorHtmlForExport } from '../export/renderCapture';
 import type { ExportLogEntry } from '../export/exportTypes';
@@ -126,6 +182,26 @@ function openProjectUrl(url: string): void {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+function isStructuredContextFormat(format: string): format is StructuredContextFormat {
+  return format === 'json'
+    || format === 'jsonl'
+    || format === 'yaml'
+    || format === 'toml'
+    || format === 'xml'
+    || format === 'csv'
+    || format === 'tsv';
+}
+
+function isStructuredSurfaceFormat(format: string): boolean {
+  return format === 'json'
+    || format === 'jsonl'
+    || format === 'yaml'
+    || format === 'toml'
+    || format === 'xml'
+    || format === 'csv'
+    || format === 'tsv';
+}
+
 export function App() {
   const [settings, setSettings] = useState(loadSettings);
   const [sidebarWidth, setSidebarWidth] = useState(settings.sidebarWidth);
@@ -133,23 +209,33 @@ export function App() {
   const { promptState, confirmState, promptText, confirmText, completePrompt, completeConfirm } = useDialogs();
   const { toasts, pushToast, dismissToast, pauseToast, resumeToast } = useToasts();
   const [pasteReview, setPasteReview] = useState<PasteReviewState | null>(null);
+  const [tabularPaste, setTabularPaste] = useState<TabularPasteState | null>(null);
+  const [jsonEditReview, setJsonEditReview] = useState<JsonEditReviewState | null>(null);
+  const [structuredEditJournal, setStructuredEditJournal] = useState<StructuredEditJournalEntry[]>([]);
   const documentEpochRef = useRef(0);
   const handleDocumentReplaced = useCallback(() => {
     documentEpochRef.current += 1;
     setPasteReview(null);
+    setTabularPaste(null);
+    setJsonEditReview(null);
+    setStructuredEditJournal([]);
   }, []);
   const {
+    sourceText,
     markdown,
-    commitMarkdownEdit,
-    commitEditorMarkdownEdit,
+    format,
+    commitSourceTextEdit,
+    commitEditorSourceTextEdit,
     undoDocumentEdit,
     redoDocumentEdit,
-    lastSavedMarkdown,
+    lastSavedSourceText,
     filePath,
     fileMetadata,
     mode,
     setMode,
     autosaveStatus,
+    structuredSavePolicy,
+    updateStructuredSavePolicy,
     lastAutosavedAt,
     saveQueueDepth,
     startupDocumentOpenPending,
@@ -177,7 +263,6 @@ export function App() {
     commitOpenedDocument,
     adoptReviewedDiskMerge,
     handleOpen,
-    handleNew,
     handleNewFromTemplate,
     retryStartupDocumentOpen,
     openStartupDocumentFallbackPicker,
@@ -188,7 +273,7 @@ export function App() {
     handleCloseCancel,
     handleReloadFromDisk,
   } = useDocumentSession({
-    initialMarkdown: initialDocumentMarkdownForLaunch({
+    initialSourceText: initialDocumentMarkdownForLaunch({
       onboardingComplete: settings.onboardingComplete,
       nativeRuntime: isTauriRuntime(),
       welcomeMarkdown,
@@ -224,6 +309,10 @@ export function App() {
   const [citationDialogInitialKey, setCitationDialogInitialKey] = useState<string | null>(null);
   const [blockDialogState, setBlockDialogState] = useState<{ selection: EditorSelectionSnapshot | null } | null>(null);
   const [inspectorFocusSection, setInspectorFocusSection] = useState<'readiness' | 'validation' | null>(null);
+  const [selectedJsonPath, setSelectedJsonPath] = useState<string | null>('$');
+  const [activeStructuredNavigationTargetKey, setActiveStructuredNavigationTargetKey] = useState<string | null>(null);
+  const [preferredStructuredSurfaceByDocument, setPreferredStructuredSurfaceByDocument] = useState<Record<string, StructuredSurfaceId>>({});
+  const [explicitJsonSchemaPath, setExplicitJsonSchemaPath] = useState<string | null>(null);
   const updateUserSettings = useCallback((patch: Parameters<typeof updateSettings>[0]) => {
     setSettings(updateSettings(patch));
   }, []);
@@ -242,14 +331,20 @@ export function App() {
   const handleSelectionTextReady = useCallback((getter: SourceMarkdownSelection | VisualMarkdownSelection | undefined) => {
     selectionTextGetterRef.current = getter;
   }, []);
-  const markdownRef = useRef(markdown);
-  const commitMarkdown = useCallback((action: SetStateAction<string>) => {
+  const sourceTextRef = useRef(sourceText);
+  const commitSourceText = useCallback((action: SetStateAction<string>) => {
     const next = typeof action === 'function'
-      ? (action as (value: string) => string)(markdownRef.current)
+      ? (action as (value: string) => string)(sourceTextRef.current)
       : action;
-    markdownRef.current = next;
-    commitMarkdownEdit(next);
-  }, [commitMarkdownEdit]);
+    sourceTextRef.current = next;
+    commitSourceTextEdit(next);
+  }, [commitSourceTextEdit]);
+  const recordStructuredEdit = useCallback((transaction: StructuredEditTransaction, sourceBefore: string) => {
+    setStructuredEditJournal((current) => appendStructuredEditJournalEntry(
+      current,
+      createStructuredEditJournalEntry({ transaction, sourceBefore }),
+    ));
+  }, []);
   const getEditorSelectionSnapshot = useCallback((): EditorSelectionSnapshot => {
     const snapshot = selectionTextGetterRef.current?.();
     if (snapshot) {
@@ -261,11 +356,128 @@ export function App() {
     return { text: (window.getSelection()?.toString() || '').trim(), surface: 'unknown' };
   }, []);
   const getSelectedEditorText = useCallback(() => getEditorSelectionSnapshot().text.trim(), [getEditorSelectionSnapshot]);
-  const effectiveEditorMode: EditorMode = mode;
+  const formatCapabilities = useMemo(() => formatCapabilitiesFor(format), [format]);
+  const jsonSchemaDiscovery = useJsonSchemaDiscovery({
+    format,
+    filePath,
+    explicitSchemaPath: explicitJsonSchemaPath,
+    fileHost: desktopDocumentHost.file,
+  });
+  const sourceFormatDiagnosticState = useSourceFormatDiagnostics(format, sourceText, filePath, {
+    jsonSchema: jsonSchemaDiscovery.schemaSource,
+  });
+  const structuredSurfaceDocumentKey = `${format}:${filePath ?? 'untitled'}`;
+  useEffect(() => {
+    setActiveStructuredNavigationTargetKey(null);
+  }, [structuredSurfaceDocumentKey]);
+  const preferredStructuredSurface = preferredStructuredSurfaceByDocument[structuredSurfaceDocumentKey] ?? null;
+  const jsonArraySurfaceAvailable = useMemo(() => {
+    if (format !== 'json') return false;
+    const parsed = sourceFormatDiagnosticState.jsonAnalysis?.parseResult.parsed;
+    if (!parsed) return false;
+    return Boolean(createJsonArrayTableModel(parsed.value, parsed.sourceMap, { selectedPath: selectedJsonPath }));
+  }, [format, selectedJsonPath, sourceFormatDiagnosticState.jsonAnalysis?.parseResult.parsed]);
+  const nextStructuredSavePolicy = useMemo(() => createStructuredSavePolicy({
+    format,
+    diagnostics: sourceFormatDiagnosticState.diagnostics,
+  }), [format, sourceFormatDiagnosticState.diagnostics]);
+  useEffect(() => {
+    updateStructuredSavePolicy(nextStructuredSavePolicy);
+  }, [nextStructuredSavePolicy, updateStructuredSavePolicy]);
+  const canUseReadonlyTreeMode = structuredAnalysisCanRenderSurface(sourceFormatDiagnosticState.structuredModel, 'tree');
+  const canUseRecordListMode = structuredAnalysisCanRenderSurface(sourceFormatDiagnosticState.structuredModel, 'records');
+  const canUseTabularPreviewMode = structuredAnalysisCanRenderSurface(sourceFormatDiagnosticState.structuredModel, 'table');
+  const structuredContextCommandState = useMemo<StructuredContextCommandState | null>(() => {
+    if (!isStructuredContextFormat(format)) return null;
+    return {
+      format,
+      sourcePath: filePath,
+      selectedPath: selectedJsonPath,
+      jsonAnalysis: sourceFormatDiagnosticState.jsonAnalysis,
+      jsonlAnalysis: sourceFormatDiagnosticState.jsonlAnalysis,
+      structuredAnalysis: sourceFormatDiagnosticState.structuredAnalysis,
+      tabularAnalysis: sourceFormatDiagnosticState.tabularAnalysis,
+    };
+  }, [
+    filePath,
+    format,
+    selectedJsonPath,
+    sourceFormatDiagnosticState.jsonAnalysis,
+    sourceFormatDiagnosticState.jsonlAnalysis,
+    sourceFormatDiagnosticState.structuredAnalysis,
+    sourceFormatDiagnosticState.tabularAnalysis,
+  ]);
+  const structuredContextAvailable = structuredContextCommandState
+    ? canCreateStructuredContextPackets(structuredContextCommandState)
+    : false;
+  const structuredTableSampleAvailable = structuredContextCommandState
+    ? canCreateStructuredTableSamplePacket(structuredContextCommandState)
+    : false;
+  const structuredPasteBackValidationAvailable = isStructuredContextFormat(format);
+  const effectiveEditorMode: EditorMode = formatCapabilities.canUseVisualMarkdown
+    || canUseReadonlyTreeMode
+    || canUseRecordListMode
+    || canUseTabularPreviewMode
+    ? mode
+    : 'source';
+  const structuredSurfaceNavigation = useMemo(() => (
+    isStructuredSurfaceFormat(format)
+      ? createStructuredSurfaceNavigationModel({
+        format,
+        mode: effectiveEditorMode,
+        formatCapabilities,
+        preferredVisualSurface: preferredStructuredSurface,
+        parsingPending: sourceFormatDiagnosticState.parsingPending,
+        jsonAnalysis: sourceFormatDiagnosticState.jsonAnalysis,
+        jsonArrayTableAvailable: jsonArraySurfaceAvailable,
+        jsonlAnalysis: sourceFormatDiagnosticState.jsonlAnalysis,
+        structuredAnalysis: sourceFormatDiagnosticState.structuredAnalysis,
+        tabularAnalysis: sourceFormatDiagnosticState.tabularAnalysis,
+      })
+      : null
+  ), [
+    effectiveEditorMode,
+    format,
+    formatCapabilities,
+    jsonArraySurfaceAvailable,
+    preferredStructuredSurface,
+    sourceFormatDiagnosticState.jsonAnalysis,
+    sourceFormatDiagnosticState.jsonlAnalysis,
+    sourceFormatDiagnosticState.parsingPending,
+    sourceFormatDiagnosticState.structuredAnalysis,
+    sourceFormatDiagnosticState.tabularAnalysis,
+  ]);
+  const structuredNavigationIndex = useMemo(() => (
+    createStructuredNavigationIndex({
+      format,
+      diagnostics: sourceFormatDiagnosticState.diagnostics,
+      jsonAnalysis: sourceFormatDiagnosticState.jsonAnalysis,
+      jsonlAnalysis: sourceFormatDiagnosticState.jsonlAnalysis,
+      structuredAnalysis: sourceFormatDiagnosticState.structuredAnalysis,
+      tabularAnalysis: sourceFormatDiagnosticState.tabularAnalysis,
+    })
+  ), [
+    format,
+    sourceFormatDiagnosticState.diagnostics,
+    sourceFormatDiagnosticState.jsonAnalysis,
+    sourceFormatDiagnosticState.jsonlAnalysis,
+    sourceFormatDiagnosticState.structuredAnalysis,
+    sourceFormatDiagnosticState.tabularAnalysis,
+  ]);
+  const selectedStructuredPathTargetKey = isStructuredSurfaceFormat(format) && selectedJsonPath
+    ? `${format}:path:${selectedJsonPath}`
+    : null;
+  const activeStructuredNavigationKey = activeStructuredNavigationTargetKey ?? selectedStructuredPathTargetKey;
+  const activeValidationIssues = useMemo(
+    () => formatCapabilities.canUseVisualMarkdown
+      ? validation.issues
+      : formatDiagnosticsToValidationIssues(sourceFormatDiagnosticState.diagnostics),
+    [formatCapabilities.canUseVisualMarkdown, sourceFormatDiagnosticState.diagnostics, validation.issues],
+  );
 
-  const documentTitle = createWindowTitle(filePath, dirty);
-  const warnings = validation.issues.filter((issue) => issue.severity === 'warning');
-  const errors = validation.issues.filter((issue) => issue.severity === 'error');
+  const documentTitle = createWindowTitle(filePath, dirty, format);
+  const warnings = activeValidationIssues.filter((issue) => issue.severity === 'warning');
+  const errors = activeValidationIssues.filter((issue) => issue.severity === 'error');
   const currentVisualStyle = getVisualStyleOption(settings.visualStyle);
   const recentPreviews = useRecentFilePreviews(settings.recentFiles);
   const deferredMarkdownForPanels = useDeferredValue(markdown);
@@ -273,20 +485,25 @@ export function App() {
     ...layerTwoDocument.citations.bibtexKeys,
     ...layerTwoDocument.citations.usages.map((usage) => usage.key),
   ])).sort((a, b) => a.localeCompare(b)), [layerTwoDocument.citations.bibtexKeys, layerTwoDocument.citations.usages]);
+  const activeCitationCompletionKeys = formatCapabilities.canUseCitations ? citationCompletionKeys : [];
   const nextFigureLabel = useMemo(
     () => nextReferenceLabel('fig', layerTwoDocument.references.labels.map((label) => label.id)),
     [layerTwoDocument.references.labels],
   );
   const parsedMarkdownGraph = useMemo(() => ({
-    baseDocumentInsights: analyzeMarkdownDocument(deferredMarkdownForPanels),
-    navigationHeadings: extractHeadings(deferredMarkdownForPanels),
-  }), [deferredMarkdownForPanels]);
+    baseDocumentInsights: formatCapabilities.canUseManuscriptReadiness
+      ? analyzeMarkdownDocument(deferredMarkdownForPanels)
+      : analyzeMarkdownDocument(''),
+    navigationHeadings: formatCapabilities.canUseManuscriptReadiness
+      ? extractHeadings(deferredMarkdownForPanels)
+      : [],
+  }), [deferredMarkdownForPanels, formatCapabilities]);
   const liveAnnotationGraph = useMemo(() => ({
-    editorComments: parseEditorComments(markdown),
-    targetedInstructions: parseTargetedInstructions(markdown),
-    protectedBlocks: parseProtectedBlocks(markdown),
-    variantGroups: parseVariantGroups(markdown),
-  }), [markdown]);
+    editorComments: formatCapabilities.canUseLLMMarkdownMarkers ? parseEditorComments(markdown) : [],
+    targetedInstructions: formatCapabilities.canUseLLMMarkdownMarkers ? parseTargetedInstructions(markdown) : [],
+    protectedBlocks: formatCapabilities.canUseLLMMarkdownMarkers ? parseProtectedBlocks(markdown) : [],
+    variantGroups: formatCapabilities.canUseLLMMarkdownMarkers ? parseVariantGroups(markdown) : [],
+  }), [formatCapabilities, markdown]);
   const {
     baseDocumentInsights,
     navigationHeadings,
@@ -306,10 +523,12 @@ export function App() {
     jumpToHeading,
     jumpToLineInCurrentMode,
     jumpToLineInSource,
+    revealSourceRange,
+    navigateStructuredTarget,
     preserveLineForModeChange,
     navigateToFindMatch,
   } = useDocumentNavigation({
-    mode,
+    mode: effectiveEditorMode,
     setMode,
     headings: navigationHeadings,
     sourceJumpHandler,
@@ -318,24 +537,312 @@ export function App() {
     visualFindHandler,
   });
   const wrapSelectedEditorText = useCallback((selectedText: string, wrap: (rawSelection: string) => string) => {
-    const nextMarkdown = wrapMarkdownSelection(markdownRef.current, selectedText, wrap, currentLine);
+    const nextMarkdown = wrapMarkdownSelection(sourceTextRef.current, selectedText, wrap, currentLine);
     if (!nextMarkdown) {
       pushToast('Could not safely map this visual selection to Markdown. Try placing the cursor in the exact block before applying this command.', 'warning');
       return false;
     }
-    commitMarkdown(nextMarkdown);
+    commitSourceText(nextMarkdown);
     return true;
-  }, [commitMarkdown, currentLine, pushToast]);
+  }, [commitSourceText, currentLine, pushToast]);
   const wrapSelectedEditorBlock = useCallback((selection: EditorSelectionSnapshot, wrap: (rawSelection: string) => string) => {
-    const nextMarkdown = wrapMarkdownBlockSelection(markdownRef.current, selection, wrap, currentLine);
+    const nextMarkdown = wrapMarkdownBlockSelection(sourceTextRef.current, selection, wrap, currentLine);
     if (!nextMarkdown) return false;
-    commitMarkdown(nextMarkdown);
+    commitSourceText(nextMarkdown);
     return true;
-  }, [commitMarkdown, currentLine]);
+  }, [commitSourceText, currentLine]);
+  const applyJsonVisualEdit = useCallback((intent: JsonVisualEditIntent) => {
+    if (format !== 'json' || sourceFormatDiagnosticState.jsonAnalysis?.status !== 'valid') {
+      pushToast('JSON visual edits are available only for valid JSON tree mode.', 'warning');
+      return;
+    }
+    const currentSource = sourceTextRef.current;
+    const plan = planJsonVisualEdit(currentSource, intent, {
+      schemaValidation: sourceFormatDiagnosticState.jsonAnalysis.parseResult.parsed?.schemaValidation ?? null,
+    });
+    if (!plan.ok || plan.nextSource === undefined) {
+      pushToast(plan.unsupportedReason ?? plan.diagnostics[0]?.message ?? 'JSON visual edit is not available for this node.', 'warning');
+      return;
+    }
+    if (plan.nextSource === sourceTextRef.current) {
+      pushToast(plan.previewLabel, 'info');
+      return;
+    }
+    const transaction = structuredEditTransactionFromJsonEdit(currentSource, intent, plan);
+    if (!transaction) {
+      pushToast('JSON edit transaction could not be created.', 'warning');
+      return;
+    }
+    if (jsonVisualEditNeedsReview(intent)) {
+      const review = createJsonEditReviewState({
+        source: currentSource,
+        intent,
+        plan,
+        documentEpoch: documentEpochRef.current,
+      });
+      if (!review) {
+        pushToast('JSON source preview could not be created for this edit.', 'warning');
+        return;
+      }
+      setJsonEditReview(review);
+      return;
+    }
+    commitSourceText(plan.nextSource);
+    recordStructuredEdit(transaction, currentSource);
+    pushToast(plan.previewLabel, 'success');
+  }, [commitSourceText, format, pushToast, recordStructuredEdit, sourceFormatDiagnosticState.jsonAnalysis]);
+  const applyReviewedJsonEdit = useCallback(() => {
+    if (!jsonEditReview) return;
+    const sourceBefore = sourceTextRef.current;
+    const result = resolveJsonEditReviewApply(sourceBefore, documentEpochRef.current, jsonEditReview);
+    if (!result.ok) {
+      setJsonEditReview(null);
+      pushToast(result.reason, 'warning');
+      return;
+    }
+    if (result.nextSource === sourceBefore) {
+      setJsonEditReview(null);
+      pushToast(result.previewLabel, 'info');
+      return;
+    }
+    commitSourceText(result.nextSource);
+    recordStructuredEdit(result.transaction, sourceBefore);
+    setJsonEditReview(null);
+    pushToast(result.previewLabel, 'success');
+  }, [commitSourceText, jsonEditReview, pushToast, recordStructuredEdit]);
+  const applyJsonlVisualEdit = useCallback((intent: JsonlVisualEditIntent) => {
+    if (format !== 'jsonl' || !sourceFormatDiagnosticState.jsonlAnalysis?.parseResult.parsed) {
+      pushToast('JSONL record edits are available only in JSONL Records mode.', 'warning');
+      return;
+    }
+    const sourceBefore = sourceTextRef.current;
+    const plan = planJsonlVisualEdit(sourceBefore, intent);
+    if (!plan.ok || plan.nextSource === undefined) {
+      pushToast(plan.unsupportedReason ?? plan.diagnostics[0]?.message ?? 'JSONL record edit is not available.', 'warning');
+      return;
+    }
+    if (plan.nextSource === sourceBefore) {
+      pushToast(plan.previewLabel, 'info');
+      return;
+    }
+    const transaction = structuredEditTransactionFromJsonlEdit(sourceBefore, intent, plan);
+    commitSourceText(plan.nextSource);
+    if (transaction) recordStructuredEdit(transaction, sourceBefore);
+    pushToast(plan.previewLabel, 'success');
+  }, [commitSourceText, format, pushToast, recordStructuredEdit, sourceFormatDiagnosticState.jsonlAnalysis]);
+  const applyTabularVisualEdit = useCallback((intent: TabularVisualEditIntent) => {
+    if ((format !== 'csv' && format !== 'tsv') || !sourceFormatDiagnosticState.tabularAnalysis?.parseResult.parsed) {
+      pushToast('Table edits are available only in CSV or TSV table preview mode.', 'warning');
+      return;
+    }
+    const sourceBefore = sourceTextRef.current;
+    const plan = planTabularVisualEdit(sourceBefore, intent);
+    if (!plan.ok || plan.nextSource === undefined) {
+      pushToast(plan.unsupportedReason ?? plan.diagnostics[0]?.message ?? 'Table edit is not available for this cell.', 'warning');
+      return;
+    }
+    if (plan.nextSource === sourceBefore) {
+      pushToast(plan.previewLabel, 'info');
+      return;
+    }
+    const transaction = structuredEditTransactionFromTabularEdit(sourceBefore, intent, plan);
+    commitSourceText(plan.nextSource);
+    if (transaction) recordStructuredEdit(transaction, sourceBefore);
+    pushToast(plan.previewLabel, 'success');
+  }, [commitSourceText, format, pushToast, recordStructuredEdit, sourceFormatDiagnosticState.tabularAnalysis]);
+  const copyStructuredText = useCallback((content: string, label: string) => {
+    const copyPromise = navigator.clipboard?.writeText(content);
+    if (!copyPromise) {
+      pushToast('Clipboard is not available in this window.', 'warning');
+      return;
+    }
+    void copyPromise
+      .then(() => pushToast(`${label} copied`, 'success'))
+      .catch((error) => {
+        console.warn('Could not copy structured text.', error);
+        pushToast(`Could not copy ${label}.`, 'error');
+      });
+  }, [pushToast]);
+  const handleStructuredConversionAction = useCallback(async (request: StructuredConversionRequest) => {
+    try {
+      if (request.action === 'copy') {
+        copyStructuredText(request.content, request.label);
+        return;
+      }
+
+      if (request.sourceHash && request.sourceFormat) {
+        const currentHash = conversionSourceHash(request.sourceFormat, sourceText);
+        if (currentHash && currentHash !== request.sourceHash) {
+          pushToast('The source changed after this conversion preview was created. Reopen the conversion preview and try again.', 'warning');
+          return;
+        }
+      }
+
+      if (request.action === 'save-as') {
+        const targetPath = await desktopDocumentHost.dialog.pickSavePath(
+          suggestedDocumentSavePath(request.content, null, request.format),
+          request.format,
+        );
+        if (!targetPath) return;
+        const existingMetadata = await desktopDocumentHost.file.statFile(targetPath, { contentHash: true }).catch(() => null);
+        if (existingMetadata) {
+          const replace = await confirmText({
+            title: `Replace existing ${labelForDocumentFormat(request.format)} file?`,
+            message: 'This writes the converted output to the selected file. A backup of the existing file will be created first.',
+            okLabel: 'Replace',
+            cancelLabel: 'Cancel',
+          });
+          if (!replace) return;
+          await desktopDocumentHost.file.createBackupSnapshot(targetPath, 'conversion').catch((error) => {
+            console.warn('Conversion backup snapshot could not be created.', error);
+          });
+        }
+        await desktopDocumentHost.file.writeTextFileAtomic(
+          targetPath,
+          request.content,
+          existingMetadata ?? DEFAULT_METADATA,
+          existingMetadata,
+        );
+        updateUserSettings(desktopDocumentHost.settings.rememberRecentFile(targetPath));
+        pushToast(`${request.label} saved`, 'success');
+        return;
+      }
+
+      const confirmed = await confirmText({
+        title: request.action === 'replace-current' ? 'Replace current document?' : 'Open converted document?',
+        message: request.action === 'replace-current'
+          ? `This replaces the current editor session with an untitled ${labelForDocumentFormat(request.format)} document. Your current file path will not be reused.`
+          : `This opens the converted output as an untitled ${labelForDocumentFormat(request.format)} document in this window.`,
+        okLabel: request.action === 'replace-current' ? 'Replace' : 'Open',
+        cancelLabel: 'Cancel',
+      });
+      if (!confirmed) return;
+      if (!(await settleDirtyDocumentBeforeReplace())) return;
+      commitOpenedDocument(
+        null,
+        request.content,
+        DEFAULT_METADATA,
+        preferredModeForConvertedFormat(request.format),
+        request.content.length > 0 ? '' : request.content,
+        request.format,
+      );
+      pushToast(`${request.label} opened as ${labelForDocumentFormat(request.format)}`, 'success');
+    } catch (error) {
+      console.warn('Structured conversion action failed.', error);
+      pushToast(error instanceof Error ? error.message : 'Could not complete the structured conversion action.', 'error');
+    }
+  }, [
+    commitOpenedDocument,
+    confirmText,
+    copyStructuredText,
+    pushToast,
+    settleDirtyDocumentBeforeReplace,
+    sourceText,
+    updateUserSettings,
+  ]);
+  const copyStructuredContextPacket = useCallback((packet: StructuredContextPacket | null) => {
+    if (!packet) {
+      pushToast('Structured context is available only after the current structured file parses successfully.', 'warning');
+      return;
+    }
+    copyStructuredText(packet.content, packet.label);
+  }, [copyStructuredText, pushToast]);
+  const copyWholeStructuredContext = useCallback(() => {
+    copyStructuredContextPacket(structuredContextCommandState
+      ? createCurrentWholeStructuredContext(structuredContextCommandState)
+      : null);
+  }, [copyStructuredContextPacket, structuredContextCommandState]);
+  const copySelectedStructureContext = useCallback(() => {
+    copyStructuredContextPacket(structuredContextCommandState
+      ? createCurrentSelectedStructureContext(structuredContextCommandState)
+      : null);
+  }, [copyStructuredContextPacket, structuredContextCommandState]);
+  const copyStructuredParserDiagnostics = useCallback(() => {
+    if (!structuredContextCommandState) {
+      pushToast('Parser diagnostics are unavailable for this document.', 'warning');
+      return;
+    }
+    copyStructuredContextPacket(createCurrentParserDiagnosticsContext(structuredContextCommandState));
+  }, [copyStructuredContextPacket, pushToast, structuredContextCommandState]);
+  const copyStructuredSchemaSummary = useCallback(() => {
+    copyStructuredContextPacket(structuredContextCommandState
+      ? createCurrentSchemaSummaryContext(structuredContextCommandState)
+      : null);
+  }, [copyStructuredContextPacket, structuredContextCommandState]);
+  const copyStructuredTableSample = useCallback(() => {
+    copyStructuredContextPacket(structuredContextCommandState
+      ? createCurrentStructuredTableSampleContext(structuredContextCommandState)
+      : null);
+  }, [copyStructuredContextPacket, structuredContextCommandState]);
+  const copyStructuredHealthReport = useCallback(() => {
+    copyStructuredContextPacket(structuredContextCommandState
+      ? createCurrentStructuredHealthContext(structuredContextCommandState)
+      : null);
+  }, [copyStructuredContextPacket, structuredContextCommandState]);
+  const copyRedactedStructuredPreview = useCallback(() => {
+    copyStructuredContextPacket(structuredContextCommandState
+      ? createCurrentRedactedStructuredPreview(structuredContextCommandState)
+      : null);
+  }, [copyStructuredContextPacket, structuredContextCommandState]);
+  const revealStructuredSource = useCallback((node: StructuredNodeRef) => {
+    const selection = sourceSelectionForStructuredNode(node);
+    if (!selection) {
+      pushToast('Source location is not available for this structured node.', 'warning');
+      return;
+    }
+    setSelectedJsonPath(selection.displayPath);
+    revealSourceRange(selection);
+    pushToast(`Showing ${selection.displayPath} in source`, 'info');
+  }, [pushToast, revealSourceRange]);
+  const navigateStructuredSidebarTarget = useCallback((target: StructuredNavigationTarget) => {
+    setActiveStructuredNavigationTargetKey(structuredNavigationTargetKey(target));
+    if (target.path) setSelectedJsonPath(target.path);
+    navigateStructuredTarget(target);
+    if (!target.sourceRange && target.path) {
+      pushToast(`Selected ${target.path}`, 'info');
+    }
+  }, [navigateStructuredTarget, pushToast]);
+  const validateStructuredClipboard = useCallback(() => {
+    if (!isStructuredContextFormat(format)) {
+      pushToast('Structured paste-back validation is available for JSON, JSONL, YAML, and TOML.', 'warning');
+      return;
+    }
+    const readPromise = navigator.clipboard?.readText();
+    if (!readPromise) {
+      pushToast('Clipboard read is not available in this window.', 'warning');
+      return;
+    }
+    void readPromise
+      .then((clipboardText) => {
+        if (clipboardText.trim().length === 0) {
+          pushToast('Clipboard does not contain structured text to validate.', 'warning');
+          return;
+        }
+        const packet = validateStructuredPasteBack({
+          format,
+          text: clipboardText,
+          sourcePath: filePath,
+          schema: format === 'json' ? jsonSchemaDiscovery.schemaSource : null,
+        });
+        const firstError = packet.diagnostics.find((diagnostic) => diagnostic.severity === 'error');
+        if (firstError) {
+          pushToast(`${packet.label}: ${firstError.message}`, 'warning');
+          return;
+        }
+        pushToast(`${packet.label}: valid. Source was not changed.`, 'success');
+      })
+      .catch((error) => {
+        console.warn('Could not validate structured clipboard text.', error);
+        pushToast('Could not read structured text from the clipboard.', 'error');
+      });
+  }, [filePath, format, jsonSchemaDiscovery.schemaSource, pushToast]);
   const insertAnchoredSelectionBlock = useCallback((selection: EditorSelectionSnapshot, block: string) => {
-    commitMarkdown(insertStandaloneMarkdownBlockNearSelection(markdownRef.current, selection, `${block.trimEnd()}\n\n`, currentLine));
-  }, [commitMarkdown, currentLine]);
-  const missingImageCount = useMissingImageDetection(filePath, baseDocumentInsights.imageReferences);
+    commitSourceText(insertStandaloneMarkdownBlockNearSelection(sourceTextRef.current, selection, `${block.trimEnd()}\n\n`, currentLine));
+  }, [commitSourceText, currentLine]);
+  const missingImageCount = useMissingImageDetection(
+    filePath,
+    formatCapabilities.canUseImageInsertion ? baseDocumentInsights.imageReferences : [],
+  );
   const {
     headings,
     documentInsights,
@@ -347,7 +854,7 @@ export function App() {
     documentInsights: baseDocumentInsights,
     headings: navigationHeadings,
     currentLine: activeNavigationLine,
-    validationIssues: validation.issues,
+    validationIssues: activeValidationIssues,
     missingImageCount,
   });
   const manuscriptReadiness = useMemo(
@@ -365,23 +872,41 @@ export function App() {
   const resolvedTheme = useThemeAttribute(settings.themeMode);
   useLayoutAttributes(settings.fontScale, settings.visualStyle);
 
+  useEffect(() => {
+    setSelectedJsonPath('$');
+    setJsonEditReview(null);
+  }, [filePath, format]);
+
+  useEffect(() => {
+    setExplicitJsonSchemaPath(null);
+  }, [filePath, format]);
+
+  useEffect(() => {
+    if (mode !== 'visual') return;
+    if (!formatCapabilities.canUseStructuredVisualMode && !formatCapabilities.canUseRecordList && !formatCapabilities.canUseTablePreview) return;
+    if (sourceFormatDiagnosticState.parsingPending) return;
+    if (canUseReadonlyTreeMode || canUseRecordListMode || canUseTabularPreviewMode) return;
+    setMode('source');
+  }, [canUseReadonlyTreeMode, canUseRecordListMode, canUseTabularPreviewMode, formatCapabilities.canUseRecordList, formatCapabilities.canUseStructuredVisualMode, formatCapabilities.canUseTablePreview, mode, setMode, sourceFormatDiagnosticState.parsingPending]);
+
   const statusText = useMemo(() => {
     if (autosaveStatus === 'idle') return filePath ? 'Saved' : 'Autosave off until saved';
     if (autosaveStatus === 'pending') return 'Autosave pending';
+    if (autosaveStatus === 'paused') return structuredSavePolicy.reason ?? 'Autosave paused';
     if (autosaveStatus === 'saving') return 'Saving';
     if (autosaveStatus === 'saved') return formatAutosaveTime(lastAutosavedAt) || 'Saved';
     if (autosaveStatus === 'conflict') return 'External change detected';
     return 'Save failed';
-  }, [autosaveStatus, filePath, lastAutosavedAt]);
+  }, [autosaveStatus, filePath, lastAutosavedAt, structuredSavePolicy.reason]);
 
   useEffect(() => {
     document.title = documentTitle;
   }, [documentTitle]);
 
   useEffect(() => {
-    markdownRef.current = markdown;
-    updateRawDocumentRescue(markdown, filePath);
-  }, [filePath, markdown]);
+    sourceTextRef.current = sourceText;
+    updateRawDocumentRescue(sourceText, filePath);
+  }, [filePath, sourceText]);
 
   useAuthorshipMaintenance(setAuthorshipMarks);
 
@@ -429,7 +954,7 @@ export function App() {
 
   const createVariableAndInsert = useCallback((name: string, value: string) => {
     const ensureDefinition = () => {
-      commitMarkdown((current) => {
+      commitSourceText((current) => {
         return upsertFrontmatterVariable(current, name, value);
       });
     };
@@ -449,7 +974,7 @@ export function App() {
     } catch (error) {
       pushToast(error instanceof Error ? error.message : 'Variable could not be created.', 'error');
     }
-  }, [commitMarkdown, insertMarkdown, pushToast]);
+  }, [commitSourceText, insertMarkdown, pushToast]);
 
   const saveVariableEdit = useCallback((originalName: string, nextName: string, value: string) => {
     void (async () => {
@@ -464,7 +989,7 @@ export function App() {
           });
           if (!confirmed) return;
         }
-        commitMarkdown((current) => renameVariableAndUpdateUsages(current, originalName, nextName, value));
+        commitSourceText((current) => renameVariableAndUpdateUsages(current, originalName, nextName, value));
         setSelectedVariableName(nextName);
         setVariableDialog(null);
         pushToast(`Variable {{ ${nextName} }} updated.`, 'success');
@@ -472,7 +997,7 @@ export function App() {
         pushToast(error instanceof Error ? error.message : 'Variable could not be updated.', 'error');
       }
     })();
-  }, [commitMarkdown, confirmText, layerTwoDocument.variables.usages, pushToast]);
+  }, [commitSourceText, confirmText, layerTwoDocument.variables.usages, pushToast]);
 
   const selectVariableInDocument = useCallback((name: string, targetUsage?: typeof layerTwoDocument.variables.usages[number]) => {
     setSelectedVariableName(name);
@@ -504,13 +1029,13 @@ export function App() {
     });
     if (file === null) return;
     try {
-      commitMarkdown((current) => upsertScienfyVariablesFile(current, file));
+      commitSourceText((current) => upsertScienfyVariablesFile(current, file));
       updateUserSettings({ outlineOpen: true, sidebarView: 'data' });
       pushToast(`Linked data file: ${file.trim()}`, 'success');
     } catch (error) {
       pushToast(error instanceof Error ? error.message : 'Data file could not be linked.', 'error');
     }
-  }, [commitMarkdown, layerTwoDocument.variableFiles, promptText, pushToast, updateUserSettings]);
+  }, [commitSourceText, layerTwoDocument.variableFiles, promptText, pushToast, updateUserSettings]);
 
   const insertOutlineHeading = useCallback(() => {
     insertMarkdown('## New heading\n\n');
@@ -541,8 +1066,8 @@ export function App() {
   } = useCitationWorkflow({
     filePath,
     layerTwoDocument,
-    markdownRef,
-    setMarkdown: commitMarkdown,
+    markdownRef: sourceTextRef,
+    setMarkdown: commitSourceText,
     saveCurrent,
     reloadBibliography,
     pushToast,
@@ -656,14 +1181,14 @@ export function App() {
       const altText = alt.trim() || desktopPlatformHost.assets.defaultImageAlt(imagePath);
       const copied = await desktopPlatformHost.assets.copyImageToAssets(documentPath, imagePath, altText);
       const replacement = desktopPlatformHost.assets.markdownImageSyntax(copied.altText, copied.markdownPath);
-      commitMarkdown((current) => {
+      commitSourceText((current) => {
         return replaceFirstMissingImageReference(current, source, alt, replacement);
       });
       pushToast('Missing image reference updated.', 'success');
     } catch (error) {
       pushToast(error instanceof Error ? error.message : 'Could not update the missing image reference.', 'error');
     }
-  }, [commitMarkdown, ensureDocumentPathForAssets, pushToast]);
+  }, [commitSourceText, ensureDocumentPathForAssets, pushToast]);
 
   useEffect(() => {
     const handleLocateMissingImage = (event: Event) => {
@@ -675,7 +1200,7 @@ export function App() {
   }, [locateMissingImage]);
 
   const { handlePasteCapture, handleDropCapture } = useDocumentDropPaste({
-    markdownRef,
+    sourceTextRef,
     documentEpochRef,
     insertImageBlob,
     insertImageFromPath,
@@ -687,6 +1212,7 @@ export function App() {
     validateNow,
     setAuthorshipMarks,
     setPasteReview,
+    setTabularPaste,
     pushToast,
     platformHost: desktopPlatformHost,
   });
@@ -698,12 +1224,40 @@ export function App() {
     rejectPasteReview,
     applyPasteReview,
   } = usePasteReviewWorkflow({
-    getCurrentMarkdown: () => markdownRef.current,
-    setMarkdown: commitMarkdown,
+    getCurrentMarkdown: () => sourceTextRef.current,
+    setMarkdown: commitSourceText,
     setAuthorshipMarks,
     setPasteReview,
     pushToast,
   });
+
+  const tabularPasteDefaultFormat: DelimitedTextConversionFormat = format === 'jsonl'
+    ? 'jsonl'
+    : format === 'json'
+      ? 'json'
+      : 'markdown';
+
+  const insertTabularPaste = useCallback((content: string, conversionFormat: DelimitedTextConversionFormat) => {
+    if (!insertMarkdown(content)) return;
+    setTabularPaste(null);
+    pushToast(`${tabularConversionLabel(conversionFormat)} inserted`, 'success');
+  }, [insertMarkdown, pushToast]);
+
+  const copyTabularPaste = useCallback((content: string, conversionFormat: DelimitedTextConversionFormat) => {
+    const copyPromise = navigator.clipboard?.writeText(content);
+    if (!copyPromise) {
+      pushToast('Clipboard is not available in this window.', 'warning');
+      return;
+    }
+    void copyPromise
+      .then(() => {
+        pushToast(`${tabularConversionLabel(conversionFormat)} copied`, 'success');
+      })
+      .catch((error) => {
+        console.warn('Could not copy converted tabular data.', error);
+        pushToast('Could not copy converted tabular data.', 'error');
+      });
+  }, [pushToast]);
 
   const persistExplorerPath = useCallback((path: string) => {
     updateUserSettings({ explorerRootPath: path });
@@ -821,7 +1375,7 @@ export function App() {
         return;
       }
       insertAnchoredSelectionBlock(selection, createProtectedAnchorSnippet(selectedText, reason || 'human-approved', undefined, {
-        markdown: markdownRef.current,
+        markdown: sourceTextRef.current,
         selectionLine: selection.line,
         preferredLine: currentLine,
         prefix: selection.prefix,
@@ -852,7 +1406,7 @@ export function App() {
         : 'Revise this text for clarity while preserving the scientific meaning.',
     });
     if (!body) return;
-    const result = insertEditorNote(markdownRef.current, {
+    const result = insertEditorNote(sourceTextRef.current, {
       body,
       kind,
       selectedText,
@@ -862,10 +1416,10 @@ export function App() {
       selectionEndLine: overrideSnapshot?.endLine ?? selectionSnapshot.endLine,
       preferredLine: currentLine,
     });
-    commitMarkdown(result.markdown);
+    commitSourceText(result.markdown);
     const noteLabel = isHumanNote ? 'Note to Human' : 'Note to LLM';
     pushToast(selectedText ? `${noteLabel} anchored to the selected text without changing it.` : `${noteLabel} inserted.`, 'info');
-  }, [commitMarkdown, currentLine, getEditorSelectionSnapshot, promptText, pushToast]);
+  }, [commitSourceText, currentLine, getEditorSelectionSnapshot, promptText, pushToast]);
 
   const insertEditorComment = useCallback((selectionOverride?: EditorSelectionOverride) => (
     insertEditorNoteCommand('llm', selectionOverride)
@@ -914,7 +1468,7 @@ export function App() {
         return;
       }
       insertAnchoredSelectionBlock(selection, createAnchoredVariantGroupSnippet(nextVariantGroupId, selectedText, 'v1', {
-        markdown: markdownRef.current,
+        markdown: sourceTextRef.current,
         selectionLine: selection.line,
         preferredLine: currentLine,
         prefix: selection.prefix,
@@ -938,7 +1492,8 @@ export function App() {
     insertSlashCommand,
     closeSlashMenu,
   } = useSlashCommandMenu({
-    mode,
+    mode: effectiveEditorMode,
+    formatCapabilities,
     markdown,
     currentLine,
     currentColumn,
@@ -962,9 +1517,9 @@ export function App() {
       return;
     }
     const nextMarkdown = syncGeneratedBibliography(markdown, entries);
-    commitMarkdown(nextMarkdown);
+    commitSourceText(nextMarkdown);
     pushToast(entries.length > 0 ? 'Bibliography synced from loaded .bib file.' : 'Bibliography section created with missing-key placeholders.', 'success');
-  }, [commitMarkdown, layerTwoDocument.citations.bibtexEntries, layerTwoDocument.citations.usages.length, markdown, pushToast]);
+  }, [commitSourceText, layerTwoDocument.citations.bibtexEntries, layerTwoDocument.citations.usages.length, markdown, pushToast]);
 
   const insertReferencesDirective = useCallback(() => {
     insertMarkdown(':::references\n:::\n\n');
@@ -972,14 +1527,14 @@ export function App() {
   }, [insertMarkdown, pushToast]);
 
   const applyScientificTypography = useCallback(() => {
-    const nextMarkdown = normalizeScientificTypography(markdownRef.current);
-    if (nextMarkdown === markdownRef.current) {
+    const nextMarkdown = normalizeScientificTypography(sourceTextRef.current);
+    if (nextMarkdown === sourceTextRef.current) {
       pushToast('Scientific typography already clean.', 'info');
       return;
     }
-    commitMarkdown(nextMarkdown);
+    commitSourceText(nextMarkdown);
     pushToast('Scientific typography applied.', 'success');
-  }, [commitMarkdown, pushToast]);
+  }, [commitSourceText, pushToast]);
 
   const renderVisualExportHtml = useCallback(async (preparedMarkdown: string) => {
     setExportRenderHostMounted(true);
@@ -997,7 +1552,7 @@ export function App() {
     }
   }, [filePath, layerTwoDocument.citations.bibtexEntries, layerTwoDocument.variables.definitions]);
   const getCurrentOutputMarkdown = useCallback(() => (
-    readVisualEditorState()?.markdown ?? markdownRef.current
+    readVisualEditorState()?.markdown ?? sourceTextRef.current
   ), []);
 
   const { copyRichText, exportHtml, exportPandoc, printPreview } = useExportActions({
@@ -1118,6 +1673,12 @@ export function App() {
       stuckAfterMs: 10_000,
     },
     {
+      id: 'source-format-parser',
+      label: 'Source format parser',
+      active: sourceFormatDiagnosticState.parsingPending,
+      stuckAfterMs: 10_000,
+    },
+    {
       id: 'bibliography-refresh',
       label: 'Bibliography refresh',
       active: bibliographyLoading,
@@ -1136,6 +1697,7 @@ export function App() {
     exportWorkflow.activeExport,
     linkedVariableLoading,
     saveQueueDepth,
+    sourceFormatDiagnosticState.parsingPending,
     startupDocumentOpenPending,
     validationPending,
   ]);
@@ -1147,7 +1709,7 @@ export function App() {
     );
   }, [pushToast]);
   useRendererDiagnostics({
-    markdown,
+    sourceText,
     filePath,
     mode,
     warningCount: warnings.length,
@@ -1163,16 +1725,40 @@ export function App() {
     openExternalConflictReview,
     closeExternalConflictReview,
     applyExternalConflictReview,
+    applyStructuredJsonConflictReview,
+    applyStructuredConflictReview,
   } = useExternalConflictReviewWorkflow({
     filePath,
     documentEpochRef,
-    markdown,
-    lastSavedMarkdown,
+    format,
+    sourceText,
+    lastSavedSourceText,
     adoptReviewedDiskMerge,
     setAuthorshipMarks,
     pushToast,
     host: desktopDocumentHost,
   });
+  const lineExternalConflictReview = externalConflictReview?.kind === 'line-review' ? externalConflictReview : null;
+  const structuredExternalConflictReview = externalConflictReview?.kind === 'structured-source' ? externalConflictReview : null;
+  const structuredConflictFormatLabel = structuredExternalConflictReview
+    ? labelForDocumentFormat(structuredExternalConflictReview.format)
+    : labelForDocumentFormat(format);
+  const keepStructuredConflict = useCallback(() => {
+    closeExternalConflictReview();
+    pushToast('Kept current in-memory source. Save As or Save Anyway when ready.', 'info');
+  }, [closeExternalConflictReview, pushToast]);
+  const reloadStructuredConflict = useCallback(() => {
+    closeExternalConflictReview();
+    if (filePath) void handleReloadFromDisk();
+  }, [closeExternalConflictReview, filePath, handleReloadFromDisk]);
+  const saveStructuredConflictAs = useCallback(() => {
+    closeExternalConflictReview();
+    void saveCurrent({ forceSaveAs: true });
+  }, [closeExternalConflictReview, saveCurrent]);
+  const saveStructuredConflictAnyway = useCallback(() => {
+    closeExternalConflictReview();
+    void saveCurrent({ forceOverwrite: true });
+  }, [closeExternalConflictReview, saveCurrent]);
 
   const handleSidebarViewChange = useCallback((sidebarView: SidebarView) => {
     updateUserSettings({ outlineOpen: true, sidebarView });
@@ -1249,7 +1835,7 @@ export function App() {
     };
     updateUserSettings({ ...defaults[documentType], documentType, onboardingComplete: true });
     setDocumentTypeDialogOpen(false);
-    if (!startupDocumentOpenPending && !filePath && markdownRef.current.trim() === '') {
+    if (!startupDocumentOpenPending && !filePath && sourceTextRef.current.trim() === '') {
       commitOpenedDocument(
         null,
         welcomeMarkdown,
@@ -1266,7 +1852,7 @@ export function App() {
   const skipDocumentType = useCallback(() => {
     updateUserSettings({ onboardingComplete: true });
     setDocumentTypeDialogOpen(false);
-    if (!startupDocumentOpenPending && !filePath && markdownRef.current.trim() === '') {
+    if (!startupDocumentOpenPending && !filePath && sourceTextRef.current.trim() === '') {
       commitOpenedDocument(
         null,
         welcomeMarkdown,
@@ -1291,6 +1877,7 @@ export function App() {
     && !promptState
     && !confirmState
     && !pasteReview?.open
+    && !tabularPaste
     && !commandPaletteOpen
     && !shortcutDialogOpen
     && !aboutOpen
@@ -1321,7 +1908,7 @@ export function App() {
     onSave: () => void saveCurrent(),
     onSaveAs: () => void saveCurrent({ forceSaveAs: true }),
     onOpen: () => void handleOpen(),
-    onNew: () => void handleNew(),
+    onNew: openTemplateDialog,
     onFind: () => setFindOpen(true),
     onCommandPalette: openCommandPalette,
     onShortcutSheet: () => setShortcutDialogOpen(true),
@@ -1332,20 +1919,51 @@ export function App() {
     onRedo: () => runHistoryCommand('redo'),
     onPrint: runPrintPreview,
     onToggleOutline: () => updateUserSettings({ outlineOpen: !settings.outlineOpen }),
-  }), [adjustFontScale, handleNew, handleOpen, openCommandPalette, resetFontScale, runHistoryCommand, runPrintPreview, saveCurrent, settings.outlineOpen, updateUserSettings]), { enabled: shortcutsEnabled });
+  }), [adjustFontScale, handleOpen, openCommandPalette, openTemplateDialog, resetFontScale, runHistoryCommand, runPrintPreview, saveCurrent, settings.outlineOpen, updateUserSettings]), { enabled: shortcutsEnabled });
 
   const handleModeChange = useCallback(async (nextMode: EditorMode) => {
     if (nextMode === mode) return;
-    if (nextMode === 'visual') {
-      const allowed = await confirmVisualRoundTripWrite(markdownRef.current, {
+    if (nextMode === 'visual' && !formatCapabilities.canUseVisualMarkdown && !canUseReadonlyTreeMode && !canUseRecordListMode && !canUseTabularPreviewMode) {
+      setMode('source');
+      return;
+    }
+    if (nextMode === 'visual' && formatCapabilities.canUseVisualMarkdown) {
+      const allowed = await confirmVisualRoundTripWrite(sourceTextRef.current, {
         reason: 'mode-switch-to-visual',
       });
       if (!allowed) return;
     }
-    commitVisualEditorState(commitMarkdown);
+    commitVisualEditorState(commitSourceText);
     preserveLineForModeChange(currentLine, nextMode);
     setMode(nextMode);
-  }, [commitMarkdown, confirmVisualRoundTripWrite, currentLine, mode, preserveLineForModeChange]);
+  }, [canUseReadonlyTreeMode, canUseRecordListMode, canUseTabularPreviewMode, commitSourceText, confirmVisualRoundTripWrite, currentLine, formatCapabilities.canUseVisualMarkdown, mode, preserveLineForModeChange, setMode]);
+
+  const handleStructuredSurfaceChange = useCallback((surface: StructuredSurfaceId) => {
+    if (surface !== 'source') {
+      setPreferredStructuredSurfaceByDocument((current) => ({
+        ...current,
+        [structuredSurfaceDocumentKey]: surface,
+      }));
+    }
+    void handleModeChange(surface === 'source' ? 'source' : 'visual');
+  }, [handleModeChange, structuredSurfaceDocumentKey]);
+
+  const selectJsonSchema = useCallback(async () => {
+    try {
+      const schemaPath = await desktopDocumentHost.dialog.pickJsonSchemaFile();
+      if (!schemaPath) return;
+      setExplicitJsonSchemaPath(schemaPath);
+      pushToast('JSON Schema selected for validation.', 'success');
+    } catch (error) {
+      console.warn('JSON Schema picker failed.', error);
+      pushToast(error instanceof Error ? error.message : 'Could not select JSON Schema.', 'error');
+    }
+  }, [pushToast]);
+
+  const clearJsonSchema = useCallback(() => {
+    setExplicitJsonSchemaPath(null);
+    pushToast('JSON Schema validation cleared.', 'info');
+  }, [pushToast]);
 
   const openLinkDialog = useCallback(() => {
     const selectedText = getSelectedEditorText();
@@ -1515,16 +2133,20 @@ export function App() {
   }, [activeTopbarMenu]);
 
   const { commands, dynamicCommands: commandPaletteDynamicCommands } = useAppCommands({
+    formatCapabilities,
     settings,
     currentVisualStyleLabel: currentVisualStyle.label,
     pasteReviewHunks: pasteReview?.hunks.length ?? null,
     recentPreviews,
     headings,
-    citationCompletionKeys,
+    citationCompletionKeys: activeCitationCompletionKeys,
     citationEntries: layerTwoDocument.citations.bibtexEntries,
-    missingCitationCount: layerTwoDocument.citations.missingKeys.length,
-    missingVariableCount: layerTwoDocument.variables.missingVariables.length,
-    onNew: () => void handleNew(),
+    missingCitationCount: formatCapabilities.canUseCitations ? layerTwoDocument.citations.missingKeys.length : 0,
+    missingVariableCount: formatCapabilities.canUseVariablesPanel ? layerTwoDocument.variables.missingVariables.length : 0,
+    structuredContextAvailable,
+    structuredTableSampleAvailable,
+    structuredPasteBackValidationAvailable,
+    onNew: openTemplateDialog,
     onOpen: () => void handleOpen(),
     onOpenFolder: () => void handleChooseExplorerFolder(),
     onSave: () => void saveCurrent(),
@@ -1555,6 +2177,14 @@ export function App() {
     onGenerateSubmissionReadiness: () => void generateSubmissionReadiness(),
     onCopyScieMDLlmSkill: () => void copyScieMDLlmSkill(),
     onGenerateScieMDLlmSkill: () => void generateScieMDLlmSkill(),
+    onCopyStructuredContext: copyWholeStructuredContext,
+    onCopySelectedStructureContext: copySelectedStructureContext,
+    onCopyParserDiagnostics: copyStructuredParserDiagnostics,
+    onCopyStructuredSchemaSummary: copyStructuredSchemaSummary,
+    onCopyStructuredTableSample: copyStructuredTableSample,
+    onCopyStructuredHealthReport: copyStructuredHealthReport,
+    onCopyRedactedStructuredPreview: copyRedactedStructuredPreview,
+    onValidateStructuredClipboard: validateStructuredClipboard,
     onCopyRichText: () => void copyRichText(),
     onRunConfiguredExport: (format, options) => void exportWorkflow.runConfiguredExport(format, options),
     onPrintPreview: runPrintPreview,
@@ -1580,19 +2210,25 @@ export function App() {
       activeTopbarMenu={activeTopbarMenu}
       onToggleTopbarMenu={(menu) => setActiveTopbarMenu((current) => current === menu ? null : menu)}
       onCloseTopbarMenus={() => setActiveTopbarMenu(null)}
+      formatCapabilities={formatCapabilities}
       topbar={{
-        mode,
+        mode: effectiveEditorMode,
+        format,
         filePath,
         dirty,
         outlineOpen: settings.outlineOpen,
         inspectorOpen: settings.inspectorOpen,
         focusMode: settings.focusMode,
+        structuredSurfaceNavigation,
         themeMode: settings.themeMode,
         currentVisualStyle,
         selectedVisualStyle: settings.visualStyle,
         recentFiles: recentPreviews,
         hasPasteReview: Boolean(pasteReview),
-        onNew: () => void handleNew(),
+        structuredContextAvailable,
+        structuredTableSampleAvailable,
+        structuredPasteBackValidationAvailable,
+        onNew: openTemplateDialog,
         onOpen: () => void handleOpen(),
         onOpenFolder: () => void handleChooseExplorerFolder(),
         onOpenRecent: (recentPath) => void handleOpen(recentPath),
@@ -1621,6 +2257,13 @@ export function App() {
         onSyncBibliography: syncBibliographySection,
         onCopyScieMDLlmSkill: () => void copyScieMDLlmSkill(),
         onGenerateScieMDLlmSkill: () => void generateScieMDLlmSkill(),
+        onCopyStructuredContext: copyWholeStructuredContext,
+        onCopySelectedStructureContext: copySelectedStructureContext,
+        onCopySchemaAwareJsonContext: copyStructuredSchemaSummary,
+        onCopyStructuredTableSample: copyStructuredTableSample,
+        onCopyParserDiagnostics: copyStructuredParserDiagnostics,
+        onCopyRedactedStructuredPreview: copyRedactedStructuredPreview,
+        onValidateStructuredClipboard: validateStructuredClipboard,
         onGenerateSubmissionReadiness: () => void generateSubmissionReadiness(),
         onOpenPasteReview: openPasteReview,
         onOpenExportDialog: (format) => exportWorkflow.openDialog(format),
@@ -1640,6 +2283,7 @@ export function App() {
         onOpenCommandPalette: openCommandPalette,
         onOpenSlashMenu: () => openSlashMenu(),
         onModeChange: (nextMode) => void handleModeChange(nextMode),
+        onStructuredSurfaceChange: handleStructuredSurfaceChange,
         onSetVisualStyle: setVisualStyle,
         onSetThemeMode: setThemeMode,
         onIncreaseFont: () => adjustFontScale(0.05),
@@ -1658,7 +2302,7 @@ export function App() {
         onTitlebarDoubleClick: handleTitlebarDoubleClick,
       }}
       toolbar={{
-        mode,
+        mode: effectiveEditorMode,
         visualEditor,
         onInsertMarkdown: insertMarkdown,
         onInsertImage: () => void handleInsertImage(),
@@ -1675,7 +2319,7 @@ export function App() {
       }}
       findReplace={findOpen ? {
         markdown,
-        onChange: commitMarkdown,
+        onChange: commitSourceText,
         onClose: () => setFindOpen(false),
         onNavigate: navigateToFindMatch,
       } : null}
@@ -1686,7 +2330,13 @@ export function App() {
         open: settings.outlineOpen,
         view: settings.sidebarView,
         width: sidebarWidth,
+        formatCapabilities,
         outline: { headings, activeHeadingId, onJump: jumpToHeading, onInsertHeading: insertOutlineHeading },
+        structuredNavigation: {
+          index: structuredNavigationIndex,
+          activeTargetKey: activeStructuredNavigationKey,
+          onNavigate: navigateStructuredSidebarTarget,
+        },
         explorer: {
           path: explorerCurrentPath,
           entries: explorerEntries,
@@ -1713,11 +2363,15 @@ export function App() {
         onResize: handleSidebarResize,
         onResizeCommit: handleSidebarResizeCommit,
         onClose: closeNavigationSidebar,
+        onCopyFeedback: pushToast,
       }}
       editorStage={{
         editorStageRef,
-        mode,
+        format,
+        formatCapabilities,
+        mode: effectiveEditorMode,
         filePath,
+        sourceText,
         markdown,
         editorResetToken,
         dropOverlayVisible,
@@ -1735,10 +2389,26 @@ export function App() {
         editorComments,
         targetedInstructions,
         variantGroups,
-        citationCompletionKeys,
+        citationCompletionKeys: activeCitationCompletionKeys,
         selectedVariableName,
         authorshipMarks: settings.authorshipVisible ? authorshipMarks : [],
-        validationIssues: validation.issues,
+        validationIssues: activeValidationIssues,
+        sourceDiagnostics: sourceFormatDiagnosticState.diagnostics,
+        sourceParsingPending: sourceFormatDiagnosticState.parsingPending,
+        structuredModel: sourceFormatDiagnosticState.structuredModel,
+        structuredSurfaceNavigation,
+        jsonAnalysis: sourceFormatDiagnosticState.jsonAnalysis,
+        jsonlAnalysis: sourceFormatDiagnosticState.jsonlAnalysis,
+        structuredAnalysis: sourceFormatDiagnosticState.structuredAnalysis,
+        tabularAnalysis: sourceFormatDiagnosticState.tabularAnalysis,
+        selectedJsonPath,
+        onJsonEditIntent: applyJsonVisualEdit,
+        onJsonlEditIntent: applyJsonlVisualEdit,
+        onJsonlCopyText: copyStructuredText,
+        onTabularEditIntent: applyTabularVisualEdit,
+        onTabularCopyText: copyStructuredText,
+        onStructuredConversionAction: (request) => void handleStructuredConversionAction(request),
+        onRevealStructuredSource: revealStructuredSource,
         onKeyDownCapture: handleEditorKeyDownCapture,
         onPasteCapture: handlePasteCapture,
         onDragEnterCapture: handleEditorDragEnter,
@@ -1746,7 +2416,7 @@ export function App() {
         onDropCapture: handleEditorDrop,
         onDragOver: handleEditorDragOver,
         onJumpToHeading: jumpToHeading,
-        onMarkdownChange: commitEditorMarkdownEdit,
+        onMarkdownChange: commitEditorSourceTextEdit,
         onEditorReset: () => setEditorResetToken((current) => current + 1),
         onVisualEditorReady: setVisualEditor,
         onVisualInsertReady: handleVisualInsertReady,
@@ -1760,6 +2430,7 @@ export function App() {
         onSelectionTextReady: handleSelectionTextReady,
         onCursorLineChange: handleCursorPositionChange,
         onViewportLineChange: handleViewportLineChange,
+        onJsonSelectedPathChange: setSelectedJsonPath,
         onLockViolation: (message) => pushToast(message, 'warning'),
         onToast: pushToast,
         confirmText,
@@ -1776,6 +2447,7 @@ export function App() {
         onJumpToLine: jumpToLineInCurrentMode,
         onOpenReferences: () => handleSidebarViewChange('references'),
         onOpenData: () => handleSidebarViewChange('data'),
+        onSwitchToVisualMode: () => void handleModeChange('visual'),
         onRetryStartupOpen: () => void retryStartupDocumentOpen(),
         onOpenStartupFallbackDocument: () => void openStartupDocumentFallbackPicker(),
         onDismissStartupOpenFailure: dismissStartupDocumentOpenFailure,
@@ -1784,16 +2456,29 @@ export function App() {
         open: settings.inspectorOpen,
         focusSection: inspectorFocusSection,
         data: {
+          formatCapabilities,
           filePath,
-          mode,
+          mode: effectiveEditorMode,
           metadata: fileMetadata,
           validationIssues: ambientIssues,
+          jsonAnalysis: sourceFormatDiagnosticState.jsonAnalysis,
+          jsonSchemaLoading: jsonSchemaDiscovery.loading,
+          jsonSchemaError: jsonSchemaDiscovery.error,
+          structuredAnalysis: sourceFormatDiagnosticState.structuredAnalysis,
+          jsonlAnalysis: sourceFormatDiagnosticState.jsonlAnalysis,
+          tabularAnalysis: sourceFormatDiagnosticState.tabularAnalysis,
+          structuredEditJournal,
+          selectedJsonPath,
+          structuredContextAvailable,
+          structuredTableSampleAvailable,
+          structuredPasteBackValidationAvailable,
           insights: documentInsights,
           recentPreviews,
           authorshipMarks,
           authorshipVisible: settings.authorshipVisible,
           missingImageCount,
           autosaveStatus,
+          autosavePauseReason: structuredSavePolicy.reason,
           protectedBlocks,
           editorComments,
           targetedInstructions,
@@ -1817,6 +2502,17 @@ export function App() {
           onCheckInkscape: () => void checkInkscape(),
           onSetInkscapePath: () => void setInkscapePath(),
           onJumpToLine: jumpToLineInCurrentMode,
+          onSelectJsonSchema: () => void selectJsonSchema(),
+          onClearJsonSchema: clearJsonSchema,
+          onSelectJsonPath: setSelectedJsonPath,
+          onCopyStructuredContext: copyWholeStructuredContext,
+          onCopySelectedStructureContext: copySelectedStructureContext,
+          onCopySchemaAwareJsonContext: copyStructuredSchemaSummary,
+          onCopyStructuredTableSample: copyStructuredTableSample,
+          onCopyParserDiagnostics: copyStructuredParserDiagnostics,
+          onCopyRedactedStructuredPreview: copyRedactedStructuredPreview,
+          onValidateStructuredClipboard: validateStructuredClipboard,
+          onCopyFeedback: pushToast,
         },
       }}
       ambientSuggestions={{
@@ -1825,6 +2521,7 @@ export function App() {
         onOpenPasteReview: openPasteReview,
       }}
       statusBar={{
+        formatCapabilities,
         autosaveStatus,
         statusText,
         headingPath: currentHeadingPath,
@@ -1849,6 +2546,7 @@ export function App() {
           setInspectorFocusSection('validation');
           updateUserSettings({ inspectorOpen: true });
         },
+        onCopyFeedback: pushToast,
       }}
     >
 
@@ -1912,11 +2610,35 @@ export function App() {
         onRejectPasteReview={rejectPasteReview}
         onClosePasteReview={closePasteReview}
         onFocusReviewLine={jumpToLineInCurrentMode}
-        externalConflictOpen={Boolean(externalConflictReview)}
-        externalConflictHunks={externalConflictReview?.hunks ?? []}
+        tabularPaste={tabularPaste}
+        tabularPasteDefaultFormat={tabularPasteDefaultFormat}
+        onInsertTabularPaste={insertTabularPaste}
+        onCopyTabularPaste={copyTabularPaste}
+        onStructuredConversionAction={(request) => void handleStructuredConversionAction(request)}
+        onCancelTabularPaste={() => setTabularPaste(null)}
+        jsonEditReviewPreview={jsonEditReview?.preview ?? null}
+        jsonEditReviewPlan={jsonEditReview?.reviewPlan ?? null}
+        jsonEditReviewSchemaExplanation={jsonEditReview?.schemaGeneratedValueExplanation}
+        onApplyJsonEditReview={applyReviewedJsonEdit}
+        onCancelJsonEditReview={() => setJsonEditReview(null)}
+        externalConflictOpen={Boolean(lineExternalConflictReview)}
+        externalConflictHunks={lineExternalConflictReview?.hunks ?? []}
         externalProtectedChanges={externalProtectedChanges}
         onApplyExternalConflictReview={applyExternalConflictReview}
         onCloseExternalConflictReview={closeExternalConflictReview}
+        structuredConflictOpen={Boolean(structuredExternalConflictReview)}
+        structuredConflictFormatLabel={structuredConflictFormatLabel}
+        structuredConflictFilePath={structuredExternalConflictReview?.filePath ?? filePath}
+        structuredConflictCurrentSource={structuredExternalConflictReview?.currentSource ?? markdown}
+        structuredConflictDiskSource={structuredExternalConflictReview?.diskSource ?? ''}
+        structuredConflictJsonReview={structuredExternalConflictReview?.jsonReview ?? null}
+        structuredConflictExternalReview={structuredExternalConflictReview?.structuredReview ?? null}
+        onKeepStructuredConflict={keepStructuredConflict}
+        onReloadStructuredConflict={reloadStructuredConflict}
+        onSaveStructuredConflictAs={saveStructuredConflictAs}
+        onSaveStructuredConflictAnyway={saveStructuredConflictAnyway}
+        onApplyStructuredJsonConflictReview={applyStructuredJsonConflictReview}
+        onApplyStructuredConflictReview={applyStructuredConflictReview}
         shortcutDialogOpen={shortcutDialogOpen}
         onCloseShortcutDialog={() => setShortcutDialogOpen(false)}
         aboutOpen={aboutOpen}
@@ -1959,6 +2681,16 @@ export function App() {
   );
 }
 
+function conversionSourceHash(format: StructuredConversionRequest['sourceFormat'], text: string): string | null {
+  if (format === 'jsonl') return jsonlSourceHash(text);
+  if (format === 'csv' || format === 'tsv') return tabularSourceHash(text);
+  return null;
+}
+
+function preferredModeForConvertedFormat(format: StructuredConversionRequest['format']): EditorMode {
+  return format === 'plainText' ? 'source' : 'visual';
+}
+
 async function waitForExportRenderHost(
   ref: { current: ExportRenderHostHandle | null },
 ): Promise<ExportRenderHostHandle | null> {
@@ -1982,6 +2714,14 @@ function escapeMarkdownLinkDestination(value: string): string {
   const trimmed = value.trim();
   if (!/[\s()]/.test(trimmed)) return trimmed;
   return `<${trimmed.replace(/>/g, '%3E')}>`;
+}
+
+function tabularConversionLabel(format: DelimitedTextConversionFormat): string {
+  if (format === 'json') return 'JSON array';
+  if (format === 'jsonl') return 'JSON Lines';
+  if (format === 'yaml') return 'YAML list';
+  if (format === 'toml') return 'TOML array of tables';
+  return 'Markdown table';
 }
 
 function replaceFirstMissingImageReference(markdown: string, source: string, alt: string, replacement: string): string {

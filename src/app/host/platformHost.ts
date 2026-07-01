@@ -26,7 +26,7 @@ export interface PlatformAssetHost {
 export interface PlatformExportHost {
   pickHtmlSavePath(defaultPath?: string | null): Promise<string | null>;
   pickExportSavePath(format: PandocExportFormat, defaultPath?: string | null): Promise<string | null>;
-  writeTextFileAtomic(path: string, markdown: string, metadata: FileMetadata | null, expectedMetadata?: FileMetadata | null): Promise<FileMetadata>;
+  writeTextFileAtomic(path: string, sourceText: string, metadata: FileMetadata | null, expectedMetadata?: FileMetadata | null): Promise<FileMetadata>;
   defaultPandocExportPath(documentPath: string | null, format: PandocExportFormat): string;
   checkPandocAvailable(): Promise<string>;
   exportStyledHtmlToPdf(html: string, outputPath: string): Promise<PandocExportResponse>;

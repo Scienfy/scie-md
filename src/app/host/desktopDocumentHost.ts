@@ -1,10 +1,17 @@
 import { listen } from '@tauri-apps/api/event';
 import {
+  clearPendingDocumentOpen,
   clearPendingMarkdownOpen,
+  getInitialDocumentPath,
   getInitialMarkdownPath,
+  peekPendingDocumentOpen,
   peekPendingMarkdownOpen,
+  pickDocumentFile,
+  pickJsonSchemaFile,
   pickMarkdownFile,
   pickSavePath,
+  takePendingDocumentOpen,
+  takePendingMarkdownOpen,
   readTextFile,
   readTextFileForEdit,
   statFile,
@@ -44,12 +51,19 @@ export const desktopDocumentHost: DocumentHost = {
   },
   dialog: {
     pickMarkdownFile,
+    pickDocumentFile,
+    pickJsonSchemaFile,
     pickSavePath,
   },
   launch: {
     getInitialMarkdownPath,
+    getInitialDocumentPath,
     peekPendingMarkdownOpen,
+    peekPendingDocumentOpen,
+    takePendingMarkdownOpen,
+    takePendingDocumentOpen,
     clearPendingMarkdownOpen,
+    clearPendingDocumentOpen,
     listenSingleInstanceOpen: async (callback) => listen<string>('single-instance-open', (event) => {
       callback(typeof event.payload === 'string' ? event.payload : '');
     }),

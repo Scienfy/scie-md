@@ -1,4 +1,4 @@
-import { applyThreeWayDiffDecisions, createDiffHunks } from '@sciemd/core';
+import { applyThreeWayDiffDecisions, createDiffHunks } from '@sciemd/core/markdown/diffReview';
 import { computeMinimalTextReplacement } from './textEdit';
 
 export interface DocumentReplacementPlan {

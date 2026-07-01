@@ -1,4 +1,4 @@
-import { getScienfyMetadata } from '../document/frontmatter';
+import { getScienfyMetadata, replaceFrontmatterBody } from '../document/frontmatter';
 import { parseFrontmatter } from '../document/frontmatter';
 import type { FrontmatterParseResult } from '../document/frontmatter';
 import { lineStartOffsets, offsetToLine } from '../../markdown/textOffsets';
@@ -101,7 +101,7 @@ export function substituteVariables(markdown: string): string {
   );
 
   if (!frontmatter.hasFrontmatter) return substitutedBody;
-  return `---\n${frontmatter.raw}\n---\n${substitutedBody}`;
+  return replaceFrontmatterBody(frontmatter, substitutedBody);
 }
 
 export function substituteVariablesWithDefinitions(
@@ -113,7 +113,7 @@ export function substituteVariablesWithDefinitions(
   const body = frontmatter.hasFrontmatter ? frontmatter.body : markdown;
   const substitutedBody = substituteVariablesInText(body, definitions, options);
   if (!frontmatter.hasFrontmatter) return substitutedBody;
-  return `---\n${frontmatter.raw}\n---\n${substitutedBody}`;
+  return replaceFrontmatterBody(frontmatter, substitutedBody);
 }
 
 export function substituteVariablesInText(

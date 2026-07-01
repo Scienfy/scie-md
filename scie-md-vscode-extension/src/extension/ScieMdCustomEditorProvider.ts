@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
-import { createScieMDLlmSkill } from '@sciemd/core';
+import { createScieMDLlmSkill } from '@sciemd/core/markdown/llm';
 import type { WebviewToExtensionMessage } from '../shared/webviewProtocol';
 import type { OperationResultKind } from '../shared/webviewProtocol';
 import { validateWebviewToExtensionMessage } from '../shared/webviewProtocol';
+import { documentFormatForUri } from './documentFormat';
 import { createDocumentReplacementPlan } from './documentMerge';
 import { documentParentUri, getWebviewHtml } from './webviewHtml';
 
@@ -336,6 +337,7 @@ export class ScieMDCustomEditorProvider implements vscode.CustomTextEditorProvid
       snapshot: {
         uri: document.uri.toString(),
         fileName: document.fileName.split(/[\\/]/).pop() || 'Untitled.md',
+        format: documentFormatForUri(document.uri, document.fileName),
         text: documentText,
         version: document.version,
         isDirty: document.isDirty,

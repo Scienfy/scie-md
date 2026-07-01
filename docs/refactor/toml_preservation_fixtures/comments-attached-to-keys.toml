@@ -1,0 +1,11 @@
+# Comments attached to keys fixture
+
+[analysis]
+# Keep this leading comment with the method key.
+method = "Raman" # inline method note
+
+# Keep this comment with the threshold, not the table.
+threshold = 0.85
+
+status = "review-ready" # trailing status note
+

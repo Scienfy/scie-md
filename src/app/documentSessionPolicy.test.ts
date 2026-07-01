@@ -29,38 +29,52 @@ describe('document session policy', () => {
     expect(openedDocumentMode(metadata, 'source')).toBe('source');
   });
 
+  it('defaults structured documents to visual mode unless source mode is explicitly requested', () => {
+    const metadata = {
+      ...DEFAULT_METADATA,
+      lastKnownSizeBytes: SOURCE_ONLY_FILE_BYTES,
+    };
+
+    expect(openedDocumentMode(metadata, undefined, 'json')).toBe('visual');
+    expect(openedDocumentMode(metadata, undefined, 'jsonl')).toBe('visual');
+    expect(openedDocumentMode(metadata, undefined, 'csv')).toBe('visual');
+    expect(openedDocumentMode(metadata, 'source', 'json')).toBe('source');
+    expect(openedDocumentMode(metadata, 'visual', 'json')).toBe('visual');
+    expect(openedDocumentMode(metadata, 'visual', 'plainText')).toBe('source');
+  });
+
   it('restores an external-launch draft only if the just-opened disk content is still displayed', () => {
     expect(shouldRestoreExternalLaunchDraft({
       stillCurrentDocument: true,
-      currentMarkdown: '# Disk\n',
-      diskMarkdown: '# Disk\n',
-      draftMarkdown: '# Draft\n',
+      currentSourceText: '# Disk\n',
+      diskSourceText: '# Disk\n',
+      draftSourceText: '# Draft\n',
       draftRestoreOfferable: true,
     })).toBe(true);
 
     expect(shouldRestoreExternalLaunchDraft({
       stillCurrentDocument: true,
-      currentMarkdown: '# Disk\n',
-      diskMarkdown: '# Disk\n',
-      draftMarkdown: '',
+      currentSourceText: '# Disk\n',
+      diskSourceText: '# Disk\n',
+      draftSourceText: '',
       draftRestoreOfferable: true,
     })).toBe(true);
 
     expect(shouldRestoreExternalLaunchDraft({
       stillCurrentDocument: true,
-      currentMarkdown: '# User already typed\n',
-      diskMarkdown: '# Disk\n',
-      draftMarkdown: '# Draft\n',
+      currentSourceText: '# User already typed\n',
+      diskSourceText: '# Disk\n',
+      draftSourceText: '# Draft\n',
       draftRestoreOfferable: true,
     })).toBe(false);
   });
 
   it('does not restore stale or inapplicable external-launch drafts', () => {
     for (const decision of [
-      { stillCurrentDocument: false, currentMarkdown: '# Disk\n', diskMarkdown: '# Disk\n', draftMarkdown: '# Draft\n', draftRestoreOfferable: true },
-      { stillCurrentDocument: true, currentMarkdown: '# Disk\n', diskMarkdown: '# Disk\n', draftMarkdown: '# Disk\n', draftRestoreOfferable: true },
-      { stillCurrentDocument: true, currentMarkdown: '# Disk\n', diskMarkdown: '# Disk\n', draftMarkdown: null, draftRestoreOfferable: true },
-      { stillCurrentDocument: true, currentMarkdown: '# Disk\n', diskMarkdown: '# Disk\n', draftMarkdown: '# Draft\n', draftRestoreOfferable: false },
+      { stillCurrentDocument: false, currentSourceText: '# Disk\n', diskSourceText: '# Disk\n', draftSourceText: '# Draft\n', draftRestoreOfferable: true },
+      { stillCurrentDocument: true, currentSourceText: '# Disk\n', diskSourceText: '# Disk\n', draftSourceText: '# Disk\n', draftRestoreOfferable: true },
+      { stillCurrentDocument: true, currentSourceText: '# Disk\n', diskSourceText: '# Disk\n', draftSourceText: null, draftRestoreOfferable: true },
+      { stillCurrentDocument: true, currentSourceText: '# Disk\n', diskSourceText: '# Disk\n', draftSourceText: '# Draft\n', draftRestoreOfferable: false },
     ]) {
       expect(shouldRestoreExternalLaunchDraft(decision)).toBe(false);
     }

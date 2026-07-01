@@ -1,30 +1,34 @@
-import { useEffect, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { autocompletion } from '@codemirror/autocomplete';
 import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
-import { defaultKeymap, indentWithTab } from '@codemirror/commands';
-import { markdown as markdownLanguage } from '@codemirror/lang-markdown';
-import { Compartment, EditorState, Transaction } from '@codemirror/state';
-import type { Extension } from '@codemirror/state';
-import { Decoration, EditorView, hoverTooltip, keymap, ViewPlugin } from '@codemirror/view';
+import { EditorState } from '@codemirror/state';
+import type { Extension, TransactionSpec } from '@codemirror/state';
+import { Decoration, EditorView, hoverTooltip, ViewPlugin } from '@codemirror/view';
 import type { DecorationSet, ViewUpdate } from '@codemirror/view';
-import type { AuthorshipMark } from '../markdown/authorship';
+import type { FormatDiagnostic } from '@sciemd/core';
 import { fencedCodeRanges, inlineCodeRanges, isOffsetInsideRanges, mergeRanges, scieMdCommentRanges } from '@sciemd/core';
+import { changeTouchesProtectedAnchor, changeTouchesProtectedBlockBody, extractCitationTokens, parseProtectedAnchors, parseProtectedBlocks } from '@sciemd/core';
+import type { BibtexEntry, CrossReferenceLabel, ProtectedAnchor, ProtectedBlock, VariableDefinition } from '@sciemd/core';
+import type { AuthorshipMark } from '../markdown/authorship';
 import type { ValidationIssue } from '../markdown/markdownValidation';
-import { changeTouchesProtectedAnchor, changeTouchesProtectedBlockBody, parseProtectedAnchors, parseProtectedBlocks } from '@sciemd/core';
-import type { ProtectedAnchor, ProtectedBlock } from '@sciemd/core';
-import { quoteAnchorPrefix, quoteAnchorSuffix } from '@sciemd/core';
+import {
+  SourceTextEditor,
+  type SourceTextContextMenuRequest,
+  type SourceTextContextMenuRequestHandler,
+  type SourceTextFind,
+  type SourceTextInsert,
+  type SourceTextJump,
+  type SourceTextMarker,
+  type SourceTextSelection,
+} from './SourceTextEditor';
 import type { EditorHistoryControls } from './editorControls';
-import type { EditorSelectionGetter } from './editorSelection';
-import type { EditorAdapter, EditorAdapterReady, EditorSelectionAnchor } from './editorAdapter';
-import type { CrossReferenceLabel } from '@sciemd/core';
-import type { VariableDefinition } from '@sciemd/core';
-import { extractCitationTokens } from '@sciemd/core';
-import type { BibtexEntry } from '@sciemd/core';
+import type { EditorAdapterReady } from './editorAdapter';
 
-export type SourceMarkdownInsert = (markdown: string) => void;
-export type SourceMarkdownJump = (line: number) => void;
-export type SourceMarkdownFind = (from: number, to: number) => void;
-export type SourceMarkdownSelection = EditorSelectionGetter;
+export type SourceMarkdownInsert = SourceTextInsert;
+export type SourceMarkdownJump = SourceTextJump;
+export type SourceMarkdownFind = SourceTextFind;
+export type SourceMarkdownSelection = SourceTextSelection;
+export type SourceMarkdownContextMenuRequest = SourceTextContextMenuRequest;
 
 interface SourceMarkdownEditorProps {
   markdown: string;
@@ -35,6 +39,7 @@ interface SourceMarkdownEditorProps {
   onHistoryReady?: (history: EditorHistoryControls | undefined) => void;
   onSelectionTextReady?: (selection: SourceMarkdownSelection | undefined) => void;
   onAdapterReady?: EditorAdapterReady;
+  onContextMenuRequest?: SourceTextContextMenuRequestHandler;
   onCursorLineChange?: (line: number, column: number) => void;
   onViewportLineChange?: (line: number) => void;
   authorshipMarks?: AuthorshipMark[];
@@ -64,6 +69,11 @@ export interface SourceCitationDecorationRange {
   title: string;
 }
 
+interface SourceMarkdownInsertTransaction extends TransactionSpec {
+  changes: { from: number; to: number; insert: string };
+  selection: { anchor: number };
+}
+
 export function SourceMarkdownEditor({
   markdown,
   onChange,
@@ -73,6 +83,7 @@ export function SourceMarkdownEditor({
   onHistoryReady,
   onSelectionTextReady,
   onAdapterReady,
+  onContextMenuRequest,
   onCursorLineChange,
   onViewportLineChange,
   authorshipMarks = [],
@@ -85,384 +96,63 @@ export function SourceMarkdownEditor({
   protectedBlocks = [],
   onLockViolation,
 }: SourceMarkdownEditorProps) {
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const viewRef = useRef<EditorView | null>(null);
-  const markdownRef = useRef(markdown);
-  const onChangeRef = useRef(onChange);
-  const onInsertReadyRef = useRef(onInsertReady);
-  const onJumpReadyRef = useRef(onJumpReady);
-  const onFindReadyRef = useRef(onFindReady);
-  const onHistoryReadyRef = useRef(onHistoryReady);
-  const onSelectionTextReadyRef = useRef(onSelectionTextReady);
-  const onAdapterReadyRef = useRef(onAdapterReady);
-  const onCursorLineChangeRef = useRef(onCursorLineChange);
-  const onViewportLineChangeRef = useRef(onViewportLineChange);
-  const onLockViolationRef = useRef(onLockViolation);
-  const protectedBlocksRef = useRef(protectedBlocks);
   const protectedEditBypassRef = useRef(false);
-  const lastCursorRef = useRef({ line: 1, column: 1 });
-  const authorshipCompartmentRef = useRef(new Compartment());
-  const scientificCompletionCompartmentRef = useRef(new Compartment());
-  const citationDecorationCompartmentRef = useRef(new Compartment());
-  const variableDecorationCompartmentRef = useRef(new Compartment());
-
-  useEffect(() => {
-    onChangeRef.current = onChange;
-  }, [onChange]);
-
-  useEffect(() => {
-    markdownRef.current = markdown;
-  }, [markdown]);
-
-  useEffect(() => {
-    onInsertReadyRef.current = onInsertReady;
-  }, [onInsertReady]);
-
-  useEffect(() => {
-    onJumpReadyRef.current = onJumpReady;
-  }, [onJumpReady]);
-
-  useEffect(() => {
-    onFindReadyRef.current = onFindReady;
-  }, [onFindReady]);
-
-  useEffect(() => {
-    onHistoryReadyRef.current = onHistoryReady;
-  }, [onHistoryReady]);
-
-  useEffect(() => {
-    onSelectionTextReadyRef.current = onSelectionTextReady;
-  }, [onSelectionTextReady]);
-
-  useEffect(() => {
-    onAdapterReadyRef.current = onAdapterReady;
-  }, [onAdapterReady]);
-
-  useEffect(() => {
-    onCursorLineChangeRef.current = onCursorLineChange;
-  }, [onCursorLineChange]);
-
-  useEffect(() => {
-    onViewportLineChangeRef.current = onViewportLineChange;
-  }, [onViewportLineChange]);
-
-  useEffect(() => {
-    onLockViolationRef.current = onLockViolation;
-  }, [onLockViolation]);
-
-  useEffect(() => {
-    protectedBlocksRef.current = protectedBlocks;
-  }, [protectedBlocks]);
-
-  useEffect(() => {
-    if (!hostRef.current) return undefined;
-
-    const emitCursorLine = (view: EditorView) => {
-      const docLine = view.state.doc.lineAt(view.state.selection.main.head);
-      const line = docLine.number;
-      const column = view.state.selection.main.head - docLine.from + 1;
-      if (lastCursorRef.current.line === line && lastCursorRef.current.column === column) return;
-      lastCursorRef.current = { line, column };
-      onCursorLineChangeRef.current?.(line, column);
-    };
-
-    let viewportAnimationFrame: number | null = null;
-    let lastViewportLine = 0;
-    const emitViewportLine = () => {
-      viewportAnimationFrame = null;
-      const currentView = viewRef.current;
-      if (!currentView) return;
-      const line = viewportTopLine(currentView);
-      if (line === lastViewportLine) return;
-      lastViewportLine = line;
-      onViewportLineChangeRef.current?.(line);
-    };
-    const scheduleViewportLine = () => {
-      if (viewportAnimationFrame !== null) return;
-      viewportAnimationFrame = window.requestAnimationFrame(emitViewportLine);
-    };
-
-    const view = new EditorView({
-      parent: hostRef.current,
-      state: EditorState.create({
-        doc: markdown,
-        extensions: [
-          markdownLanguage(),
-          EditorState.tabSize.of(2),
-          EditorState.allowMultipleSelections.of(true),
-          EditorView.lineWrapping,
-          keymap.of([indentWithTab, ...defaultKeymap]),
-          createSourceLockProtectionExtension(
-            () => protectedEditBypassRef.current,
-            () => protectedBlocksRef.current,
-            (message) => onLockViolationRef.current?.(message),
-          ),
-          createSourceFocusExtension(),
-          authorshipCompartmentRef.current.of(createAuthorshipExtension(markdown, authorshipMarks)),
-          scientificCompletionCompartmentRef.current.of(createScientificAutocomplete(citationKeys, crossReferenceLabels)),
-          citationDecorationCompartmentRef.current.of(createSourceCitationExtension(citationEntries, citationKeys)),
-          variableDecorationCompartmentRef.current.of(createSourceVariableExtension(variableDefinitions, highlightedVariableName)),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) {
-              onChangeRef.current(update.state.doc.toString());
-            }
-            if (update.docChanged || update.selectionSet) {
-              emitCursorLine(update.view);
-            }
-            if (update.selectionSet) {
-              maybeTypewriterScroll(update.view);
-            }
-            if (update.docChanged || update.viewportChanged) {
-              scheduleViewportLine();
-            }
-          }),
-        ],
-      }),
-    });
-
-    viewRef.current = view;
-    emitCursorLine(view);
-    const scrollElement = view.scrollDOM;
-    scrollElement.addEventListener('scroll', scheduleViewportLine, { passive: true });
-    window.addEventListener('resize', scheduleViewportLine);
-    scheduleViewportLine();
-    onInsertReadyRef.current?.((snippet) => {
-      const currentView = viewRef.current;
-      if (!currentView) return;
-      const transaction = buildInsertTransaction(currentView, snippet);
-      currentView.dispatch(transaction);
-      currentView.focus();
-    });
-    onJumpReadyRef.current?.((line) => {
-      const currentView = viewRef.current;
-      if (!currentView) return;
-      const targetLine = currentView.state.doc.line(Math.max(1, Math.min(line, currentView.state.doc.lines)));
-      currentView.dispatch({
-        selection: { anchor: targetLine.from },
-        effects: EditorView.scrollIntoView(targetLine.from, { y: 'start', yMargin: 18 }),
-      });
-      currentView.focus();
-    });
-    onFindReadyRef.current?.((from, to) => {
-      const currentView = viewRef.current;
-      if (!currentView) return;
-      const docLength = currentView.state.doc.length;
-      const safeFrom = Math.max(0, Math.min(from, docLength));
-      const safeTo = Math.max(safeFrom, Math.min(to, docLength));
-      currentView.dispatch({
-        selection: { anchor: safeFrom, head: safeTo },
-        effects: EditorView.scrollIntoView(safeFrom, { y: 'center' }),
-      });
-      currentView.focus();
-    });
-    onHistoryReadyRef.current?.(undefined);
-    onSelectionTextReadyRef.current?.(() => {
-      const currentView = viewRef.current;
-      if (!currentView) return { text: '' };
-      const ranges = [...currentView.state.selection.ranges].sort((left, right) => left.from - right.from);
-      const firstRange = ranges[0] ?? currentView.state.selection.main;
-      const lastRange = ranges.at(-1) ?? firstRange;
-      const docLine = currentView.state.doc.lineAt(firstRange.from);
-      const docEndLine = currentView.state.doc.lineAt(Math.max(firstRange.from, lastRange.to - 1));
-      const text = ranges
-        .map((range) => currentView.state.sliceDoc(range.from, range.to))
-        .filter(Boolean)
-        .join('\n\n');
-      return {
-        text,
-        line: docLine.number,
-        endLine: docEndLine.number,
-        from: firstRange.from,
-        to: lastRange.to,
-        prefix: quoteAnchorPrefix(currentView.state.sliceDoc(0, firstRange.from)),
-        suffix: quoteAnchorSuffix(currentView.state.sliceDoc(lastRange.to, currentView.state.doc.length)),
-        surface: 'source',
-      };
-    });
-    const adapter: EditorAdapter = {
-      surface: 'source',
-      read: () => {
-        const currentView = viewRef.current;
-        if (!currentView) return null;
-        const currentMarkdown = currentView.state.doc.toString();
-        return {
-          surface: 'source',
-          markdown: currentMarkdown,
-          changed: currentMarkdown !== markdownRef.current,
-          markCommitted: () => {
-            markdownRef.current = currentMarkdown;
-          },
-        };
-      },
-      replace: (nextMarkdown) => {
-        const currentView = viewRef.current;
-        if (!currentView) return false;
-        currentView.dispatch({
-          changes: { from: 0, to: currentView.state.doc.length, insert: nextMarkdown },
-        });
-        markdownRef.current = nextMarkdown;
-        return true;
-      },
-      focus: () => {
-        viewRef.current?.focus();
-      },
-      getSelectionAnchor: () => {
-        const currentView = viewRef.current;
-        if (!currentView) return null;
-        const selection = currentView.state.selection.main;
-        return { from: selection.from, to: selection.to };
-      },
-      restoreSelectionAnchor: (anchor: EditorSelectionAnchor) => {
-        const currentView = viewRef.current;
-        if (!currentView) return false;
-        const docLength = currentView.state.doc.length;
-        const from = Math.max(0, Math.min(anchor.from, docLength));
-        const to = Math.max(from, Math.min(anchor.to ?? anchor.from, docLength));
-        currentView.dispatch({ selection: { anchor: from, head: to } });
-        currentView.focus();
-        return true;
-      },
-      flushPendingEdits: () => adapter.read(),
-    };
-    onAdapterReadyRef.current?.(adapter);
-
-    return () => {
-      onInsertReadyRef.current?.(undefined);
-      onJumpReadyRef.current?.(undefined);
-      onFindReadyRef.current?.(undefined);
-      onHistoryReadyRef.current?.(undefined);
-      onSelectionTextReadyRef.current?.(undefined);
-      onAdapterReadyRef.current?.(undefined);
-      scrollElement.removeEventListener('scroll', scheduleViewportLine);
-      window.removeEventListener('resize', scheduleViewportLine);
-      if (viewportAnimationFrame !== null) window.cancelAnimationFrame(viewportAnimationFrame);
-      view.destroy();
-      viewRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    const view = viewRef.current;
-    if (!view) return;
-    const current = view.state.doc.toString();
-    if (current === markdown) return;
-    protectedEditBypassRef.current = true;
-    try {
-      view.dispatch({
-        changes: { from: 0, to: current.length, insert: markdown },
-        annotations: Transaction.addToHistory.of(false),
-      });
-    } finally {
-      protectedEditBypassRef.current = false;
-    }
-  }, [markdown]);
-
-  useEffect(() => {
-    const view = viewRef.current;
-    if (!view) return;
-    view.dispatch({
-      effects: authorshipCompartmentRef.current.reconfigure(createAuthorshipExtension(view.state.doc.toString(), authorshipMarks)),
-    });
-  }, [authorshipMarks]);
-
-  useEffect(() => {
-    const view = viewRef.current;
-    if (!view) return;
-    view.dispatch({
-      effects: scientificCompletionCompartmentRef.current.reconfigure(createScientificAutocomplete(citationKeys, crossReferenceLabels)),
-    });
-  }, [citationKeys, crossReferenceLabels]);
-
-  const prevCitations = useRef('');
-  useEffect(() => {
-    const current = citationKeys.join(',') + '|' + citationEntries.length;
-    if (prevCitations.current === current) return;
-    prevCitations.current = current;
-
-    const view = viewRef.current;
-    if (!view) return;
-    view.dispatch({
-      effects: citationDecorationCompartmentRef.current.reconfigure(createSourceCitationExtension(citationEntries, citationKeys)),
-    });
-  }, [citationEntries, citationKeys]);
-
-  const prevVars = useRef('');
-  useEffect(() => {
-    const current = variableDefinitions.map(v => `${v.name}:${v.value}`).join('|');
-    const signature = `${current}::${highlightedVariableName ?? ''}`;
-    if (prevVars.current === signature) return;
-    prevVars.current = signature;
-
-    const view = viewRef.current;
-    if (!view) return;
-    view.dispatch({
-      effects: variableDecorationCompartmentRef.current.reconfigure(createSourceVariableExtension(variableDefinitions, highlightedVariableName)),
-    });
-  }, [highlightedVariableName, variableDefinitions]);
+  const diagnostics = useMemo<FormatDiagnostic[]>(() => validationIssues.map((issue) => ({
+    severity: issue.severity,
+    code: issue.code,
+    message: issue.message,
+    line: lineFromIssue(issue) ?? undefined,
+    source: 'markdown',
+  })), [validationIssues]);
+  const markers = useMemo<SourceTextMarker[]>(() => protectedBlocks.map((block) => ({
+    id: `lock-${block.startLine}-${block.endLine}`,
+    line: block.startLine,
+    kind: 'locked',
+    title: block.reason ? `Locked section: ${block.reason}` : 'Locked section',
+  })), [protectedBlocks]);
+  const markdownExtensions = useMemo<Extension[]>(() => [
+    createSourceLockProtectionExtension(
+      () => protectedEditBypassRef.current,
+      () => protectedBlocks,
+      (message) => onLockViolation?.(message),
+    ),
+    createSourceFocusExtension(),
+    createAuthorshipExtension(markdown, authorshipMarks),
+    createScientificAutocomplete(citationKeys, crossReferenceLabels),
+    createSourceCitationExtension(citationEntries, citationKeys),
+    createSourceVariableExtension(variableDefinitions, highlightedVariableName),
+  ], [
+    authorshipMarks,
+    citationEntries,
+    citationKeys,
+    crossReferenceLabels,
+    highlightedVariableName,
+    markdown,
+    onLockViolation,
+    protectedBlocks,
+    variableDefinitions,
+  ]);
 
   return (
-    <div className="source-editor source-editor-shell">
-      <div className="source-editor-host" ref={hostRef} />
-      <SourceValidationTicks
-        markdown={markdown}
-        validationIssues={validationIssues}
-        protectedBlocks={protectedBlocks}
-      />
-    </div>
-  );
-}
-
-function SourceValidationTicks({
-  markdown,
-  validationIssues,
-  protectedBlocks,
-}: {
-  markdown: string;
-  validationIssues: ValidationIssue[];
-  protectedBlocks: ProtectedBlock[];
-}) {
-  let totalLines = 1;
-  for (let i = 0; i < markdown.length; i++) {
-    if (markdown[i] === '\n') totalLines++;
-  }
-  const ticks = [
-    ...validationIssues
-      .map((issue) => {
-        const line = lineFromIssue(issue);
-        return line
-          ? {
-              id: `issue-${issue.code}-${line}-${issue.message}`,
-              line,
-              kind: issue.severity,
-              title: issue.message,
-            }
-          : null;
-      })
-      .filter((tick): tick is { id: string; line: number; kind: ValidationIssue['severity']; title: string } => Boolean(tick)),
-    ...protectedBlocks.map((block) => ({
-      id: `lock-${block.startLine}-${block.endLine}`,
-      line: block.startLine,
-      kind: 'locked' as const,
-      title: block.reason ? `Locked section: ${block.reason}` : 'Locked section',
-    })),
-  ];
-
-  if (ticks.length === 0) return null;
-
-  return (
-    <div className="source-validation-ticks" aria-hidden="true">
-      {ticks.map((tick) => {
-        const top = totalLines <= 1 ? 0 : ((Math.max(1, Math.min(tick.line, totalLines)) - 1) / (totalLines - 1)) * 100;
-        return (
-          <span
-            key={tick.id}
-            className={`source-validation-tick ${tick.kind}`}
-            title={tick.title}
-            style={{ top: `${top}%` }}
-          />
-        );
-      })}
-    </div>
+    <SourceTextEditor
+      value={markdown}
+      onChange={onChange}
+      language="markdown"
+      diagnostics={diagnostics}
+      markers={markers}
+      extraExtensions={markdownExtensions}
+      programmaticEditBypassRef={protectedEditBypassRef}
+      createInsertTransaction={buildInsertTransaction}
+      onInsertReady={onInsertReady}
+      onJumpReady={onJumpReady}
+      onFindReady={onFindReady}
+      onHistoryReady={onHistoryReady}
+      onSelectionTextReady={onSelectionTextReady}
+      onAdapterReady={onAdapterReady}
+      onContextMenuRequest={onContextMenuRequest}
+      onCursorLineChange={onCursorLineChange}
+      onViewportLineChange={onViewportLineChange}
+    />
   );
 }
 
@@ -471,24 +161,6 @@ function lineFromIssue(issue: ValidationIssue): number | null {
   if (!match) return null;
   const line = Number(match[1]);
   return Number.isFinite(line) && line > 0 ? line : null;
-}
-
-function maybeTypewriterScroll(view: EditorView): void {
-  if (!document.querySelector('.app-shell.focus-mode')) return;
-  const head = view.state.selection.main.head;
-  window.requestAnimationFrame(() => {
-    const coords = view.coordsAtPos(head);
-    if (!coords) return;
-    const scroller = view.scrollDOM;
-    const scrollerRect = scroller.getBoundingClientRect();
-    const target = scroller.scrollTop + coords.top - scrollerRect.top - scroller.clientHeight * 0.42;
-    scroller.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
-  });
-}
-
-function viewportTopLine(view: EditorView): number {
-  const block = view.lineBlockAtHeight(view.scrollDOM.scrollTop + 24);
-  return view.state.doc.lineAt(block.from).number;
 }
 
 function createScientificAutocomplete(citationKeys: string[], crossReferenceLabels: CrossReferenceLabel[]): Extension {
@@ -822,7 +494,7 @@ function paragraphRangeAtLine(state: EditorState, lineNumber: number): { from: n
   };
 }
 
-export function buildInsertTransaction(view: Pick<EditorView, 'state'>, snippet: string) {
+export function buildInsertTransaction(view: Pick<EditorView, 'state'>, snippet: string): SourceMarkdownInsertTransaction {
   const selection = view.state.selection.main;
   const selectedText = view.state.sliceDoc(selection.from, selection.to);
   if (selectedText && isBlockSnippet(snippet) && !sourceSelectionCoversWholeLines(view.state)) {

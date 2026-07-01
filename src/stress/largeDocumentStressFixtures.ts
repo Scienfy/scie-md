@@ -5,6 +5,26 @@ export interface LargeDocumentStressFixtureOptions {
   includeNoteEvery?: number;
 }
 
+export interface StructuredStressFixtureOptions {
+  recordCount?: number;
+  invalidEvery?: number;
+  longTextEvery?: number;
+  columnCount?: number;
+  embeddedNewlineEvery?: number;
+}
+
+export interface StructuredStressFixture {
+  text: string;
+  expected: {
+    recordCount: number;
+    byteLength: number;
+    sourceLineCount?: number;
+    invalidLineCount?: number;
+    columnCount?: number;
+    embeddedNewlineRowCount?: number;
+  };
+}
+
 export interface LargeDocumentStressFixture {
   markdown: string;
   expected: LargeDocumentStressExpectations;
@@ -226,9 +246,180 @@ export function createRecoveryStressMarkdown(minBytes: number): string {
   return chunks.join('\n');
 }
 
+export function createLargeJsonStressFixture(options: StructuredStressFixtureOptions = {}): StructuredStressFixture {
+  const recordCount = positiveInteger(options.recordCount, 3200);
+  const records = Array.from({ length: recordCount }, (_value, index) => ({
+    id: `sample-${index + 1}`,
+    group: index % 2 === 0 ? 'control' : 'treatment',
+    measurements: [
+      { name: 'baseline', value: index },
+      { name: 'week4', value: index + 4 },
+      { name: 'week8', value: index + 8 },
+    ],
+    flags: {
+      qc: index % 7 !== 0,
+      replicate: index % 3,
+    },
+  }));
+  const text = `${JSON.stringify({
+    schemaVersion: 1,
+    generatedFor: 'large-document-stress',
+    records,
+  }, null, 2)}\n`;
+  return {
+    text,
+    expected: {
+      recordCount,
+      byteLength: byteLength(text),
+    },
+  };
+}
+
+export function createLargeJsonlStressFixture(options: StructuredStressFixtureOptions = {}): StructuredStressFixture {
+  const recordCount = positiveInteger(options.recordCount, 900);
+  const invalidEvery = positiveIntegerOrZero(options.invalidEvery);
+  const longTextEvery = positiveIntegerOrZero(options.longTextEvery);
+  let invalidLineCount = 0;
+  const lines = Array.from({ length: recordCount }, (_value, index) => {
+    const ordinal = index + 1;
+    if (invalidEvery > 0 && ordinal % invalidEvery === 0) {
+      invalidLineCount += 1;
+      return `{"id":"row-${ordinal}","score":}`;
+    }
+    return JSON.stringify({
+      id: `row-${ordinal}`,
+      cohort: index % 5,
+      score: Number((index / 10).toFixed(2)),
+      status: index % 11 === 0 ? 'review' : 'ok',
+      note: longTextEvery > 0 && ordinal % longTextEvery === 0
+        ? `Long JSONL stress note ${ordinal}: ${'abcdefghijklmnopqrstuvwxyz '.repeat(24)}`
+        : `note-${ordinal}`,
+    });
+  });
+  const text = `${lines.join('\n')}\n`;
+  return {
+    text,
+    expected: {
+      recordCount: recordCount - invalidLineCount,
+      byteLength: byteLength(text),
+      sourceLineCount: recordCount,
+      invalidLineCount,
+    },
+  };
+}
+
+export function createLargeCsvStressFixture(options: StructuredStressFixtureOptions = {}): StructuredStressFixture {
+  const recordCount = positiveInteger(options.recordCount, 700);
+  const columnCount = Math.max(4, positiveInteger(options.columnCount, 4));
+  const embeddedNewlineEvery = positiveIntegerOrZero(options.embeddedNewlineEvery);
+  const longTextEvery = positiveIntegerOrZero(options.longTextEvery);
+  const headers = ['sample', 'cohort', 'score', 'status'];
+  const baseHeaderCount = headers.length;
+  for (let index = baseHeaderCount; index < columnCount; index += 1) {
+    headers.push(`measurement_${index - baseHeaderCount + 1}`);
+  }
+  const lines = [headers.map(csvCell).join(',')];
+  let embeddedNewlineRowCount = 0;
+  for (let index = 0; index < recordCount; index += 1) {
+    const ordinal = index + 1;
+    const row = [
+      `sample-${ordinal}`,
+      String(index % 5),
+      (index / 10).toFixed(2),
+      index % 11 === 0 ? 'review' : 'ok',
+    ];
+    for (let columnIndex = row.length; columnIndex < columnCount; columnIndex += 1) {
+      if (embeddedNewlineEvery > 0 && ordinal % embeddedNewlineEvery === 0 && columnIndex === 4) {
+        embeddedNewlineRowCount += 1;
+        row.push(`embedded line ${ordinal}\ncontinued measurement ${columnIndex}`);
+      } else if (longTextEvery > 0 && ordinal % longTextEvery === 0 && columnIndex === 5) {
+        row.push(`Long CSV stress cell ${ordinal}: ${'ABCDEFGHIJKLMNOPQRSTUVWXYZ '.repeat(18)}`);
+      } else {
+        row.push(`m${columnIndex - 3}-${ordinal}`);
+      }
+    }
+    lines.push(row.map(csvCell).join(','));
+  }
+  const text = `${lines.join('\n')}\n`;
+  return {
+    text,
+    expected: {
+      recordCount,
+      byteLength: byteLength(text),
+      sourceLineCount: recordCount + 1 + embeddedNewlineRowCount,
+      columnCount,
+      embeddedNewlineRowCount,
+    },
+  };
+}
+
+export function createYamlTomlLossyStressFixtures(options: StructuredStressFixtureOptions = {}): {
+  yaml: StructuredStressFixture;
+  toml: StructuredStressFixture;
+} {
+  const recordCount = positiveInteger(options.recordCount, 90);
+  const yamlLines = [
+    '# Comments must remain source-only',
+    'defaults: &defaults',
+    '  status: ok',
+    '  note: |',
+    '    Block scalar style should not become editable.',
+    'records:',
+  ];
+  const tomlLines = [
+    '# Comments must remain source-only',
+    'schema.version = 1',
+  ];
+
+  for (let index = 0; index < recordCount; index += 1) {
+    yamlLines.push(
+      `  - <<: *defaults`,
+      `    id: sample-${index + 1}`,
+      `    cohort: ${index % 5}`,
+    );
+    tomlLines.push(
+      '',
+      '[[records]]',
+      `id = "sample-${index + 1}"`,
+      `cohort = ${index % 5}`,
+      'status = "ok"',
+    );
+  }
+
+  const yamlText = `${yamlLines.join('\n')}\n`;
+  const tomlText = `${tomlLines.join('\n')}\n`;
+  return {
+    yaml: {
+      text: yamlText,
+      expected: {
+        recordCount,
+        byteLength: byteLength(yamlText),
+      },
+    },
+    toml: {
+      text: tomlText,
+      expected: {
+        recordCount,
+        byteLength: byteLength(tomlText),
+      },
+    },
+  };
+}
+
 function positiveInteger(value: number | undefined, fallback: number): number {
   if (!Number.isFinite(value) || !value || value < 1) return fallback;
   return Math.floor(value);
+}
+
+function positiveIntegerOrZero(value: number | undefined): number {
+  if (!Number.isFinite(value) || !value || value < 1) return 0;
+  return Math.floor(value);
+}
+
+function csvCell(value: string): string {
+  return /[",\r\n]/.test(value) || /^\s|\s$/.test(value)
+    ? `"${value.replace(/"/g, '""')}"`
+    : value;
 }
 
 function byteLength(value: string): number {

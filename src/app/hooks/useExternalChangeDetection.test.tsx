@@ -193,7 +193,7 @@ function Harness({
   const check = useExternalChangeDetection({
     filePath: documentPath,
     fileMetadata: metadata,
-    getCurrentMarkdown: () => '# Paper\n',
+    getCurrentSourceText: () => '# Paper\n',
     onConflict,
     onSyncedExternalChange,
     host,

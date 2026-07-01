@@ -1,6 +1,8 @@
+import type { DocumentFormat } from '@sciemd/core';
+
 export type EditorMode = 'visual' | 'source';
 
-export type AutosaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error' | 'conflict';
+export type AutosaveStatus = 'idle' | 'pending' | 'paused' | 'saving' | 'saved' | 'error' | 'conflict';
 
 export type LineEnding = 'lf' | 'crlf';
 export type TextEncoding = 'utf8' | 'utf16le' | 'utf16be' | 'windows1252';
@@ -41,17 +43,46 @@ export const DEFAULT_METADATA: FileMetadata = {
 
 export const UNTITLED_NAME = 'Untitled.md';
 
-export function isDirty(markdown: string, lastSavedMarkdown: string): boolean {
-  return markdown !== lastSavedMarkdown;
+const UNTITLED_EXTENSION_BY_FORMAT: Record<DocumentFormat, string> = {
+  markdown: 'md',
+  json: 'json',
+  jsonl: 'jsonl',
+  yaml: 'yaml',
+  toml: 'toml',
+  xml: 'xml',
+  csv: 'csv',
+  tsv: 'tsv',
+  plainText: 'txt',
+};
+
+export function isDirty(sourceText: string, lastSavedSourceText: string): boolean {
+  return sourceText !== lastSavedSourceText;
+}
+
+export const isSourceDirty = isDirty;
+
+export function untitledNameForFormat(format: DocumentFormat | null | undefined = 'markdown'): string {
+  return `Untitled.${UNTITLED_EXTENSION_BY_FORMAT[format ?? 'markdown']}`;
+}
+
+export function displayNameForPath(
+  filePath: string | null,
+  format: DocumentFormat | null | undefined = 'markdown',
+): string {
+  if (!filePath) return untitledNameForFormat(format);
+  return filePath.replace(/\\/g, '/').split('/').filter(Boolean).at(-1) ?? untitledNameForFormat(format);
 }
 
 export function basename(filePath: string | null): string {
-  if (!filePath) return UNTITLED_NAME;
-  return filePath.replace(/\\/g, '/').split('/').filter(Boolean).at(-1) ?? UNTITLED_NAME;
+  return displayNameForPath(filePath, 'markdown');
 }
 
-export function createWindowTitle(filePath: string | null, dirty: boolean): string {
-  return `${dirty ? '* ' : ''}${basename(filePath)} - ScieMD`;
+export function createWindowTitle(
+  filePath: string | null,
+  dirty: boolean,
+  format: DocumentFormat | null | undefined = 'markdown',
+): string {
+  return `${dirty ? '* ' : ''}${displayNameForPath(filePath, format)} - ScieMD`;
 }
 
 export function metadataChanged(

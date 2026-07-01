@@ -1,0 +1,7 @@
+# Dotted key fixture
+owner.name = "Ada"
+owner.contact.email = "owner@example.test"
+
+[owner.preferences]
+theme = "light"
+

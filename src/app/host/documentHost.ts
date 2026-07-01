@@ -1,4 +1,5 @@
 import type { FileMetadata, ReadTextFileResponse } from '../documentState';
+import type { DocumentFormat } from '@sciemd/core';
 import type { DiagnosticsEvent } from '../../services/nativeRecoveryService';
 import type { PersistedSettings } from '../../services/settingsService';
 import type { UntitledDraft } from '../../services/draftRecoveryService';
@@ -12,7 +13,7 @@ export interface FileHost {
   statFile(path: string, options?: { contentHash?: boolean }): Promise<FileMetadata>;
   writeTextFileAtomic(
     path: string,
-    markdown: string,
+    sourceText: string,
     metadata: FileMetadata | null,
     expectedMetadata?: FileMetadata | null,
   ): Promise<FileMetadata>;
@@ -21,27 +22,38 @@ export interface FileHost {
 
 export interface DialogHost {
   pickMarkdownFile(): Promise<string | null>;
-  pickSavePath(defaultPath?: string | null): Promise<string | null>;
+  pickDocumentFile(): Promise<string | null>;
+  pickJsonSchemaFile(): Promise<string | null>;
+  pickSavePath(defaultPath?: string | null, format?: DocumentFormat): Promise<string | null>;
 }
 
 export interface LaunchHost {
+  /**
+   * The generic document launch methods are preferred for native startup and
+   * Open With. Markdown-named methods remain as compatibility aliases.
+   */
   getInitialMarkdownPath(): Promise<string | null>;
+  getInitialDocumentPath(): Promise<string | null>;
   peekPendingMarkdownOpen(): Promise<string | null>;
+  peekPendingDocumentOpen(): Promise<string | null>;
+  takePendingMarkdownOpen(): Promise<string | null>;
+  takePendingDocumentOpen(): Promise<string | null>;
   clearPendingMarkdownOpen(path: string): Promise<void>;
+  clearPendingDocumentOpen(path: string): Promise<void>;
   listenSingleInstanceOpen(callback: (path: string) => void): Promise<HostUnlisten>;
 }
 
 export interface RecoveryHost {
   loadUntitledDraft(now?: number): Promise<UntitledDraft | null>;
   loadFileDraft(filePath: string, now?: number): Promise<UntitledDraft | null>;
-  saveUntitledDraft(markdown: string, savedAt?: number): void;
-  saveUntitledDraftAsync(markdown: string, savedAt?: number): Promise<void>;
+  saveUntitledDraft(sourceText: string, savedAt?: number, format?: DocumentFormat): void;
+  saveUntitledDraftAsync(sourceText: string, savedAt?: number, format?: DocumentFormat): Promise<void>;
   clearUntitledDraftAsync(): Promise<void>;
-  saveFileDraft(filePath: string, markdown: string, savedAt?: number, baseMetadata?: FileMetadata | null): void;
-  saveFileDraftAsync(filePath: string, markdown: string, savedAt?: number, baseMetadata?: FileMetadata | null): Promise<void>;
+  saveFileDraft(filePath: string, sourceText: string, savedAt?: number, baseMetadata?: FileMetadata | null, format?: DocumentFormat): void;
+  saveFileDraftAsync(filePath: string, sourceText: string, savedAt?: number, baseMetadata?: FileMetadata | null, format?: DocumentFormat): Promise<void>;
   clearFileDraft(filePath: string): void;
   clearFileDraftAsync(filePath: string): Promise<void>;
-  shouldPersistUntitledDraft(markdown: string, initialMarkdown: string, options?: { suppressBundledWelcome?: boolean }): boolean;
+  shouldPersistUntitledDraft(sourceText: string, initialSourceText: string, options?: { suppressBundledWelcome?: boolean }): boolean;
   shouldOfferFileDraftRestore(draft: UntitledDraft, diskMetadata: FileMetadata): boolean;
   isBundledWelcomeMarkdown(markdown: string): boolean;
   appendDiagnosticsEvent(event: DiagnosticsEvent): Promise<boolean>;

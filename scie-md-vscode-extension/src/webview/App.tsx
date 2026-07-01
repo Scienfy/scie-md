@@ -30,6 +30,7 @@ import type { EditorNoteKind, MarkdownHeading, ReviewPlan, ReviewUnit, VariableU
 import { isVisualStyleId } from '../scie-md/services/visualStyleService';
 import type { VisualStyleId } from '../scie-md/services/visualStyleService';
 import type { ExtensionToWebviewMessage, ScieMDDocumentSnapshot } from '../shared/webviewProtocol';
+import { isStructuredPreviewWebviewFormat, StructuredPreviewWorkbench } from './StructuredPreview';
 import { normalizeThemeMode, useResolvedVscodeTheme } from './theme';
 import type { VscodeThemeMode } from './theme';
 import {
@@ -107,6 +108,7 @@ export function App() {
   const editChainIdRef = useRef(createEditChainId());
 
   const documentReadOnly = Boolean(snapshot?.isReadonly);
+  const documentFormat = snapshot?.format ?? 'markdown';
   const fileLabel = snapshot?.fileName ?? 'Markdown';
   const filePath = snapshot ? filePathFromUri(snapshot.uri) : null;
   const frontmatter = useMemo(() => parseFrontmatter(text), [text]);
@@ -119,6 +121,7 @@ export function App() {
   const nextVariantGroupId = useMemo(() => `revision-${variantCount + 1}`, [variantCount]);
   const nextVariable = useMemo(() => nextVariableName(variableIndex.definitions), [variableIndex.definitions]);
   const activeMode: EditorMode = mode;
+  const structuredPreviewMode = activeMode === 'source' ? 'source' : 'tree';
   const resolvedTheme = useResolvedVscodeTheme(themeMode);
 
   useEffect(() => {
@@ -547,6 +550,18 @@ export function App() {
     }
     vscodeApi.postMessage({ type: 'save', panelId: panelIdRef.current ?? undefined, editChainId: editChainIdRef.current });
   };
+
+  if (snapshot && isStructuredPreviewWebviewFormat(documentFormat)) {
+    return (
+      <StructuredPreviewWorkbench
+        snapshot={snapshot}
+        status={status}
+        mode={structuredPreviewMode}
+        onSelectTree={() => setMode('visual')}
+        onSelectSource={() => setMode('source')}
+      />
+    );
+  }
 
   return (
     <VscodeWorkbenchShell

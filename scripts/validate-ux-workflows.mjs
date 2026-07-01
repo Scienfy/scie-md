@@ -78,9 +78,21 @@ try {
   })()`);
   if (!paletteResult) throw new Error('Command palette quick action was not found.');
   await waitForExpression(page, `Boolean(document.querySelector('.command-palette'))`, 5_000);
-  const paletteText = await evaluate(page, `document.querySelector('.command-palette')?.textContent ?? ''`);
-  for (const expected of ['Open insert menu', 'Open templates', 'Open settings', 'Open quick tour', 'Open full tutorial', 'Check external tools']) {
-    if (!paletteText.includes(expected)) throw new Error(`Command palette is missing "${expected}".`);
+  if (!await commandPaletteHas(page, 'Open insert menu')) {
+    const createdMarkdown = await runCommandPaletteCommand(page, 'New Markdown');
+    if (!createdMarkdown) throw new Error('Could not create a Markdown document before command-palette validation.');
+    await waitForExpression(page, `!document.querySelector('.command-palette')`, 5_000);
+    await delay(500);
+    const reopenedPalette = await evaluate(page, `(() => {
+      const commandButton = Array.from(document.querySelectorAll('button')).find((button) => button.getAttribute('aria-label') === 'Command Palette');
+      commandButton?.click();
+      return Boolean(commandButton);
+    })()`);
+    if (!reopenedPalette) throw new Error('Command palette quick action was not found after creating Markdown document.');
+    await waitForExpression(page, `Boolean(document.querySelector('.command-palette'))`, 5_000);
+  }
+  for (const expected of ['Open insert menu', 'New document', 'Open settings', 'Open quick tour', 'Open full tutorial', 'Check external tools']) {
+    if (!await commandPaletteHas(page, expected)) throw new Error(`Command palette is missing "${expected}".`);
   }
 
   const readinessOpened = await evaluate(page, `(() => {
@@ -106,7 +118,7 @@ try {
 
   console.log(JSON.stringify({
     ok: true,
-    commandPalette: ['Open insert menu', 'Open templates', 'Open settings', 'Open quick tour', 'Open full tutorial', 'Check external tools'],
+    commandPalette: ['Open insert menu', 'New document', 'Open settings', 'Open quick tour', 'Open full tutorial', 'Check external tools'],
     readinessOpensInspector: readinessOpened,
     slashRootKeepsBlocksNested: true,
   }, null, 2));
@@ -214,6 +226,30 @@ async function evaluate(page, expression) {
   });
   if (result.exceptionDetails) throw new Error(result.exceptionDetails.text ?? 'Browser evaluation failed.');
   return result.result.value;
+}
+
+async function commandPaletteHas(page, label) {
+  const query = JSON.stringify(label);
+  await evaluate(page, `(() => {
+    const input = document.querySelector('.command-palette input[aria-label="Search commands"]');
+    if (!input) return false;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    setter?.call(input, ${query});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await delay(150);
+  return evaluate(page, `Array.from(document.querySelectorAll('.command-palette button')).some((button) => button.textContent?.includes(${query}))`);
+}
+
+async function runCommandPaletteCommand(page, label) {
+  if (!await commandPaletteHas(page, label)) return false;
+  const query = JSON.stringify(label);
+  return evaluate(page, `(() => {
+    const command = Array.from(document.querySelectorAll('.command-palette button')).find((button) => button.textContent?.includes(${query}));
+    command?.click();
+    return Boolean(command);
+  })()`);
 }
 
 function waitForExit(child, timeoutMs) {

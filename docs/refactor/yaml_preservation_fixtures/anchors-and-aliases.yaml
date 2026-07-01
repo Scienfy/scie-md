@@ -1,0 +1,15 @@
+defaults: &sample_defaults
+  substrate: glass
+  operator: Amin
+  coating:
+    material: P3HT
+    solvent: chlorobenzene
+
+samples:
+  - <<: *sample_defaults
+    id: S-001
+    flow_rate_ml_min: 0.18
+  - profile: *sample_defaults
+    id: S-002
+    flow_rate_ml_min: 0.22
+

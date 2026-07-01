@@ -52,7 +52,7 @@ describe('useDocumentSession startup fallback', () => {
 
   it('records no-path startup diagnostics and settles without a failure banner', async () => {
     const host = createHost();
-    host.launch.getInitialMarkdownPath.mockResolvedValue(null);
+    host.launch.getInitialDocumentPath.mockResolvedValue(null);
     renderSession(host);
 
     await flushAsync();
@@ -68,7 +68,7 @@ describe('useDocumentSession startup fallback', () => {
   it('keeps a durable startup failure, records diagnostics, and clears it after retry opens the document', async () => {
     const startupPath = 'C:\\Users\\amin_\\missing.md';
     const host = createHost();
-    host.launch.getInitialMarkdownPath.mockResolvedValue(startupPath);
+    host.launch.getInitialDocumentPath.mockResolvedValue(startupPath);
     host.file.readTextFileForEdit
       .mockRejectedValueOnce(new Error('File access denied'))
       .mockResolvedValueOnce(readResponse('# Recovered\n'));
@@ -105,7 +105,7 @@ describe('useDocumentSession startup fallback', () => {
     expect(latestState?.startupDocumentOpenFailed).toBe(false);
     expect(latestState?.filePath).toBe(startupPath);
     expect(latestState?.markdown).toBe('# Recovered\n');
-    expect(host.launch.clearPendingMarkdownOpen).toHaveBeenCalledWith(startupPath);
+    expect(host.launch.clearPendingDocumentOpen).toHaveBeenCalledWith(startupPath);
     expect(host.recovery.appendDiagnosticsEvent).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'startup-open-retry-requested',
       documentPath: startupPath,
@@ -119,7 +119,7 @@ describe('useDocumentSession startup fallback', () => {
   it('records fallback commits without clearing an active startup failure', async () => {
     const startupPath = 'C:\\Users\\amin_\\missing.md';
     const host = createHost();
-    host.launch.getInitialMarkdownPath.mockResolvedValue(startupPath);
+    host.launch.getInitialDocumentPath.mockResolvedValue(startupPath);
     host.file.readTextFileForEdit.mockRejectedValueOnce(new Error('Not found'));
     renderSession(host);
 
@@ -134,17 +134,18 @@ describe('useDocumentSession startup fallback', () => {
     expect(host.recovery.appendDiagnosticsEvent).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'startup-open-fallback-committed',
       documentPath: startupPath,
-      markdownBytes: 10,
+      sourceTextBytes: 10,
     }));
   });
 
   it('waits for desktop startup path resolution before offering an untitled draft', async () => {
     const startupPath = deferred<string | null>();
     const host = createHost();
-    host.launch.getInitialMarkdownPath.mockReturnValue(startupPath.promise);
+    host.launch.getInitialDocumentPath.mockReturnValue(startupPath.promise);
     host.recovery.loadUntitledDraft.mockResolvedValue({
       markdown: '# Unsaved draft\n',
       savedAt: 1000,
+      format: 'markdown',
     });
     confirmText.mockResolvedValue(true);
     renderSession(host);
@@ -157,7 +158,7 @@ describe('useDocumentSession startup fallback', () => {
     startupPath.resolve(null);
     await flushAsync();
 
-    expect(host.launch.getInitialMarkdownPath).toHaveBeenCalledTimes(1);
+    expect(host.launch.getInitialDocumentPath).toHaveBeenCalledTimes(1);
     expect(host.recovery.loadUntitledDraft).toHaveBeenCalledTimes(1);
     expect(confirmText).toHaveBeenCalledWith(expect.objectContaining({
       title: 'Restore unsaved draft?',
@@ -171,11 +172,12 @@ describe('useDocumentSession startup fallback', () => {
   it('keeps a successful startup document active instead of restoring an untitled draft over it', async () => {
     const startupPath = 'C:\\Users\\amin_\\startup.md';
     const host = createHost();
-    host.launch.getInitialMarkdownPath.mockResolvedValue(startupPath);
+    host.launch.getInitialDocumentPath.mockResolvedValue(startupPath);
     host.file.readTextFileForEdit.mockResolvedValue(readResponse('# Startup document\n'));
     host.recovery.loadUntitledDraft.mockResolvedValue({
       markdown: '# Unsaved draft\n',
       savedAt: 1000,
+      format: 'markdown',
     });
     confirmText.mockResolvedValue(true);
     renderSession(host);
@@ -189,12 +191,29 @@ describe('useDocumentSession startup fallback', () => {
     expect(latestState?.markdown).toBe('# Startup document\n');
   });
 
+  it('opens structured startup documents from the native document launch path', async () => {
+    const startupPath = 'C:\\Users\\amin_\\startup.json';
+    const host = createHost();
+    host.launch.getInitialDocumentPath.mockResolvedValue(startupPath);
+    host.file.readTextFileForEdit.mockResolvedValue(readResponse('{"ok":true}\n'));
+    renderSession(host);
+
+    await flushAsync();
+
+    expect(host.file.readTextFileForEdit).toHaveBeenCalledWith(startupPath);
+    expect(host.recovery.loadUntitledDraft).not.toHaveBeenCalled();
+    expect(latestState?.filePath).toBe(startupPath);
+    expect(latestState?.format).toBe('json');
+    expect(latestState?.mode).toBe('visual');
+    expect(latestState?.markdown).toBe('{"ok":true}\n');
+  });
+
   it('drains pending launch paths only after the startup handshake has settled', async () => {
     const startupPath = deferred<string | null>();
     const pendingPath = 'C:\\Users\\amin_\\pending.md';
     const host = createHost();
-    host.launch.getInitialMarkdownPath.mockReturnValue(startupPath.promise);
-    host.launch.peekPendingMarkdownOpen
+    host.launch.getInitialDocumentPath.mockReturnValue(startupPath.promise);
+    host.launch.peekPendingDocumentOpen
       .mockResolvedValueOnce(pendingPath)
       .mockResolvedValue(null);
     host.file.readTextFileForEdit.mockResolvedValue(readResponse('# Pending launch\n'));
@@ -203,17 +222,104 @@ describe('useDocumentSession startup fallback', () => {
     await flushAsync();
 
     expect(host.launch.listenSingleInstanceOpen).toHaveBeenCalled();
-    expect(host.launch.peekPendingMarkdownOpen).not.toHaveBeenCalled();
+    expect(host.launch.peekPendingDocumentOpen).not.toHaveBeenCalled();
     expect(host.file.readTextFileForEdit).not.toHaveBeenCalled();
 
     startupPath.resolve(null);
     await flushAsync();
 
-    expect(host.launch.peekPendingMarkdownOpen).toHaveBeenCalled();
+    expect(host.launch.peekPendingDocumentOpen).toHaveBeenCalled();
     expect(host.file.readTextFileForEdit).toHaveBeenCalledWith(pendingPath);
-    expect(host.launch.clearPendingMarkdownOpen).toHaveBeenCalledWith(pendingPath);
+    expect(host.launch.clearPendingDocumentOpen).toHaveBeenCalledWith(pendingPath);
     expect(latestState?.filePath).toBe(pendingPath);
     expect(latestState?.markdown).toBe('# Pending launch\n');
+  });
+
+  it('opens JSON documents in preferred visual mode with JSON format state', async () => {
+    const host = createHost();
+    host.launch.getInitialDocumentPath.mockResolvedValue(null);
+    host.file.readTextFileForEdit.mockResolvedValue(readResponse('{"ok":true}\n'));
+    renderSession(host);
+    await flushAsync();
+
+    let opened: boolean | undefined;
+    await act(async () => {
+      opened = await latestState?.handleOpen('C:\\Users\\amin_\\results.json', {
+        preferredMode: 'visual',
+        draftRestore: 'skip',
+      });
+    });
+    await flushAsync();
+
+    expect(opened).toBe(true);
+    expect(latestState?.filePath).toBe('C:\\Users\\amin_\\results.json');
+    expect(latestState?.format).toBe('json');
+    expect(latestState?.mode).toBe('visual');
+    expect(latestState?.markdown).toBe('{"ok":true}\n');
+  });
+
+  it.each([
+    ['jsonl', 'C:\\Users\\amin_\\records.jsonl', '{"id":1}\n'] as const,
+    ['yaml', 'C:\\Users\\amin_\\config.yaml', 'ok: true\n'] as const,
+    ['toml', 'C:\\Users\\amin_\\settings.toml', 'ok = true\n'] as const,
+    ['xml', 'C:\\Users\\amin_\\metadata.xml', '<root/>\n'] as const,
+    ['csv', 'C:\\Users\\amin_\\samples.csv', 'name,value\nalpha,1\n'] as const,
+    ['tsv', 'C:\\Users\\amin_\\samples.tsv', 'name\tvalue\nalpha\t1\n'] as const,
+  ])('opens %s documents manually with format-aware visual state', async (format, path, content) => {
+    const host = createHost();
+    host.launch.getInitialDocumentPath.mockResolvedValue(null);
+    host.file.readTextFileForEdit.mockResolvedValue(readResponse(content));
+    renderSession(host);
+    await flushAsync();
+
+    let opened: boolean | undefined;
+    await act(async () => {
+      opened = await latestState?.handleOpen(path, { draftRestore: 'skip' });
+    });
+    await flushAsync();
+
+    expect(opened).toBe(true);
+    expect(latestState?.filePath).toBe(path);
+    expect(latestState?.format).toBe(format);
+    expect(latestState?.mode).toBe('visual');
+    expect(latestState?.markdown).toBe(content);
+    expect(host.settings.rememberRecentFile).toHaveBeenCalledWith(path);
+  });
+
+  it('creates structured starter documents with matching format state', async () => {
+    const host = createHost();
+    host.launch.getInitialDocumentPath.mockResolvedValue(null);
+    renderSession(host);
+    await flushAsync();
+
+    await act(async () => {
+      await latestState?.handleNewFromTemplate('json');
+    });
+    await flushAsync();
+
+    expect(latestState?.filePath).toBeNull();
+    expect(latestState?.format).toBe('json');
+    expect(latestState?.mode).toBe('visual');
+    expect(latestState?.markdown).toContain('"document"');
+    expect(latestState?.markdown).toContain('"classes"');
+    expect(pushToast).toHaveBeenCalledWith('JSON created', 'success');
+  });
+
+  it('creates a Markdown starter for the direct new-document command', async () => {
+    const host = createHost();
+    host.launch.getInitialDocumentPath.mockResolvedValue(null);
+    renderSession(host);
+    await flushAsync();
+
+    await act(async () => {
+      await latestState?.handleNew();
+    });
+    await flushAsync();
+
+    expect(latestState?.filePath).toBeNull();
+    expect(latestState?.format).toBe('markdown');
+    expect(latestState?.mode).toBe('visual');
+    expect(latestState?.markdown).toBe('# Header\n\nMain text\n');
   });
 
   function renderSession(host: MockDocumentHost) {
@@ -242,8 +348,13 @@ interface MockDocumentHost extends DocumentHost {
   };
   launch: {
     getInitialMarkdownPath: ReturnType<typeof vi.fn<() => Promise<string | null>>>;
+    getInitialDocumentPath: ReturnType<typeof vi.fn<() => Promise<string | null>>>;
     peekPendingMarkdownOpen: ReturnType<typeof vi.fn<() => Promise<string | null>>>;
+    peekPendingDocumentOpen: ReturnType<typeof vi.fn<() => Promise<string | null>>>;
+    takePendingMarkdownOpen: ReturnType<typeof vi.fn<() => Promise<string | null>>>;
+    takePendingDocumentOpen: ReturnType<typeof vi.fn<() => Promise<string | null>>>;
     clearPendingMarkdownOpen: ReturnType<typeof vi.fn<(path: string) => Promise<void>>>;
+    clearPendingDocumentOpen: ReturnType<typeof vi.fn<(path: string) => Promise<void>>>;
     listenSingleInstanceOpen: ReturnType<typeof vi.fn<DocumentHost['launch']['listenSingleInstanceOpen']>>;
   };
   recovery: DocumentHost['recovery'] & {
@@ -290,12 +401,19 @@ function createHost(): MockDocumentHost {
     },
     dialog: {
       pickMarkdownFile: vi.fn().mockResolvedValue(null),
+      pickDocumentFile: vi.fn().mockResolvedValue(null),
+      pickJsonSchemaFile: vi.fn().mockResolvedValue(null),
       pickSavePath: vi.fn().mockResolvedValue(null),
     },
     launch: {
       getInitialMarkdownPath: vi.fn<() => Promise<string | null>>().mockResolvedValue(null),
+      getInitialDocumentPath: vi.fn<() => Promise<string | null>>().mockResolvedValue(null),
       peekPendingMarkdownOpen: vi.fn<() => Promise<string | null>>().mockResolvedValue(null),
+      peekPendingDocumentOpen: vi.fn<() => Promise<string | null>>().mockResolvedValue(null),
+      takePendingMarkdownOpen: vi.fn<() => Promise<string | null>>().mockResolvedValue(null),
+      takePendingDocumentOpen: vi.fn<() => Promise<string | null>>().mockResolvedValue(null),
       clearPendingMarkdownOpen: vi.fn<(path: string) => Promise<void>>().mockResolvedValue(undefined),
+      clearPendingDocumentOpen: vi.fn<(path: string) => Promise<void>>().mockResolvedValue(undefined),
       listenSingleInstanceOpen: vi.fn<DocumentHost['launch']['listenSingleInstanceOpen']>().mockResolvedValue(vi.fn()),
     },
     recovery: {

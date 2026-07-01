@@ -1,11 +1,12 @@
+import type { DocumentFormat } from '@sciemd/core';
 import type { EditorMode, FileMetadata } from './documentState';
 import { SOURCE_ONLY_FILE_BYTES } from '../markdown/supportedMarkdown';
 
 export interface ExternalLaunchDraftRestoreDecision {
   stillCurrentDocument: boolean;
-  currentMarkdown: string;
-  diskMarkdown: string;
-  draftMarkdown: string | null;
+  currentSourceText: string;
+  diskSourceText: string;
+  draftSourceText: string | null;
   draftRestoreOfferable: boolean;
 }
 
@@ -16,23 +17,29 @@ export interface DirtyReplacementDecision {
   autosaveBlocked: boolean;
 }
 
-export function openedDocumentMode(metadata: Pick<FileMetadata, 'lastKnownSizeBytes'>, preferredMode?: EditorMode): EditorMode {
+export function openedDocumentMode(
+  metadata: Pick<FileMetadata, 'lastKnownSizeBytes'>,
+  preferredMode?: EditorMode,
+  format: DocumentFormat = 'markdown',
+): EditorMode {
   if (metadata.lastKnownSizeBytes > SOURCE_ONLY_FILE_BYTES) return 'source';
+  if (format === 'plainText') return 'source';
+  if (format !== 'markdown') return preferredMode ?? 'visual';
   return preferredMode ?? 'visual';
 }
 
 export function shouldRestoreExternalLaunchDraft({
   stillCurrentDocument,
-  currentMarkdown,
-  diskMarkdown,
-  draftMarkdown,
+  currentSourceText,
+  diskSourceText,
+  draftSourceText,
   draftRestoreOfferable,
 }: ExternalLaunchDraftRestoreDecision): boolean {
   return stillCurrentDocument
     && draftRestoreOfferable
-    && draftMarkdown !== null
-    && draftMarkdown !== diskMarkdown
-    && currentMarkdown === diskMarkdown;
+    && draftSourceText !== null
+    && draftSourceText !== diskSourceText
+    && currentSourceText === diskSourceText;
 }
 
 export function shouldFlushAutosaveBeforeReplacingDocument({

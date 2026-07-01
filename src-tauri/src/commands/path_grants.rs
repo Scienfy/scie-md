@@ -139,6 +139,18 @@ pub fn sync_document_image_grants_for_markdown(
     sync_document_image_grants_for_urls(document_path, extract_markdown_image_urls(markdown))
 }
 
+pub fn clear_document_image_grants_for_document(document_path: &Path) -> Result<usize, String> {
+    assert_file_read_allowed(document_path)?;
+    let document = normalize_existing_file(document_path)?;
+    let mut registry = registry()?;
+    let removed_count = registry
+        .document_image_assets
+        .remove(&document)
+        .map_or(0, |assets| assets.len());
+    compact_registry(&mut registry);
+    Ok(removed_count)
+}
+
 fn sync_document_image_grants_for_urls<'a, I>(
     document_path: &Path,
     image_urls: I,
@@ -183,7 +195,7 @@ pub fn grant_external_path(path: String, kind: String) -> Result<String, String>
     let normalized_kind = kind.trim().to_ascii_lowercase();
     match normalized_kind.as_str() {
         "document" => Err(
-            "Markdown files must be opened through the file picker, folder explorer, or OS file association."
+            "Documents must be opened through the file picker, folder explorer, or OS file association."
                 .to_string(),
         ),
         "image" => {

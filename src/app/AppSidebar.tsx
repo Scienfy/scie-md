@@ -6,7 +6,9 @@ interface AppSidebarProps {
   open: boolean;
   view: ComponentProps<typeof NavigationSidebar>['view'];
   width: number;
+  formatCapabilities?: ComponentProps<typeof NavigationSidebar>['formatCapabilities'];
   outline: ComponentProps<typeof NavigationSidebar>['outline'];
+  structuredNavigation?: ComponentProps<typeof NavigationSidebar>['structuredNavigation'];
   explorer: ComponentProps<typeof NavigationSidebar>['explorer'];
   layerTwoDocument: ComponentProps<typeof NavigationSidebar>['layerTwoDocument'];
   bibliographyLoading: boolean;
@@ -23,13 +25,16 @@ interface AppSidebarProps {
   onResize: ComponentProps<typeof NavigationSidebar>['onResize'];
   onResizeCommit: ComponentProps<typeof NavigationSidebar>['onResizeCommit'];
   onClose: ComponentProps<typeof NavigationSidebar>['onClose'];
+  onCopyFeedback?: ComponentProps<typeof NavigationSidebar>['onCopyFeedback'];
 }
 
 export function AppSidebar({
   open,
   view,
   width,
+  formatCapabilities,
   outline,
+  structuredNavigation,
   explorer,
   layerTwoDocument,
   bibliographyLoading,
@@ -46,6 +51,7 @@ export function AppSidebar({
   onResize,
   onResizeCommit,
   onClose,
+  onCopyFeedback,
 }: AppSidebarProps) {
   if (!open) {
     return (
@@ -65,7 +71,9 @@ export function AppSidebar({
     <NavigationSidebar
       view={view}
       width={width}
+      formatCapabilities={formatCapabilities}
       outline={outline}
+      structuredNavigation={structuredNavigation}
       explorer={explorer}
       layerTwoDocument={layerTwoDocument}
       bibliographyLoading={bibliographyLoading}
@@ -81,6 +89,7 @@ export function AppSidebar({
       onResize={onResize}
       onResizeCommit={onResizeCommit}
       onClose={onClose}
+      onCopyFeedback={onCopyFeedback}
     />
   );
 }

@@ -624,7 +624,7 @@ function visualLineForPosition(view: EditorView, position: number, frontmatterPr
   const safePosition = Math.max(0, Math.min(position, view.state.doc.content.size));
   const textBefore = view.state.doc.textBetween(0, safePosition, '\n', '\n');
   const frontmatterLineOffset = frontmatterPrefix
-    ? frontmatterPrefix.split('\n').length - 1
+    ? countLineBreaks(frontmatterPrefix)
     : 0;
   return frontmatterLineOffset + textBefore.split('\n').length;
 }
@@ -636,8 +636,12 @@ function splitVisualMarkdown(markdown: string): { visualMarkdown: string; frontm
   }
   return {
     visualMarkdown: frontmatter.body,
-    frontmatterPrefix: `${frontmatter.openingFence || '---'}\n${frontmatter.raw}\n${frontmatter.closingFence || '---'}\n`,
+    frontmatterPrefix: frontmatter.sourcePrefix,
   };
+}
+
+function countLineBreaks(text: string): number {
+  return text.match(/\r\n|\n|\r/g)?.length ?? 0;
 }
 
 export function equivalentVisualMarkdown(left: string, right: string): boolean {

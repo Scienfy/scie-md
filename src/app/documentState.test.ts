@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_METADATA, basename, createWindowTitle, isDirty, metadataChanged, normalizeMarkdownInput } from './documentState';
+import {
+  DEFAULT_METADATA,
+  basename,
+  createWindowTitle,
+  displayNameForPath,
+  isDirty,
+  metadataChanged,
+  normalizeMarkdownInput,
+  untitledNameForFormat,
+} from './documentState';
 
 describe('documentState', () => {
   it('derives dirty state from markdown and last saved markdown', () => {
@@ -23,5 +32,15 @@ describe('documentState', () => {
   it('creates a dirty title for a document path', () => {
     expect(basename('C:\\tmp\\document.md')).toBe('document.md');
     expect(createWindowTitle('/tmp/document.md', true)).toBe('* document.md - ScieMD');
+  });
+
+  it('uses format-aware display names for unsaved documents', () => {
+    expect(untitledNameForFormat('markdown')).toBe('Untitled.md');
+    expect(untitledNameForFormat('plainText')).toBe('Untitled.txt');
+    expect(untitledNameForFormat('json')).toBe('Untitled.json');
+    expect(displayNameForPath(null, 'plainText')).toBe('Untitled.txt');
+    expect(displayNameForPath(null, 'yaml')).toBe('Untitled.yaml');
+    expect(createWindowTitle(null, false, 'plainText')).toBe('Untitled.txt - ScieMD');
+    expect(createWindowTitle(null, true, 'json')).toBe('* Untitled.json - ScieMD');
   });
 });

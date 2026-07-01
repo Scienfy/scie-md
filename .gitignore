@@ -21,6 +21,7 @@ desktop-build-smoke/
 *.vsix
 *.tgz
 *.log
+SHA256SUMS*.txt
 .DS_Store
 .idea/
 .vscode/

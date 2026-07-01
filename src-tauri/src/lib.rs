@@ -9,9 +9,13 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-static PENDING_MARKDOWN_OPEN: OnceLock<Mutex<VecDeque<PathBuf>>> = OnceLock::new();
+static PENDING_DOCUMENT_OPEN: OnceLock<Mutex<VecDeque<PathBuf>>> = OnceLock::new();
+const LAUNCH_DOCUMENT_EXTENSIONS: &[&str] = &[
+    "md", "markdown", "json", "jsonl", "ndjson", "yaml", "yml", "toml", "xml", "tsv", "txt",
+    "text",
+];
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -28,8 +32,8 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
                 let _ = window.set_focus();
-                if let Some(path) = markdown_path_from_args(&argv, &cwd) {
-                    queue_markdown_open(&path);
+                if let Some(path) = document_path_from_args(&argv, &cwd) {
+                    queue_document_open(&path);
                     let _ = window.emit(
                         "single-instance-open",
                         commands::path_utils::external_safe_path_string(&path),
@@ -42,8 +46,8 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            if let Some(path) = startup_markdown_path_from_env() {
-                queue_markdown_open(&path);
+            if let Some(path) = startup_document_path_from_env() {
+                queue_document_open(&path);
             }
             if let Some(report_path) = desktop_smoke_report_path() {
                 let exit_code =
@@ -67,11 +71,17 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            initial_document_path,
             initial_markdown_path,
+            peek_pending_document_open,
             peek_pending_markdown_open,
+            take_pending_document_open,
             take_pending_markdown_open,
+            clear_pending_document_open,
             clear_pending_markdown_open,
             commands::dialogs::pick_markdown_file,
+            commands::dialogs::pick_document_file,
+            commands::dialogs::pick_json_schema_file,
             commands::dialogs::pick_image_file,
             commands::dialogs::pick_citation_style_file,
             commands::dialogs::pick_folder,
@@ -115,6 +125,7 @@ pub fn run() {
             commands::inkscape::cleanup_inkscape_svg_session,
             commands::inkscape::export_svg_with_inkscape,
             commands::reveal::reveal_in_file_manager,
+            commands::toml_source_map::inspect_toml_source_map,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ScieMD");
@@ -127,6 +138,7 @@ struct DesktopSmokeReport {
     scenario: String,
     initial_path: Option<String>,
     startup_path: Option<String>,
+    structured_files: Vec<DesktopStructuredSmokeFileReport>,
     saved_size_bytes: Option<u64>,
     recovery_bytes: Option<usize>,
     recovery_path: Option<String>,
@@ -137,6 +149,26 @@ struct DesktopSmokeReport {
     pdf_skipped_reason: Option<String>,
     diagnostics_dir: Option<String>,
     error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopStructuredSmokeCase {
+    format: String,
+    path: String,
+    expected_contains: String,
+    updated_content: String,
+    updated_contains: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopStructuredSmokeFileReport {
+    format: String,
+    path: String,
+    before_size_bytes: u64,
+    after_size_bytes: u64,
+    content_hash_changed: bool,
 }
 
 fn desktop_smoke_report_path() -> Option<PathBuf> {
@@ -154,7 +186,7 @@ fn run_desktop_smoke_self_test(app: tauri::AppHandle, report_path: &Path) -> Res
     let scenario = desktop_smoke_scenario();
     let mut report = DesktopSmokeReport {
         scenario: scenario.clone(),
-        initial_path: startup_markdown_path_from_env()
+        initial_path: startup_document_path_from_env()
             .map(|path| commands::path_utils::external_safe_path_string(&path)),
         ..DesktopSmokeReport::default()
     };
@@ -193,9 +225,25 @@ fn run_desktop_smoke_self_test(app: tauri::AppHandle, report_path: &Path) -> Res
         return Ok(());
     }
 
+    if scenario == "structured-file-launch" {
+        if report.initial_path.is_none() {
+            return Err("Expected structured file launch startup path but found none.".into());
+        }
+        report.ok = true;
+        write_desktop_smoke_report(report_path, &report)?;
+        return Ok(());
+    }
+
+    if scenario == "structured-manual-open" {
+        report.structured_files = run_desktop_structured_smoke_cases()?;
+        report.ok = true;
+        write_desktop_smoke_report(report_path, &report)?;
+        return Ok(());
+    }
+
     let startup_path = std::env::var_os("SCIEMD_DESKTOP_SMOKE_STARTUP_PATH")
         .map(PathBuf::from)
-        .or_else(startup_markdown_path_from_env)
+        .or_else(startup_document_path_from_env)
         .ok_or_else(|| "Desktop smoke startup path was not provided.".to_string())?;
     report.startup_path = Some(commands::path_utils::external_safe_path_string(
         &startup_path,
@@ -234,18 +282,20 @@ fn run_desktop_smoke_self_test(app: tauri::AppHandle, report_path: &Path) -> Res
     let recovery = commands::diagnostics::write_recovery_snapshot(
         app.clone(),
         commands::diagnostics::RecoverySnapshotPayload {
+            schema_version: Some(2),
             markdown: recovery_markdown.into(),
             file_path: report.startup_path.clone(),
+            format: Some("markdown".into()),
             updated_at_ms: timestamp_ms(),
         },
     )?;
-    let restored = commands::diagnostics::read_recovery_snapshot(app.clone())?
+    let restored = commands::diagnostics::read_recovery_snapshot(app.clone(), report.startup_path.clone(), Some(false))?
         .ok_or_else(|| "Native recovery snapshot was not restored.".to_string())?;
     if restored.markdown != recovery_markdown || restored.file_path != report.startup_path {
         return Err("Native recovery snapshot did not round-trip.".into());
     }
-    commands::diagnostics::clear_recovery_snapshot(app.clone())?;
-    if commands::diagnostics::read_recovery_snapshot(app.clone())?.is_some() {
+    commands::diagnostics::clear_recovery_snapshot(app.clone(), report.startup_path.clone(), Some(false))?;
+    if commands::diagnostics::read_recovery_snapshot(app.clone(), report.startup_path.clone(), Some(false))?.is_some() {
         return Err("Native recovery snapshot was not cleared.".into());
     }
     report.recovery_bytes = Some(recovery.markdown_bytes);
@@ -286,6 +336,60 @@ fn run_desktop_smoke_self_test(app: tauri::AppHandle, report_path: &Path) -> Res
     write_desktop_smoke_report(report_path, &report)
 }
 
+fn run_desktop_structured_smoke_cases() -> Result<Vec<DesktopStructuredSmokeFileReport>, String> {
+    let manifest_path = std::env::var_os("SCIEMD_DESKTOP_SMOKE_STRUCTURED_MANIFEST")
+        .map(PathBuf::from)
+        .ok_or_else(|| "Desktop structured smoke manifest was not provided.".to_string())?;
+    let manifest_raw = fs::read_to_string(&manifest_path)
+        .map_err(|error| format!("Could not read desktop structured smoke manifest: {error}"))?;
+    let cases: Vec<DesktopStructuredSmokeCase> = serde_json::from_str(&manifest_raw)
+        .map_err(|error| format!("Could not parse desktop structured smoke manifest: {error}"))?;
+    if cases.is_empty() {
+        return Err("Desktop structured smoke manifest did not include any files.".into());
+    }
+
+    let mut reports = Vec::with_capacity(cases.len());
+    for case in cases {
+        let path = PathBuf::from(&case.path);
+        commands::path_grants::grant_file_and_parent(&path)?;
+        let opened = commands::file_io::read_text_file_for_edit(case.path.clone())?;
+        if !opened.content.contains(&case.expected_contains) {
+            return Err(format!(
+                "Packaged app could not read expected {} structured smoke marker in {}.",
+                case.format, case.path
+            ));
+        }
+
+        let saved_metadata = commands::file_io::write_text_file_atomic(
+            case.path.clone(),
+            case.updated_content,
+            opened.metadata.line_ending,
+            opened.metadata.encoding,
+            opened.metadata.has_bom,
+            Some(opened.metadata.last_known_mtime_ms),
+            Some(opened.metadata.last_known_size_bytes),
+            opened.metadata.content_hash.clone(),
+        )?;
+        let reread = commands::file_io::read_text_file_for_edit(case.path.clone())?;
+        if !reread.content.contains(&case.updated_contains) {
+            return Err(format!(
+                "Atomic save did not persist the {} structured smoke edit in {}.",
+                case.format, case.path
+            ));
+        }
+
+        reports.push(DesktopStructuredSmokeFileReport {
+            format: case.format,
+            path: commands::path_utils::external_safe_path_string(&path),
+            before_size_bytes: opened.metadata.last_known_size_bytes,
+            after_size_bytes: saved_metadata.last_known_size_bytes,
+            content_hash_changed: opened.metadata.content_hash != reread.metadata.content_hash,
+        });
+    }
+
+    Ok(reports)
+}
+
 fn write_desktop_smoke_report(path: &Path, report: &DesktopSmokeReport) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -304,65 +408,103 @@ fn timestamp_ms() -> u128 {
 }
 
 #[tauri::command]
+fn initial_document_path() -> Option<String> {
+    initial_document_path_value()
+}
+
+#[tauri::command]
 fn initial_markdown_path() -> Option<String> {
-    let path = peek_pending_markdown_open_path().or_else(startup_markdown_path_from_env)?;
-    let _ = commands::path_grants::grant_file_and_parent(&path);
-    Some(commands::path_utils::external_safe_path_string(&path))
+    initial_document_path_value()
+}
+
+fn initial_document_path_value() -> Option<String> {
+    let path = peek_pending_document_open_path().or_else(startup_document_path_from_env)?;
+    grant_document_launch_path(&path)
+}
+
+#[tauri::command]
+fn peek_pending_document_open() -> Option<String> {
+    peek_pending_document_open_value()
 }
 
 #[tauri::command]
 fn peek_pending_markdown_open() -> Option<String> {
-    let path = peek_pending_markdown_open_path()?;
-    let _ = commands::path_grants::grant_file_and_parent(&path);
-    Some(commands::path_utils::external_safe_path_string(&path))
+    peek_pending_document_open_value()
+}
+
+fn peek_pending_document_open_value() -> Option<String> {
+    let path = peek_pending_document_open_path()?;
+    grant_document_launch_path(&path)
+}
+
+#[tauri::command]
+fn take_pending_document_open() -> Option<String> {
+    take_pending_document_open_value()
 }
 
 #[tauri::command]
 fn take_pending_markdown_open() -> Option<String> {
-    let path = take_pending_markdown_open_path()?;
-    let _ = commands::path_grants::grant_file_and_parent(&path);
-    Some(commands::path_utils::external_safe_path_string(&path))
+    take_pending_document_open_value()
+}
+
+fn take_pending_document_open_value() -> Option<String> {
+    let path = take_pending_document_open_path()?;
+    grant_document_launch_path(&path)
+}
+
+#[tauri::command]
+fn clear_pending_document_open(path: String) {
+    clear_pending_document_open_value(path);
 }
 
 #[tauri::command]
 fn clear_pending_markdown_open(path: String) {
+    clear_pending_document_open_value(path);
+}
+
+fn clear_pending_document_open_value(path: String) {
     let requested = commands::path_utils::external_safe_path_string(&PathBuf::from(path));
-    let Ok(mut pending) = pending_markdown_open_slot().lock() else {
+    let Ok(mut pending) = pending_document_open_slot().lock() else {
         return;
     };
     pending.retain(|value| commands::path_utils::external_safe_path_string(value) != requested);
 }
 
-fn markdown_path_from_args(argv: &[String], cwd: &str) -> Option<PathBuf> {
+fn grant_document_launch_path(path: &Path) -> Option<String> {
+    let _ = commands::path_grants::grant_file_and_parent(path);
+    Some(commands::path_utils::external_safe_path_string(path))
+}
+
+fn document_path_from_args(argv: &[String], cwd: &str) -> Option<PathBuf> {
     let cwd = Path::new(cwd);
     argv.iter()
         .flat_map(|arg| candidate_paths_from_launch_arg(arg))
-        .filter_map(|path| resolve_supported_markdown_launch_path(path, cwd))
+        .filter_map(|path| resolve_supported_document_launch_path(path, cwd))
         .find(|path| path.is_file())
-        .or_else(|| markdown_path_from_joined_args(argv, cwd))
+        .or_else(|| document_path_from_joined_args(argv, cwd))
 }
 
-fn startup_markdown_path_from_env() -> Option<PathBuf> {
+fn startup_document_path_from_env() -> Option<PathBuf> {
     let args: Vec<OsString> = std::env::args_os().collect();
     let cwd = std::env::current_dir().ok()?;
-    markdown_path_from_os_args(&args, &cwd)
+    document_path_from_os_args(&args, &cwd)
 }
 
-fn markdown_path_from_os_args(argv: &[OsString], cwd: &Path) -> Option<PathBuf> {
+fn document_path_from_os_args(argv: &[OsString], cwd: &Path) -> Option<PathBuf> {
     argv.iter()
         .flat_map(candidate_paths_from_launch_os_arg)
-        .filter_map(|path| resolve_supported_markdown_launch_path(path, cwd))
+        .filter_map(|path| resolve_supported_document_launch_path(path, cwd))
         .find(|path| path.is_file())
         .or_else(|| {
             let argv: Vec<String> = argv
                 .iter()
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect();
-            markdown_path_from_joined_args(&argv, cwd)
+            document_path_from_joined_args(&argv, cwd)
         })
 }
 
-fn markdown_path_from_joined_args(argv: &[String], cwd: &Path) -> Option<PathBuf> {
+fn document_path_from_joined_args(argv: &[String], cwd: &Path) -> Option<PathBuf> {
     if argv.len() < 3 {
         return None;
     }
@@ -371,7 +513,7 @@ fn markdown_path_from_joined_args(argv: &[String], cwd: &Path) -> Option<PathBuf
             let joined = argv[start..end].join(" ");
             if let Some(path) = candidate_paths_from_launch_arg(&joined)
                 .into_iter()
-                .filter_map(|path| resolve_supported_markdown_launch_path(path, cwd))
+                .filter_map(|path| resolve_supported_document_launch_path(path, cwd))
                 .find(|path| path.is_file())
             {
                 return Some(path);
@@ -396,8 +538,8 @@ fn candidate_paths_from_launch_os_arg(arg: &OsString) -> Vec<PathBuf> {
     candidates
 }
 
-fn resolve_supported_markdown_launch_path(path: PathBuf, cwd: &Path) -> Option<PathBuf> {
-    if !is_supported_markdown_path(&path) {
+fn resolve_supported_document_launch_path(path: PathBuf, cwd: &Path) -> Option<PathBuf> {
+    if !is_supported_document_path(&path) {
         return None;
     }
     Some(if path.is_absolute() {
@@ -511,42 +653,45 @@ fn hex_value(value: u8) -> Option<u8> {
     }
 }
 
-fn is_supported_markdown_path(path: &Path) -> bool {
+fn is_supported_document_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
-        .map(|extension| matches!(extension.to_ascii_lowercase().as_str(), "md" | "markdown"))
+        .map(|extension| {
+            let normalized = extension.to_ascii_lowercase();
+            LAUNCH_DOCUMENT_EXTENSIONS.contains(&normalized.as_str())
+        })
         .unwrap_or(false)
 }
 
-fn pending_markdown_open_slot() -> &'static Mutex<VecDeque<PathBuf>> {
-    PENDING_MARKDOWN_OPEN.get_or_init(|| Mutex::new(VecDeque::new()))
+fn pending_document_open_slot() -> &'static Mutex<VecDeque<PathBuf>> {
+    PENDING_DOCUMENT_OPEN.get_or_init(|| Mutex::new(VecDeque::new()))
 }
 
-fn queue_markdown_open(path: &Path) {
+fn queue_document_open(path: &Path) {
     let _ = commands::path_grants::grant_file_and_parent(path);
-    set_pending_markdown_open(path);
+    set_pending_document_open(path);
 }
 
-fn set_pending_markdown_open(path: &Path) {
-    if let Ok(mut pending) = pending_markdown_open_slot().lock() {
+fn set_pending_document_open(path: &Path) {
+    if let Ok(mut pending) = pending_document_open_slot().lock() {
         let next = commands::path_utils::external_safe_path_string(path);
         pending.retain(|value| commands::path_utils::external_safe_path_string(value) != next);
         pending.push_back(path.to_path_buf());
     }
 }
 
-fn peek_pending_markdown_open_path() -> Option<PathBuf> {
-    pending_markdown_open_slot().lock().ok()?.front().cloned()
+fn peek_pending_document_open_path() -> Option<PathBuf> {
+    pending_document_open_slot().lock().ok()?.front().cloned()
 }
 
-fn take_pending_markdown_open_path() -> Option<PathBuf> {
-    pending_markdown_open_slot().lock().ok()?.pop_front()
+fn take_pending_document_open_path() -> Option<PathBuf> {
+    pending_document_open_slot().lock().ok()?.pop_front()
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        markdown_path_from_args, markdown_path_from_os_args, path_from_launch_arg,
+        document_path_from_args, document_path_from_os_args, path_from_launch_arg,
         split_launch_arg_tokens,
     };
     use std::ffi::OsString;
@@ -563,14 +708,14 @@ mod tests {
         fs::write(&file, "# Paper\n").unwrap();
 
         let cwd = directory.to_string_lossy();
-        let found = markdown_path_from_args(&["sciemd".into(), "paper.md".into()], cwd.as_ref());
+        let found = document_path_from_args(&["sciemd".into(), "paper.md".into()], cwd.as_ref());
 
         assert_eq!(found, Some(file));
         let _ = fs::remove_dir_all(directory);
     }
 
     #[test]
-    fn ignores_plain_text_file_from_second_instance_args() {
+    fn finds_plain_text_file_from_second_instance_args() {
         let directory = std::env::temp_dir().join(format!(
             "scie-md-single-instance-text-test-{}",
             std::process::id()
@@ -580,9 +725,96 @@ mod tests {
         fs::write(&file, "# Paper\n").unwrap();
 
         let cwd = directory.to_string_lossy();
-        let found = markdown_path_from_args(&["sciemd".into(), "paper.txt".into()], cwd.as_ref());
+        let found = document_path_from_args(&["sciemd".into(), "paper.txt".into()], cwd.as_ref());
 
-        assert_eq!(found, None);
+        assert_eq!(found, Some(file));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn finds_structured_files_from_second_instance_args() {
+        let directory = std::env::temp_dir().join(format!(
+            "scie-md-single-instance-structured-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let files = [
+            ("results.json", "{}"),
+            ("records.jsonl", "{\"id\":1}\n"),
+            ("records.ndjson", "{\"id\":2}\n"),
+            ("config.yaml", "title: A\n"),
+            ("config.yml", "title: B\n"),
+            ("settings.toml", "title = \"A\"\n"),
+            ("metadata.xml", "<root/>\n"),
+            ("table.tsv", "a\tb\n1\t2\n"),
+            ("notes.text", "plain text\n"),
+        ];
+        let cwd = directory.to_string_lossy();
+
+        for (name, content) in files {
+            let file = directory.join(name);
+            fs::write(&file, content).unwrap();
+            let found = document_path_from_args(&["sciemd".into(), name.into()], cwd.as_ref());
+
+            assert_eq!(found, Some(file), "{name} should be a launch/open-with document");
+        }
+
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn finds_structured_files_from_os_startup_args() {
+        let directory = std::env::temp_dir().join(format!(
+            "scie-md-os-startup-structured-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let files = [
+            ("startup.json", "{}"),
+            ("startup.jsonl", "{\"id\":1}\n"),
+            ("startup.ndjson", "{\"id\":2}\n"),
+            ("startup.yaml", "title: A\n"),
+            ("startup.yml", "title: B\n"),
+            ("startup.toml", "title = \"A\"\n"),
+            ("startup.xml", "<root/>\n"),
+            ("startup.tsv", "a\tb\n1\t2\n"),
+            ("startup.txt", "plain text\n"),
+        ];
+
+        for (name, content) in files {
+            let file = directory.join(name);
+            fs::write(&file, content).unwrap();
+            let found = document_path_from_os_args(
+                &[OsString::from("sciemd"), file.clone().into_os_string()],
+                &std::env::temp_dir(),
+            );
+
+            assert_eq!(found, Some(file), "{name} should be an OS startup document");
+        }
+
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn ignores_csv_from_startup_and_open_with_launch_args() {
+        let directory = std::env::temp_dir().join(format!(
+            "scie-md-single-instance-csv-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let file = directory.join("table.csv");
+        fs::write(&file, "a,b\n1,2\n").unwrap();
+
+        let cwd = directory.to_string_lossy();
+        let from_second_instance =
+            document_path_from_args(&["sciemd".into(), "table.csv".into()], cwd.as_ref());
+        let from_os_startup = document_path_from_os_args(
+            &[OsString::from("sciemd"), file.clone().into_os_string()],
+            &std::env::temp_dir(),
+        );
+
+        assert_eq!(from_second_instance, None);
+        assert_eq!(from_os_startup, None);
         let _ = fs::remove_dir_all(directory);
     }
 
@@ -597,7 +829,7 @@ mod tests {
         fs::write(&file, "# Startup Paper\n").unwrap();
 
         let cwd = std::env::temp_dir();
-        let found = markdown_path_from_args(
+        let found = document_path_from_args(
             &["sciemd".into(), file.to_string_lossy().to_string()],
             cwd.to_string_lossy().as_ref(),
         );
@@ -616,7 +848,7 @@ mod tests {
         let file = directory.join("startup paper.md");
         fs::write(&file, "# OS Startup Paper\n").unwrap();
 
-        let found = markdown_path_from_os_args(
+        let found = document_path_from_os_args(
             &[OsString::from("sciemd"), file.clone().into_os_string()],
             &std::env::temp_dir(),
         );
@@ -641,7 +873,7 @@ mod tests {
                 .split_whitespace()
                 .map(str::to_string),
         );
-        let found = markdown_path_from_args(&argv, std::env::temp_dir().to_string_lossy().as_ref());
+        let found = document_path_from_args(&argv, std::env::temp_dir().to_string_lossy().as_ref());
 
         assert_eq!(found, Some(file));
         let _ = fs::remove_dir_all(directory);
@@ -663,7 +895,7 @@ mod tests {
                 .split_whitespace()
                 .map(OsString::from),
         );
-        let found = markdown_path_from_os_args(&argv, &std::env::temp_dir());
+        let found = document_path_from_os_args(&argv, &std::env::temp_dir());
 
         assert_eq!(found, Some(file));
         let _ = fs::remove_dir_all(directory);
@@ -678,7 +910,7 @@ mod tests {
         fs::write(&file, "# Quoted Paper\n").unwrap();
 
         let cwd = std::env::temp_dir();
-        let found = markdown_path_from_args(
+        let found = document_path_from_args(
             &["sciemd".into(), format!("\"{}\"", file.to_string_lossy())],
             cwd.to_string_lossy().as_ref(),
         );
@@ -705,7 +937,7 @@ mod tests {
                 .replace(' ', "%20")
         );
         let found =
-            markdown_path_from_args(&["sciemd".into(), file_url], cwd.to_string_lossy().as_ref());
+            document_path_from_args(&["sciemd".into(), file_url], cwd.to_string_lossy().as_ref());
 
         assert_eq!(found, Some(file));
         let _ = fs::remove_dir_all(directory);
@@ -726,7 +958,7 @@ mod tests {
             "\"C:\\Program Files\\ScieMD\\ScieMD.exe\" \"{}\"",
             file.to_string_lossy()
         );
-        let found = markdown_path_from_args(
+        let found = document_path_from_args(
             &["sciemd".into(), command_line],
             cwd.to_string_lossy().as_ref(),
         );

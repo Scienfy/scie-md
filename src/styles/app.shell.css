@@ -359,8 +359,8 @@ button:disabled {
 }
 
 .app-menu-review {
-  width: min(280px, calc(100vw - 32px));
-  min-width: min(280px, calc(100vw - 32px));
+  width: min(360px, calc(100vw - 32px));
+  min-width: min(300px, calc(100vw - 32px));
   overflow-x: hidden;
 }
 
@@ -576,6 +576,37 @@ button:disabled {
 
 .editor-mode-toggle.mode-source::before {
   transform: translateX(calc(78px + var(--toolbar-gap)));
+}
+
+.structured-surface-toggle {
+  max-width: min(44vw, 440px);
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.structured-surface-toggle::-webkit-scrollbar {
+  display: none;
+}
+
+.structured-surface-toggle::before {
+  display: none;
+}
+
+.structured-surface-toggle button {
+  min-width: 72px;
+}
+
+.structured-surface-toggle button.selected {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 22%);
+  background: color-mix(in srgb, var(--accent), transparent 88%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent), transparent 38%);
+  color: var(--accent);
+  font-weight: 750;
+}
+
+.structured-surface-toggle button:disabled {
+  opacity: 0.48;
 }
 
 .topbar-icon-button,
@@ -978,6 +1009,13 @@ button:disabled {
   font-size: 12px;
 }
 
+.menu-help {
+  margin: 4px 10px 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .toolbar button {
   width: var(--control-height);
   min-width: var(--control-height);
@@ -999,10 +1037,17 @@ button:disabled {
 .toolbar button:hover:not(:disabled),
 .toolbar-menu-button > button[aria-expanded="true"],
 .quick-toolbar button:hover:not(:disabled),
-.topbar-right button:hover:not(:disabled),
-.topbar-right button[aria-pressed="true"]:not(.selected) {
+.topbar-right button:hover:not(:disabled) {
   background: var(--button-hover);
   border-color: var(--accent-soft);
+}
+
+.topbar-right .topbar-icon-button[aria-expanded="true"],
+.topbar-right .topbar-icon-button[aria-pressed="true"] {
+  background: var(--surface-soft);
+  border-color: var(--border-strong);
+  color: var(--text-strong);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-strong), transparent 60%);
 }
 
 .toolbar button:active:not(:disabled),
@@ -1018,6 +1063,14 @@ button:disabled {
   background: transparent;
   border-color: transparent;
   color: var(--surface);
+  transform: none;
+}
+
+.structured-surface-toggle button.selected:hover:not(:disabled),
+.structured-surface-toggle button.selected:active:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent), transparent 84%);
+  color: var(--accent);
   transform: none;
 }
 

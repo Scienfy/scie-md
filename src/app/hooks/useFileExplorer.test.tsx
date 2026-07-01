@@ -22,6 +22,13 @@ const entries: FileExplorerEntry[] = [
     sizeBytes: 12,
     modifiedMs: 1,
   },
+  {
+    name: 'records.jsonl',
+    path: 'C:\\Users\\amin_\\Downloads\\records.jsonl',
+    kind: 'jsonl',
+    sizeBytes: 18,
+    modifiedMs: 2,
+  },
 ];
 
 describe('useFileExplorer', () => {
@@ -151,6 +158,103 @@ describe('useFileExplorer', () => {
     expect(platformHost.watcher.updateWatchedFiles).toHaveBeenCalledWith(expect.stringMatching(/^explorer:/), ['C:\\Users\\amin_\\Downloads']);
     expect(latestState?.watcherMessage).toContain('checked periodically');
     expect(latestState?.error).toBeNull();
+  });
+
+  it('opens document entries and navigates directory entries', async () => {
+    vi.mocked(platformHost.fileBrowser.listReadableFiles).mockResolvedValue(entries);
+    renderExplorer();
+
+    act(() => {
+      latestState?.openEntry({
+        name: 'paper.md',
+        path: 'C:\\Users\\amin_\\Downloads\\paper.md',
+        kind: 'markdown',
+        sizeBytes: 12,
+        modifiedMs: 1,
+      });
+    });
+
+    expect(openDocument).toHaveBeenCalledWith('C:\\Users\\amin_\\Downloads\\paper.md');
+    expect(platformHost.fileBrowser.listReadableFiles).not.toHaveBeenCalled();
+
+    act(() => {
+      latestState?.openEntry({
+        name: 'results.json',
+        path: 'C:\\Users\\amin_\\Downloads\\results.json',
+        kind: 'json',
+        sizeBytes: 24,
+        modifiedMs: 3,
+      });
+    });
+
+    expect(openDocument).toHaveBeenCalledWith('C:\\Users\\amin_\\Downloads\\results.json');
+    expect(platformHost.fileBrowser.listReadableFiles).not.toHaveBeenCalled();
+
+    act(() => {
+      latestState?.openEntry({
+        name: 'config.yaml',
+        path: 'C:\\Users\\amin_\\Downloads\\config.yaml',
+        kind: 'yaml',
+        sizeBytes: 20,
+        modifiedMs: 4,
+      });
+    });
+
+    expect(openDocument).toHaveBeenCalledWith('C:\\Users\\amin_\\Downloads\\config.yaml');
+    expect(platformHost.fileBrowser.listReadableFiles).not.toHaveBeenCalled();
+
+    act(() => {
+      latestState?.openEntry({
+        name: 'settings.toml',
+        path: 'C:\\Users\\amin_\\Downloads\\settings.toml',
+        kind: 'toml',
+        sizeBytes: 24,
+        modifiedMs: 5,
+      });
+    });
+
+    expect(openDocument).toHaveBeenCalledWith('C:\\Users\\amin_\\Downloads\\settings.toml');
+    expect(platformHost.fileBrowser.listReadableFiles).not.toHaveBeenCalled();
+
+    act(() => {
+      latestState?.openEntry({
+        name: 'samples.csv',
+        path: 'C:\\Users\\amin_\\Downloads\\samples.csv',
+        kind: 'csv',
+        sizeBytes: 28,
+        modifiedMs: 6,
+      });
+    });
+
+    expect(openDocument).toHaveBeenCalledWith('C:\\Users\\amin_\\Downloads\\samples.csv');
+    expect(platformHost.fileBrowser.listReadableFiles).not.toHaveBeenCalled();
+
+    act(() => {
+      latestState?.openEntry({
+        name: 'samples.tsv',
+        path: 'C:\\Users\\amin_\\Downloads\\samples.tsv',
+        kind: 'tsv',
+        sizeBytes: 32,
+        modifiedMs: 7,
+      });
+    });
+
+    expect(openDocument).toHaveBeenCalledWith('C:\\Users\\amin_\\Downloads\\samples.tsv');
+    expect(platformHost.fileBrowser.listReadableFiles).not.toHaveBeenCalled();
+
+    await act(async () => {
+      latestState?.openEntry({
+        name: 'notes',
+        path: 'C:\\Users\\amin_\\Downloads\\notes',
+        kind: 'directory',
+        sizeBytes: 0,
+        modifiedMs: 2,
+      });
+      await flushAsync();
+    });
+
+    expect(platformHost.fileBrowser.listReadableFiles).toHaveBeenCalledWith('C:\\Users\\amin_\\Downloads\\notes');
+    expect(openDocument).toHaveBeenCalledTimes(6);
   });
 
   it('clears the polling status after native folder watching recovers', async () => {

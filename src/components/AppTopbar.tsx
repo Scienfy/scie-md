@@ -7,6 +7,7 @@ import {
   Code,
   Command,
   Copy,
+  Database,
   ExternalLink,
   Eye,
   File,
@@ -33,6 +34,7 @@ import {
   Palette,
   Printer,
   Redo2,
+  Rows3,
   Save,
   SaveAll,
   Search,
@@ -47,14 +49,17 @@ import {
   X,
 } from 'lucide-react';
 import type { EditorMode } from '../app/documentState';
-import { basename, UNTITLED_NAME } from '../app/documentState';
+import { displayNameForPath } from '../app/documentState';
+import { MARKDOWN_UI_CAPABILITIES, type FormatUiCapabilities } from '../app/formatCapabilities';
 import { getKeyboardShortcutDisplay } from '../app/keyboardShortcuts';
+import { structuredOperationsForTarget, type StructuredOperationIcon, type StructuredOperationId } from '../app/structuredOperationRegistry';
+import type { StructuredSurfaceId, StructuredSurfaceNavigationModel, StructuredSurfaceOption } from '../app/structuredSurfaceNavigation';
 import type { SidebarView, ThemeMode } from '../services/settingsService';
 import { VISUAL_STYLE_OPTIONS } from '../services/visualStyleService';
 import type { VisualStyleId } from '../services/visualStyleService';
 import type { ExportFormat } from '../export/exportTypes';
 import type { RecentFilePreview } from '../markdown/documentIntelligence';
-import type { SemanticBlockType } from '@sciemd/core';
+import type { DocumentFormat, SemanticBlockType } from '@sciemd/core';
 
 export type AppTopbarMenuId =
   | 'file'
@@ -73,12 +78,15 @@ type InlineFormat = 'bold' | 'italic' | 'code';
 
 interface AppTopbarProps {
   mode: EditorMode;
+  format: DocumentFormat;
+  formatCapabilities?: FormatUiCapabilities;
   activeMenu: AppTopbarMenuId | null;
   filePath: string | null;
   dirty: boolean;
   outlineOpen: boolean;
   inspectorOpen: boolean;
   focusMode: boolean;
+  structuredSurfaceNavigation?: StructuredSurfaceNavigationModel | null;
   themeMode: ThemeMode;
   currentVisualStyle: {
     label: string;
@@ -87,6 +95,9 @@ interface AppTopbarProps {
   selectedVisualStyle: VisualStyleId;
   recentFiles: RecentFilePreview[];
   hasPasteReview: boolean;
+  structuredContextAvailable?: boolean;
+  structuredTableSampleAvailable?: boolean;
+  structuredPasteBackValidationAvailable?: boolean;
   onToggleMenu: (menu: AppTopbarMenuId) => void;
   onCloseMenus: () => void;
   onNew: () => void;
@@ -118,6 +129,13 @@ interface AppTopbarProps {
   onSyncBibliography: () => void;
   onCopyScieMDLlmSkill: () => void;
   onGenerateScieMDLlmSkill: () => void;
+  onCopyStructuredContext: () => void;
+  onCopySelectedStructureContext: () => void;
+  onCopySchemaAwareJsonContext: () => void;
+  onCopyStructuredTableSample: () => void;
+  onCopyParserDiagnostics: () => void;
+  onCopyRedactedStructuredPreview: () => void;
+  onValidateStructuredClipboard: () => void;
   onGenerateSubmissionReadiness: () => void;
   onOpenPasteReview: () => void;
   onOpenExportDialog: (format: ExportFormat) => void;
@@ -137,6 +155,7 @@ interface AppTopbarProps {
   onOpenCommandPalette: () => void;
   onOpenSlashMenu: () => void;
   onModeChange: (mode: EditorMode) => void;
+  onStructuredSurfaceChange?: (surface: StructuredSurfaceId) => void;
   onSetVisualStyle: (style: VisualStyleId) => void;
   onSetThemeMode: (themeMode: ThemeMode) => void;
   onIncreaseFont: () => void;
@@ -195,17 +214,23 @@ const headingOptions = [
 
 export function AppTopbar({
   mode,
+  format,
+  formatCapabilities = MARKDOWN_UI_CAPABILITIES,
   activeMenu,
   filePath,
   dirty,
   outlineOpen,
   inspectorOpen,
   focusMode,
+  structuredSurfaceNavigation = null,
   themeMode,
   currentVisualStyle,
   selectedVisualStyle,
   recentFiles,
   hasPasteReview,
+  structuredContextAvailable = false,
+  structuredTableSampleAvailable = false,
+  structuredPasteBackValidationAvailable = false,
   onToggleMenu,
   onCloseMenus,
   onNew,
@@ -237,6 +262,13 @@ export function AppTopbar({
   onSyncBibliography,
   onCopyScieMDLlmSkill,
   onGenerateScieMDLlmSkill,
+  onCopyStructuredContext,
+  onCopySelectedStructureContext,
+  onCopySchemaAwareJsonContext,
+  onCopyStructuredTableSample,
+  onCopyParserDiagnostics,
+  onCopyRedactedStructuredPreview,
+  onValidateStructuredClipboard,
   onGenerateSubmissionReadiness,
   onOpenPasteReview,
   onOpenExportDialog,
@@ -256,6 +288,7 @@ export function AppTopbar({
   onOpenCommandPalette,
   onOpenSlashMenu,
   onModeChange,
+  onStructuredSurfaceChange,
   onSetVisualStyle,
   onSetThemeMode,
   onIncreaseFont,
@@ -280,13 +313,19 @@ export function AppTopbar({
     onCloseMenus();
     action();
   };
+  const visibleMenuLabels = menuLabels.filter((menu) => menuAvailableForFormat(menu.id, formatCapabilities));
+  const documentDisplayName = displayNameForPath(filePath, format);
+  const canSwitchEditorMode = formatCapabilities.canUseVisualMarkdown
+    || formatCapabilities.canUseReadonlyTree
+    || formatCapabilities.canUseRecordList
+    || formatCapabilities.canUseTablePreview;
 
   return (
     <header className="topbar" role="banner" onMouseDown={onTitlebarMouseDown} onDoubleClick={onTitlebarDoubleClick}>
       <div className="topbar-left app-topbar-leading" onMouseDown={stopTitlebarInteraction} onDoubleClick={stopTitlebarInteraction}>
         <ScieMDBrandMark />
         <nav className="app-menubar" aria-label="Application menu">
-          {menuLabels.map((menu) => (
+          {visibleMenuLabels.map((menu) => (
             <div key={menu.id} className={`app-menu-button is-${menu.priority}-menu`}>
               <button
                 type="button"
@@ -302,6 +341,8 @@ export function AppTopbar({
                 <div id={`app-menu-${menu.id}`} className={`app-menu-panel app-menu-${menu.id}`} role="menu" aria-label={`${menu.label} menu`}>
                   {renderMenu(menu.id, {
                     mode,
+                    formatCapabilities,
+                    structuredSurfaceNavigation,
                     outlineOpen,
                     inspectorOpen,
                     focusMode,
@@ -309,6 +350,9 @@ export function AppTopbar({
                     selectedVisualStyle,
                     recentFiles,
                     hasPasteReview,
+                    structuredContextAvailable,
+                    structuredTableSampleAvailable,
+                    structuredPasteBackValidationAvailable,
                     runMenuAction,
                     onNew,
                     onOpen,
@@ -339,6 +383,13 @@ export function AppTopbar({
                     onSyncBibliography,
                     onCopyScieMDLlmSkill,
                     onGenerateScieMDLlmSkill,
+                    onCopyStructuredContext,
+                    onCopySelectedStructureContext,
+                    onCopySchemaAwareJsonContext,
+                    onCopyStructuredTableSample,
+                    onCopyParserDiagnostics,
+                    onCopyRedactedStructuredPreview,
+                    onValidateStructuredClipboard,
                     onGenerateSubmissionReadiness,
                     onOpenPasteReview,
                     onOpenExportDialog,
@@ -357,6 +408,7 @@ export function AppTopbar({
                     onReportBug,
                     onOpenCommandPalette,
                     onModeChange,
+                    onStructuredSurfaceChange,
                     onSetVisualStyle,
                     onSetThemeMode,
                     onIncreaseFont,
@@ -376,56 +428,67 @@ export function AppTopbar({
         </nav>
 
         <div className="quick-toolbar" role="toolbar" aria-label="Quick actions">
-          <button aria-label="Insert menu" title="Insert menu (/)" onClick={onOpenSlashMenu}><Slash size={17} /></button>
+          {formatCapabilities.canUseMarkdownToolbar && (
+            <button aria-label="Insert menu" title="Insert menu (/)" onClick={onOpenSlashMenu}><Slash size={17} /></button>
+          )}
           <button aria-label="Find and Replace" title="Find and Replace" onClick={onFind}><Search size={17} /></button>
           <button aria-label="Command Palette" title="Command Palette" onClick={onOpenCommandPalette}><Command size={17} />K</button>
         </div>
       </div>
 
-      <div className="document-title" title={filePath ?? UNTITLED_NAME}>{dirty ? '* ' : ''}{basename(filePath)}</div>
+      <div className="document-title" title={filePath ?? documentDisplayName}>{dirty ? '* ' : ''}{documentDisplayName}</div>
 
       <div className="topbar-right" role="group" aria-label="View controls">
-        <div className={`editor-mode-toggle mode-${mode}`} data-mode={mode} role="group" aria-label="Editor mode">
-          <button aria-pressed={mode === 'visual'} className={mode === 'visual' ? 'selected' : ''} onClick={() => onModeChange('visual')}>
-            <Eye className="mode-icon" size={16} />
-            <span className="mode-label">Visual</span>
-          </button>
-          <button aria-pressed={mode === 'source'} className={mode === 'source' ? 'selected' : ''} onClick={() => onModeChange('source')}>
-            <Code className="mode-icon" size={16} />
-            <span className="mode-label">Source</span>
-          </button>
-        </div>
-        <div className="topbar-popover-anchor">
-          <button
-            className="topbar-view-button"
-            aria-label={`Visual style: ${currentVisualStyle.label}`}
-            title={`Visual style: ${currentVisualStyle.label}`}
-            aria-haspopup="menu"
-            aria-expanded={activeMenu === 'visual-style'}
-            aria-controls="topbar-visual-style-menu"
-            onClick={() => onToggleMenu('visual-style')}
-          >
-            <Palette size={16} />
-            <span>{currentVisualStyle.shortLabel}</span>
-          </button>
-          {activeMenu === 'visual-style' && (
-            <div id="topbar-visual-style-menu" className="app-menu-panel topbar-choice-menu topbar-style-menu" role="menu" aria-label="Visual style presets">
-              {VISUAL_STYLE_OPTIONS.map((style) => (
-                <MenuItem
-                  key={style.id}
-                  checked={selectedVisualStyle === style.id}
-                  role="menuitemradio"
-                  onSelect={() => runMenuAction(() => onSetVisualStyle(style.id))}
-                >
-                  <span className="style-menu-copy">
-                    <span>{style.label}</span>
-                    <small>{style.detail}</small>
-                  </span>
-                </MenuItem>
-              ))}
-            </div>
-          )}
-        </div>
+        {structuredSurfaceNavigation ? (
+          <StructuredSurfaceToggle
+            model={structuredSurfaceNavigation}
+            onSurfaceChange={onStructuredSurfaceChange}
+          />
+        ) : canSwitchEditorMode ? (
+          <div className={`editor-mode-toggle mode-${mode}`} data-mode={mode} role="group" aria-label="Editor mode">
+            <button aria-pressed={mode === 'visual'} className={mode === 'visual' ? 'selected' : ''} onClick={() => onModeChange('visual')}>
+              {modeIcon(formatCapabilities)}
+              <span className="mode-label">{visualModeLabel(formatCapabilities)}</span>
+            </button>
+            <button aria-pressed={mode === 'source'} className={mode === 'source' ? 'selected' : ''} onClick={() => onModeChange('source')}>
+              <Code className="mode-icon" size={16} />
+              <span className="mode-label">Source</span>
+            </button>
+          </div>
+        ) : null}
+        {formatCapabilities.canUseVisualMarkdown && (
+          <div className="topbar-popover-anchor">
+            <button
+              className="topbar-view-button"
+              aria-label={`Visual style: ${currentVisualStyle.label}`}
+              title={`Visual style: ${currentVisualStyle.label}`}
+              aria-haspopup="menu"
+              aria-expanded={activeMenu === 'visual-style'}
+              aria-controls="topbar-visual-style-menu"
+              onClick={() => onToggleMenu('visual-style')}
+            >
+              <Palette size={16} />
+              <span>{currentVisualStyle.shortLabel}</span>
+            </button>
+            {activeMenu === 'visual-style' && (
+              <div id="topbar-visual-style-menu" className="app-menu-panel topbar-choice-menu topbar-style-menu" role="menu" aria-label="Visual style presets">
+                {VISUAL_STYLE_OPTIONS.map((style) => (
+                  <MenuItem
+                    key={style.id}
+                    checked={selectedVisualStyle === style.id}
+                    role="menuitemradio"
+                    onSelect={() => runMenuAction(() => onSetVisualStyle(style.id))}
+                  >
+                    <span className="style-menu-copy">
+                      <span>{style.label}</span>
+                      <small>{style.detail}</small>
+                    </span>
+                  </MenuItem>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <div className="topbar-popover-anchor">
           <button
             className="topbar-icon-button"
@@ -522,11 +585,45 @@ function ScieMDBrandMark() {
   );
 }
 
+function StructuredSurfaceToggle({
+  model,
+  onSurfaceChange,
+}: {
+  model: StructuredSurfaceNavigationModel;
+  onSurfaceChange?: (surface: StructuredSurfaceId) => void;
+}) {
+  return (
+    <div
+      className={`editor-mode-toggle structured-surface-toggle surface-${model.activeSurface}`}
+      data-mode={model.activeSurface === 'source' ? 'source' : 'visual'}
+      data-surface={model.activeSurface}
+      role="group"
+      aria-label="Structured document surface"
+    >
+      {model.surfaces.map((surface) => (
+        <button
+          key={surface.id}
+          type="button"
+          aria-pressed={model.activeSurface === surface.id}
+          className={model.activeSurface === surface.id ? 'selected' : ''}
+          disabled={!surface.enabled || !onSurfaceChange}
+          title={surface.disabledReason ?? surface.label}
+          onClick={() => onSurfaceChange?.(surface.id)}
+        >
+          {surfaceIcon(surface)}
+          <span className="mode-label">{surface.shortLabel}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 interface RenderMenuContext extends Omit<AppTopbarProps,
   | 'activeMenu'
   | 'currentVisualStyle'
   | 'dirty'
   | 'filePath'
+  | 'format'
   | 'onCloseMenus'
   | 'onTitlebarDoubleClick'
   | 'onTitlebarMouseDown'
@@ -539,7 +636,21 @@ interface RenderMenuContext extends Omit<AppTopbarProps,
   runMenuAction: (action: () => void) => void;
 }
 
+function menuAvailableForFormat(menu: AppTopbarMenuId, capabilities: FormatUiCapabilities): boolean {
+  if (menu === 'visual-style') return capabilities.canUseVisualMarkdown;
+  if (menu === 'insert' || menu === 'format') return capabilities.canUseMarkdownToolbar;
+  if (menu === 'references') return capabilities.canUseCitations;
+  if (menu === 'review') return capabilities.canUseLLMMarkdownMarkers
+    || capabilities.canUseStructuredVisualMode
+    || capabilities.canUseRecordList
+    || capabilities.canUseTablePreview;
+  return true;
+}
+
 function renderMenu(menu: AppTopbarMenuId, context: RenderMenuContext): ReactNode {
+  const capabilities = context.formatCapabilities ?? MARKDOWN_UI_CAPABILITIES;
+  if (!menuAvailableForFormat(menu, capabilities)) return null;
+
   switch (menu) {
     case 'file':
       return <FileMenu {...context} />;
@@ -565,26 +676,30 @@ function renderMenu(menu: AppTopbarMenuId, context: RenderMenuContext): ReactNod
 }
 
 function FileMenu(context: RenderMenuContext) {
+  const capabilities = context.formatCapabilities ?? MARKDOWN_UI_CAPABILITIES;
   return (
     <>
-      <MenuItem icon={<FilePlus2 size={15} />} shortcut={getKeyboardShortcutDisplay('new')} onSelect={() => context.runMenuAction(context.onNew)}>New</MenuItem>
-      <MenuItem icon={<FileText size={15} />} onSelect={() => context.runMenuAction(context.onOpenTemplates)}>New from Template...</MenuItem>
+      <MenuItem icon={<FilePlus2 size={15} />} shortcut={getKeyboardShortcutDisplay('new')} onSelect={() => context.runMenuAction(context.onNew)}>New Document...</MenuItem>
       <MenuItem icon={<FolderOpen size={15} />} shortcut={getKeyboardShortcutDisplay('open')} onSelect={() => context.runMenuAction(context.onOpen)}>Open...</MenuItem>
       <MenuItem icon={<FolderOpen size={15} />} onSelect={() => context.runMenuAction(context.onOpenFolder)}>Open Folder...</MenuItem>
       <MenuSeparator />
       <MenuItem icon={<Save size={15} />} shortcut={getKeyboardShortcutDisplay('save')} onSelect={() => context.runMenuAction(context.onSave)}>Save</MenuItem>
       <MenuItem icon={<SaveAll size={15} />} shortcut={getKeyboardShortcutDisplay('saveAs')} onSelect={() => context.runMenuAction(context.onSaveAs)}>Save As...</MenuItem>
-      <MenuSeparator />
-      <MenuSection label="Export" />
-      <MenuItem onSelect={() => context.runMenuAction(() => context.onOpenExportDialog('html'))}>Styled HTML...</MenuItem>
-      <MenuItem onSelect={() => context.runMenuAction(() => context.onOpenExportDialog('pdf'))}>PDF...</MenuItem>
-      <MenuItem onSelect={() => context.runMenuAction(() => context.onOpenExportDialog('docx'))}>Word DOCX...</MenuItem>
-      <MenuSection label="Advanced formats" />
-      {(['epub', 'latex', 'odt', 'jats', 'rst', 'asciidoc', 'docbook', 'plain'] as const).map((format) => (
-        <MenuItem key={format} onSelect={() => context.runMenuAction(() => context.onOpenExportDialog(format))}>{exportFormatLabel(format)}</MenuItem>
-      ))}
-      <MenuSeparator />
-      <MenuItem icon={<Printer size={15} />} shortcut={getKeyboardShortcutDisplay('print')} onSelect={() => context.runMenuAction(context.onPrintPreview)}>Print Preview</MenuItem>
+      {capabilities.canUseMarkdownExports && (
+        <>
+          <MenuSeparator />
+          <MenuSection label="Export" />
+          <MenuItem onSelect={() => context.runMenuAction(() => context.onOpenExportDialog('html'))}>Styled HTML...</MenuItem>
+          <MenuItem onSelect={() => context.runMenuAction(() => context.onOpenExportDialog('pdf'))}>PDF...</MenuItem>
+          <MenuItem onSelect={() => context.runMenuAction(() => context.onOpenExportDialog('docx'))}>Word DOCX...</MenuItem>
+          <MenuSection label="Advanced formats" />
+          {(['epub', 'latex', 'odt', 'jats', 'rst', 'asciidoc', 'docbook', 'plain'] as const).map((format) => (
+            <MenuItem key={format} onSelect={() => context.runMenuAction(() => context.onOpenExportDialog(format))}>{exportFormatLabel(format)}</MenuItem>
+          ))}
+          <MenuSeparator />
+          <MenuItem icon={<Printer size={15} />} shortcut={getKeyboardShortcutDisplay('print')} onSelect={() => context.runMenuAction(context.onPrintPreview)}>Print Preview</MenuItem>
+        </>
+      )}
       <MenuSeparator />
       <MenuSection label="Open Recent" />
       {context.recentFiles.length === 0 ? (
@@ -607,30 +722,64 @@ function FileMenu(context: RenderMenuContext) {
 }
 
 function EditMenu(context: RenderMenuContext) {
+  const capabilities = context.formatCapabilities ?? MARKDOWN_UI_CAPABILITIES;
   return (
     <>
       <MenuItem icon={<Undo2 size={15} />} shortcut={getKeyboardShortcutDisplay('undo')} onSelect={() => context.runMenuAction(context.onUndo)}>Undo</MenuItem>
       <MenuItem icon={<Redo2 size={15} />} shortcut={getKeyboardShortcutDisplay('redo')} onSelect={() => context.runMenuAction(context.onRedo)}>Redo</MenuItem>
       <MenuSeparator />
       <MenuItem icon={<Search size={15} />} shortcut={getKeyboardShortcutDisplay('find')} onSelect={() => context.runMenuAction(context.onFind)}>Find and Replace</MenuItem>
-      <MenuItem icon={<Copy size={15} />} onSelect={() => context.runMenuAction(context.onCopyRichText)}>Copy as Rich Text</MenuItem>
-      <MenuSeparator />
-      <MenuItem onSelect={() => context.runMenuAction(context.onApplyScientificTypography)}>Apply Scientific Typography</MenuItem>
+      {capabilities.canUseMarkdownExports && (
+        <MenuItem icon={<Copy size={15} />} onSelect={() => context.runMenuAction(context.onCopyRichText)}>Copy as Rich Text</MenuItem>
+      )}
+      {capabilities.canUseMarkdownToolbar && (
+        <>
+          <MenuSeparator />
+          <MenuItem onSelect={() => context.runMenuAction(context.onApplyScientificTypography)}>Apply Scientific Typography</MenuItem>
+        </>
+      )}
     </>
   );
 }
 
 function ViewMenu(context: RenderMenuContext) {
+  const capabilities = context.formatCapabilities ?? MARKDOWN_UI_CAPABILITIES;
+  const structuredNavigation = context.structuredSurfaceNavigation ?? null;
   return (
     <>
       <MenuSection label="Editor" />
-      <MenuItem checked={context.mode === 'visual'} role="menuitemradio" onSelect={() => context.runMenuAction(() => context.onModeChange('visual'))}>Visual Mode</MenuItem>
-      <MenuItem checked={context.mode === 'source'} role="menuitemradio" onSelect={() => context.runMenuAction(() => context.onModeChange('source'))}>Source Mode</MenuItem>
+      {structuredNavigation ? (
+        structuredNavigation.surfaces.map((surface) => (
+          <MenuItem
+            key={surface.id}
+            checked={structuredNavigation.activeSurface === surface.id}
+            disabled={!surface.enabled || !context.onStructuredSurfaceChange}
+            title={surface.disabledReason ?? undefined}
+            role="menuitemradio"
+            onSelect={() => context.runMenuAction(() => context.onStructuredSurfaceChange?.(surface.id))}
+          >
+            {surface.label} Mode
+          </MenuItem>
+        ))
+      ) : (
+        <>
+          {(capabilities.canUseVisualMarkdown || capabilities.canUseReadonlyTree || capabilities.canUseRecordList || capabilities.canUseTablePreview) && (
+            <MenuItem checked={context.mode === 'visual'} role="menuitemradio" onSelect={() => context.runMenuAction(() => context.onModeChange('visual'))}>{visualModeLabel(capabilities)} Mode</MenuItem>
+          )}
+          <MenuItem checked={context.mode === 'source'} role="menuitemradio" onSelect={() => context.runMenuAction(() => context.onModeChange('source'))}>Source Mode</MenuItem>
+        </>
+      )}
       <MenuSeparator />
       <MenuItem checked={context.outlineOpen} role="menuitemcheckbox" onSelect={() => context.runMenuAction(context.onToggleOutline)}>Navigation Sidebar</MenuItem>
-      <MenuItem onSelect={() => context.runMenuAction(() => context.onSidebarView('outline'))}>Sidebar: Outline</MenuItem>
-      <MenuItem onSelect={() => context.runMenuAction(() => context.onSidebarView('references'))}>Sidebar: References</MenuItem>
-      <MenuItem onSelect={() => context.runMenuAction(() => context.onSidebarView('data'))}>Sidebar: Data</MenuItem>
+      {capabilities.canUseManuscriptReadiness && (
+        <MenuItem onSelect={() => context.runMenuAction(() => context.onSidebarView('outline'))}>Sidebar: Outline</MenuItem>
+      )}
+      {capabilities.canUseCitations && (
+        <MenuItem onSelect={() => context.runMenuAction(() => context.onSidebarView('references'))}>Sidebar: References</MenuItem>
+      )}
+      {capabilities.canUseVariablesPanel && (
+        <MenuItem onSelect={() => context.runMenuAction(() => context.onSidebarView('data'))}>Sidebar: Data</MenuItem>
+      )}
       <MenuItem onSelect={() => context.runMenuAction(() => context.onSidebarView('files'))}>Sidebar: Files</MenuItem>
       <MenuItem checked={context.inspectorOpen} role="menuitemcheckbox" onSelect={() => context.runMenuAction(context.onToggleInspector)}>Inspector</MenuItem>
       <MenuItem checked={context.focusMode} role="menuitemcheckbox" onSelect={() => context.runMenuAction(context.onToggleFocusMode)}>Focus Mode</MenuItem>
@@ -650,20 +799,24 @@ function ViewMenu(context: RenderMenuContext) {
           </MenuItem>
         );
       })}
-      <MenuSection label="Visual style" />
-      {VISUAL_STYLE_OPTIONS.map((style) => (
-        <MenuItem
-          key={style.id}
-          checked={context.selectedVisualStyle === style.id}
-          role="menuitemradio"
-          onSelect={() => context.runMenuAction(() => context.onSetVisualStyle(style.id))}
-        >
-          <span className="style-menu-copy">
-            <span>{style.label}</span>
-            <small>{style.detail}</small>
-          </span>
-        </MenuItem>
-      ))}
+      {capabilities.canUseVisualMarkdown && (
+        <>
+          <MenuSection label="Visual style" />
+          {VISUAL_STYLE_OPTIONS.map((style) => (
+            <MenuItem
+              key={style.id}
+              checked={context.selectedVisualStyle === style.id}
+              role="menuitemradio"
+              onSelect={() => context.runMenuAction(() => context.onSetVisualStyle(style.id))}
+            >
+              <span className="style-menu-copy">
+                <span>{style.label}</span>
+                <small>{style.detail}</small>
+              </span>
+            </MenuItem>
+          ))}
+        </>
+      )}
       <MenuSection label="Font size" />
       <MenuItem onSelect={() => context.runMenuAction(context.onIncreaseFont)}>Increase Font Size</MenuItem>
       <MenuItem onSelect={() => context.runMenuAction(context.onDecreaseFont)}>Decrease Font Size</MenuItem>
@@ -673,13 +826,22 @@ function ViewMenu(context: RenderMenuContext) {
 }
 
 function InsertMenu(context: RenderMenuContext) {
+  const capabilities = context.formatCapabilities ?? MARKDOWN_UI_CAPABILITIES;
   return (
     <>
       <MenuItem icon={<Link size={15} />} onSelect={() => context.runMenuAction(context.onInsertLink)}>Link...</MenuItem>
-      <MenuItem icon={<Image size={15} />} onSelect={() => context.runMenuAction(context.onInsertImage)}>Image...</MenuItem>
-      <MenuItem onSelect={() => context.runMenuAction(context.onInsertCitation)}>Citation...</MenuItem>
-      <MenuItem onSelect={() => context.runMenuAction(context.onInsertReferencesDirective)}>Auto References Section</MenuItem>
-      <MenuItem onSelect={() => context.runMenuAction(context.onInsertVariable)}>Variable...</MenuItem>
+      {capabilities.canUseImageInsertion && (
+        <MenuItem icon={<Image size={15} />} onSelect={() => context.runMenuAction(context.onInsertImage)}>Image...</MenuItem>
+      )}
+      {capabilities.canUseCitations && (
+        <>
+          <MenuItem onSelect={() => context.runMenuAction(context.onInsertCitation)}>Citation...</MenuItem>
+          <MenuItem onSelect={() => context.runMenuAction(context.onInsertReferencesDirective)}>Auto References Section</MenuItem>
+        </>
+      )}
+      {capabilities.canUseVariablesPanel && (
+        <MenuItem onSelect={() => context.runMenuAction(context.onInsertVariable)}>Variable...</MenuItem>
+      )}
       <MenuSeparator />
       <MenuItem onSelect={() => context.runMenuAction(context.onInsertMermaid)}>Mermaid Diagram</MenuItem>
       <MenuItem onSelect={() => context.runMenuAction(context.onInsertSvgFigure)}>SVG Figure</MenuItem>
@@ -693,11 +855,15 @@ function InsertMenu(context: RenderMenuContext) {
         <MenuItem key={block.id} onSelect={() => context.runMenuAction(() => context.onInsertSemanticBlock(block.id))}>{block.label}</MenuItem>
       ))}
       <MenuSeparator />
-      <MenuItem onSelect={() => context.runMenuAction(context.onInsertProtectedBlock)}>Locked Section</MenuItem>
-      <MenuItem onSelect={() => context.runMenuAction(context.onInsertEditorComment)}>Note to LLM</MenuItem>
-      <MenuItem onSelect={() => context.runMenuAction(context.onInsertHumanEditorComment)}>Note to Human</MenuItem>
-      <MenuItem onSelect={() => context.runMenuAction(context.onInsertTargetedInstruction)}>LLM Instruction</MenuItem>
-      <MenuItem onSelect={() => context.runMenuAction(context.onInsertVariantGroup)}>Version Group</MenuItem>
+      {capabilities.canUseLLMMarkdownMarkers && (
+        <>
+          <MenuItem onSelect={() => context.runMenuAction(context.onInsertProtectedBlock)}>Locked Section</MenuItem>
+          <MenuItem onSelect={() => context.runMenuAction(context.onInsertEditorComment)}>Note to LLM</MenuItem>
+          <MenuItem onSelect={() => context.runMenuAction(context.onInsertHumanEditorComment)}>Note to Human</MenuItem>
+          <MenuItem onSelect={() => context.runMenuAction(context.onInsertTargetedInstruction)}>LLM Instruction</MenuItem>
+          <MenuItem onSelect={() => context.runMenuAction(context.onInsertVariantGroup)}>Version Group</MenuItem>
+        </>
+      )}
     </>
   );
 }
@@ -727,6 +893,8 @@ function FormatMenu(context: RenderMenuContext) {
 }
 
 function ReferencesMenu(context: RenderMenuContext) {
+  if (!(context.formatCapabilities ?? MARKDOWN_UI_CAPABILITIES).canUseCitations) return null;
+
   return (
     <>
       <MenuItem onSelect={() => context.runMenuAction(context.onInsertCitation)}>Manage Citations...</MenuItem>
@@ -738,6 +906,9 @@ function ReferencesMenu(context: RenderMenuContext) {
 }
 
 function ReviewMenu(context: RenderMenuContext) {
+  const capabilities = context.formatCapabilities ?? MARKDOWN_UI_CAPABILITIES;
+  if (!capabilities.canUseLLMMarkdownMarkers) return <StructuredContextMenu {...context} />;
+
   return (
     <>
       <MenuItem disabled={!context.hasPasteReview} onSelect={() => context.runMenuAction(context.onOpenPasteReview)}>Review Pasted Changes</MenuItem>
@@ -747,6 +918,75 @@ function ReviewMenu(context: RenderMenuContext) {
       <MenuItem onSelect={() => context.runMenuAction(context.onGenerateScieMDLlmSkill)}>Generate LLM Skill File</MenuItem>
     </>
   );
+}
+
+function StructuredContextMenu(context: RenderMenuContext) {
+  const hasStructuredMenu = (context.formatCapabilities ?? MARKDOWN_UI_CAPABILITIES).canUseStructuredVisualMode
+    || (context.formatCapabilities ?? MARKDOWN_UI_CAPABILITIES).canUseRecordList
+    || (context.formatCapabilities ?? MARKDOWN_UI_CAPABILITIES).canUseTablePreview
+    || context.structuredPasteBackValidationAvailable;
+  if (!hasStructuredMenu) return null;
+
+  const operations = structuredOperationsForTarget({
+    kind: 'structured-context',
+    canCopyStructuredContext: Boolean(context.structuredContextAvailable),
+    canCopySelectedPathContext: Boolean(context.structuredContextAvailable),
+    canCopySchemaAwareJsonContext: Boolean(context.structuredContextAvailable && context.formatCapabilities?.sourceLanguage === 'json'),
+    canCopyTableSample: Boolean(context.structuredTableSampleAvailable),
+    canCopyParserDiagnostics: Boolean(context.structuredPasteBackValidationAvailable),
+    canCopyRedactedPreview: Boolean(context.structuredContextAvailable),
+    canValidateClipboard: Boolean(context.structuredPasteBackValidationAvailable),
+  }).filter((operation) => structuredContextOperationVisible(operation.id, context.formatCapabilities ?? MARKDOWN_UI_CAPABILITIES));
+  const handlers = structuredContextHandlers(context);
+
+  return (
+    <>
+      <MenuSection label="Structured context" />
+      <p className="menu-help">Local copy/export only. ScieMD does not call an LLM or automatically redact sensitive data.</p>
+      {operations.map((operation) => (
+        <MenuItem
+          key={operation.id}
+          icon={menuIconForStructuredOperation(operation.icon)}
+          disabled={operation.disabled}
+          title={operation.disabledReason}
+          onSelect={() => context.runMenuAction(handlers[operation.id] ?? noopMenuAction)}
+        >
+          {operation.label}
+        </MenuItem>
+      ))}
+    </>
+  );
+}
+
+function structuredContextHandlers(context: RenderMenuContext): Partial<Record<StructuredOperationId, () => void>> {
+  return {
+    copyStructuredContext: context.onCopyStructuredContext,
+    copySelectedPathContext: context.onCopySelectedStructureContext,
+    copySchemaAwareJsonContext: context.onCopySchemaAwareJsonContext,
+    copyTableSample: context.onCopyStructuredTableSample,
+    copyParserDiagnostics: context.onCopyParserDiagnostics,
+    copyRedactedPreview: context.onCopyRedactedStructuredPreview,
+    validateClipboard: context.onValidateStructuredClipboard,
+  };
+}
+
+function structuredContextOperationVisible(id: StructuredOperationId, capabilities: FormatUiCapabilities): boolean {
+  if (id === 'copySchemaAwareJsonContext') return capabilities.sourceLanguage === 'json';
+  if (id === 'copyTableSample') return capabilities.canUseTablePreview;
+  if (id === 'copySelectedPathContext') return capabilities.canUseStructuredVisualMode || capabilities.canUseRecordList;
+  return true;
+}
+
+function menuIconForStructuredOperation(icon: StructuredOperationIcon): ReactNode {
+  if (icon === 'warning') return <Database size={15} />;
+  if (icon === 'code') return <Code size={15} />;
+  if (icon === 'source') return <FileText size={15} />;
+  if (icon === 'select') return <ListTree size={15} />;
+  return <Copy size={15} />;
+}
+
+function noopMenuAction() {
+  return undefined;
 }
 
 function ToolsMenu(context: RenderMenuContext) {
@@ -850,4 +1090,27 @@ function exportFormatLabel(format: Exclude<ExportFormat, 'html' | 'pdf' | 'docx'
     default:
       return `${format}...`;
   }
+}
+
+function visualModeLabel(capabilities: FormatUiCapabilities): string {
+  if (capabilities.canUseVisualMarkdown) return 'Visual';
+  if (capabilities.canUseRecordList) return 'Records';
+  if (capabilities.canUseTablePreview) return 'Table';
+  if (capabilities.canUseReadonlyTree) return 'Tree';
+  return 'Visual';
+}
+
+function modeIcon(capabilities: FormatUiCapabilities): ReactNode {
+  if (capabilities.canUseVisualMarkdown) return <Eye className="mode-icon" size={16} />;
+  if (capabilities.canUseTablePreview) return <TableProperties className="mode-icon" size={16} />;
+  return <ListTree className="mode-icon" size={16} />;
+}
+
+function surfaceIcon(surface: StructuredSurfaceOption): ReactNode {
+  if (surface.id === 'source') return <Code className="mode-icon" size={16} />;
+  if (surface.id === 'table') return <TableProperties className="mode-icon" size={16} />;
+  if (surface.id === 'cards') return <Rows3 className="mode-icon" size={16} />;
+  if (surface.id === 'health') return <Database className="mode-icon" size={16} />;
+  if (surface.id === 'markdown-visual') return <Eye className="mode-icon" size={16} />;
+  return <ListTree className="mode-icon" size={16} />;
 }

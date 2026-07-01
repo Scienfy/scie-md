@@ -84,14 +84,14 @@ export async function statFile(path: string, options: { contentHash?: boolean } 
 
 export async function writeTextFileAtomic(
   path: string,
-  markdown: string,
+  sourceText: string,
   metadata: FileMetadata | null,
   expectedMetadata: FileMetadata | null = null,
 ): Promise<FileMetadata> {
   const writeMetadata = metadata ?? DEFAULT_METADATA;
   return invoke<FileMetadata>('write_text_file_atomic', {
     path,
-    markdown,
+    markdown: sourceText,
     lineEnding: writeMetadata.lineEnding,
     encoding: writeMetadata.encoding,
     hasBom: writeMetadata.hasBom,
@@ -103,13 +103,13 @@ export async function writeTextFileAtomic(
 
 export async function writeTextFileCreateNew(
   path: string,
-  markdown: string,
+  sourceText: string,
   metadata: FileMetadata | null = null,
 ): Promise<FileMetadata> {
   const writeMetadata = metadata ?? DEFAULT_METADATA;
   return invoke<FileMetadata>('write_text_file_create_new', {
     path,
-    markdown,
+    markdown: sourceText,
     lineEnding: writeMetadata.lineEnding,
     encoding: writeMetadata.encoding,
     hasBom: writeMetadata.hasBom,

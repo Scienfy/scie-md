@@ -27,6 +27,7 @@ describe('renderCapture', () => {
               <div class="scie-md-visual-atom-controls"><button>Edit</button></div>
               <p>Rendered block</p>
             </section>
+            <div class="context-menu-root"><div class="context-menu-card">Copy path</div></div>
             <div class="scie-md-note-card">LLM note</div>
             <div class="scie-md-variant-rail">...</div>
           </article>
@@ -46,6 +47,8 @@ describe('renderCapture', () => {
     expect(captured?.bodyHtml).not.toContain('Lock');
     expect(captured?.bodyHtml).not.toContain('LLM note');
     expect(captured?.bodyHtml).not.toContain('Edit');
+    expect(captured?.bodyHtml).not.toContain('Copy path');
+    expect(captured?.bodyHtml).not.toContain('context-menu-card');
     expect(captured?.bodyHtml).not.toContain('locked-range-block');
     expect(captured?.bodyHtml).not.toContain('focus-dimmed-block');
     expect(captured?.bodyHtml).not.toContain('focus-active-block');

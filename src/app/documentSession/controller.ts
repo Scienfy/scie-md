@@ -4,6 +4,8 @@ import { openedDocumentMode, shouldFlushAutosaveBeforeReplacingDocument } from '
 import type { AuthorshipMark } from '../../markdown/authorship';
 import type { DocumentType } from '../../services/settingsService';
 import type { VisualStyleId } from '../../services/visualStyleService';
+import { formatFromPath } from '@sciemd/core';
+import type { DocumentFormat } from '@sciemd/core';
 
 export interface ParsedDocumentSessionHints {
   visualStyle: string | null;
@@ -11,8 +13,13 @@ export interface ParsedDocumentSessionHints {
 }
 
 export interface DocumentSessionState {
+  sourceText: string;
+  lastSavedSourceText: string;
+  /** @deprecated Compatibility alias for Markdown-specific consumers while the shell becomes format-generic. */
   markdown: string;
+  /** @deprecated Compatibility alias for Markdown-specific consumers while the shell becomes format-generic. */
   lastSavedMarkdown: string;
+  format: DocumentFormat;
   filePath: string | null;
   fileMetadata: FileMetadata;
   mode: EditorMode;
@@ -26,7 +33,10 @@ export interface OpenedDocumentInput {
   path: string | null;
   content: string;
   metadata: FileMetadata;
+  format?: DocumentFormat;
   preferredMode?: EditorMode;
+  savedSourceText?: string;
+  /** @deprecated Use savedSourceText for non-Markdown-safe app/session boundaries. */
   savedMarkdown?: string;
   parsedDocument?: ParsedDocumentSessionHints | null;
   normalizeVisualStyle: (value: string | null) => VisualStyleId | null;
@@ -41,6 +51,8 @@ export interface OpenedDocumentTransition {
 export interface DiskMergeTransition {
   state: Pick<
     DocumentSessionState,
+    | 'sourceText'
+    | 'lastSavedSourceText'
     | 'markdown'
     | 'lastSavedMarkdown'
     | 'fileMetadata'
@@ -83,11 +95,15 @@ export type LaunchDuplicateDecision =
 
 export const IMMEDIATE_PREPARING_OVERLAY_BYTES = 512 * 1024;
 export const COMMITTED_OPEN_STATUS_CLEAR_DELAY_MS = 220;
+export const DEFAULT_DOCUMENT_FORMAT: DocumentFormat = 'markdown';
 
-export function createInitialDocumentSessionState(initialMarkdown: string): DocumentSessionState {
+export function createInitialDocumentSessionState(initialSourceText: string): DocumentSessionState {
   return {
-    markdown: initialMarkdown,
-    lastSavedMarkdown: initialMarkdown,
+    sourceText: initialSourceText,
+    lastSavedSourceText: initialSourceText,
+    markdown: initialSourceText,
+    lastSavedMarkdown: initialSourceText,
+    format: DEFAULT_DOCUMENT_FORMAT,
     filePath: null,
     fileMetadata: DEFAULT_METADATA,
     mode: 'visual',
@@ -102,11 +118,14 @@ export function buildOpenedDocumentTransition({
   path,
   content,
   metadata,
+  format = inferDocumentFormat(path, DEFAULT_DOCUMENT_FORMAT),
   preferredMode,
-  savedMarkdown = content,
+  savedSourceText,
+  savedMarkdown,
   parsedDocument,
   normalizeVisualStyle,
 }: OpenedDocumentInput): OpenedDocumentTransition {
+  const resolvedSavedSourceText = savedSourceText ?? savedMarkdown ?? content;
   const settingsPatch: OpenedDocumentTransition['settingsPatch'] = {};
   if (parsedDocument) {
     const parsedVisualStyle = normalizeVisualStyle(parsedDocument.visualStyle);
@@ -117,11 +136,14 @@ export function buildOpenedDocumentTransition({
 
   return {
     state: {
+      sourceText: content,
+      lastSavedSourceText: resolvedSavedSourceText,
       markdown: content,
-      lastSavedMarkdown: savedMarkdown,
+      lastSavedMarkdown: resolvedSavedSourceText,
+      format,
       filePath: path,
       fileMetadata: metadata,
-      mode: openedDocumentMode(metadata, preferredMode),
+      mode: openedDocumentMode(metadata, preferredMode, format),
       autosaveStatus: path ? 'saved' : 'idle',
       lastAutosavedAt: null,
       externalConflict: false,
@@ -139,6 +161,8 @@ export function buildReviewedDiskMergeTransition(
 ): DiskMergeTransition {
   return {
     state: {
+      sourceText: content,
+      lastSavedSourceText: diskContent,
       markdown: content,
       lastSavedMarkdown: diskContent,
       fileMetadata: diskMetadata,
@@ -150,28 +174,36 @@ export function buildReviewedDiskMergeTransition(
 }
 
 export function decideUntitledDraftRestore(params: {
+  draftSourceText?: string | null;
   draftMarkdown: string | null;
+  initialSourceText?: string;
   initialMarkdown: string;
   draftIsBundledWelcome: boolean;
   initialIsBundledWelcome: boolean;
 }): UntitledDraftRestoreDecision {
-  const { draftMarkdown, initialMarkdown, draftIsBundledWelcome, initialIsBundledWelcome } = params;
-  if (draftMarkdown === null || draftMarkdown === initialMarkdown) return { action: 'skip' };
+  const draftSourceText = params.draftSourceText ?? params.draftMarkdown;
+  const initialSourceText = params.initialSourceText ?? params.initialMarkdown;
+  const { draftIsBundledWelcome, initialIsBundledWelcome } = params;
+  if (draftSourceText === null || draftSourceText === initialSourceText) return { action: 'skip' };
   if (draftIsBundledWelcome && initialIsBundledWelcome) return { action: 'clear-bundled-welcome' };
   return { action: 'prompt' };
 }
 
 export function buildUntitledDraftRestoreTransition(
-  draftMarkdown: string,
-  initialMarkdown: string,
+  draftSourceText: string,
+  initialSourceText: string,
+  format: DocumentFormat = DEFAULT_DOCUMENT_FORMAT,
 ): UntitledDraftRestoreTransition {
   return {
     state: {
-      markdown: draftMarkdown,
-      lastSavedMarkdown: initialMarkdown,
+      sourceText: draftSourceText,
+      lastSavedSourceText: initialSourceText,
+      markdown: draftSourceText,
+      lastSavedMarkdown: initialSourceText,
+      format,
       filePath: null,
       fileMetadata: DEFAULT_METADATA,
-      mode: 'visual',
+      mode: openedDocumentMode(DEFAULT_METADATA, undefined, format),
       autosaveStatus: 'idle',
       lastAutosavedAt: null,
       externalConflict: false,
@@ -239,6 +271,13 @@ export function documentOpenStatusClearDelay(committedDocument: boolean): number
 export function displayNameForPath(path: string): string {
   const parts = path.trim().split(/[\\/]+/);
   return parts[parts.length - 1] || 'document';
+}
+
+export function inferDocumentFormat(
+  path: string | null | undefined,
+  fallback: DocumentFormat = DEFAULT_DOCUMENT_FORMAT,
+): DocumentFormat {
+  return formatFromPath(path) ?? fallback;
 }
 
 export function keyForLaunchPath(path: string): string {

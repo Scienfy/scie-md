@@ -1,0 +1,16 @@
+# Materials study metadata
+
+study:
+  id: SCMD-YAML-001 # inline source-only note
+  title: Spray coating parameter sweep
+
+  # Keep this comment attached to operator in source.
+  operator: Amin
+  status: analysis-ready
+
+samples:
+  - id: S-001
+    substrate: glass
+  - id: S-002
+    substrate: steel
+

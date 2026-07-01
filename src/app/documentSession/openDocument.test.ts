@@ -37,13 +37,31 @@ describe('openDocumentForSession', () => {
     ]);
   });
 
+  it('uses the generic document picker when no explicit path is provided', async () => {
+    const input = createOpenInput();
+    input.host.dialog.pickDocumentFile = vi.fn().mockResolvedValue('C:\\docs\\results.json');
+    input.host.file.readTextFileForEdit = vi.fn().mockResolvedValue(readResponse('{"ok":true}\n'));
+
+    const opened = await openDocumentForSession(input);
+
+    expect(opened).toBe(true);
+    expect(input.host.dialog.pickDocumentFile).toHaveBeenCalledTimes(1);
+    expect(input.host.dialog.pickMarkdownFile).not.toHaveBeenCalled();
+    expect(input.commitOpenedDocument).toHaveBeenCalledWith(
+      'C:\\docs\\results.json',
+      '{"ok":true}\n',
+      readResponse('{"ok":true}\n').metadata,
+      undefined,
+    );
+  });
+
   it('prompts for an offerable file draft and commits the draft with the disk content as saved baseline', async () => {
     const path = 'C:\\docs\\drafted.md';
     const input = createOpenInput({
       confirmText: vi.fn<OpenDocumentForSessionInput['confirmText']>().mockResolvedValue(true),
     });
     input.host.file.readTextFileForEdit = vi.fn().mockResolvedValue(readResponse('# Disk\n'));
-    input.host.recovery.loadFileDraft = vi.fn().mockResolvedValue({ markdown: '# Draft\n', savedAt: 1000 });
+    input.host.recovery.loadFileDraft = vi.fn().mockResolvedValue({ markdown: '# Draft\n', savedAt: 1000, format: 'markdown' });
     input.host.recovery.shouldOfferFileDraftRestore = vi.fn().mockReturnValue(true);
 
     const opened = await openDocumentForSession({ ...input, explicitPath: path });
@@ -56,7 +74,7 @@ describe('openDocumentForSession', () => {
     }));
     expect(input.clearDocumentOpenStatus).toHaveBeenNthCalledWith(1, 1, 0);
     expect(input.showDocumentOpenStatus).toHaveBeenLastCalledWith(path, 'restoring', { immediate: true });
-    expect(input.commitOpenedDocument).toHaveBeenCalledWith(path, '# Draft\n', readResponse('# Disk\n').metadata, 'visual', '# Disk\n');
+    expect(input.commitOpenedDocument).toHaveBeenCalledWith(path, '# Draft\n', readResponse('# Disk\n').metadata, 'visual', '# Disk\n', 'markdown');
     expect(input.pushToast).toHaveBeenCalledWith('Restored unsaved file draft.', 'warning');
     expect(input.host.recovery.clearFileDraft).not.toHaveBeenCalled();
   });
@@ -67,7 +85,7 @@ describe('openDocumentForSession', () => {
       confirmText: vi.fn<OpenDocumentForSessionInput['confirmText']>().mockResolvedValue(false),
     });
     input.host.file.readTextFileForEdit = vi.fn().mockResolvedValue(readResponse('# Disk\n'));
-    input.host.recovery.loadFileDraft = vi.fn().mockResolvedValue({ markdown: '# Draft\n', savedAt: 1000 });
+    input.host.recovery.loadFileDraft = vi.fn().mockResolvedValue({ markdown: '# Draft\n', savedAt: 1000, format: 'markdown' });
     input.host.recovery.shouldOfferFileDraftRestore = vi.fn().mockReturnValue(true);
 
     const opened = await openDocumentForSession({ ...input, explicitPath: path });
@@ -85,7 +103,7 @@ describe('openDocumentForSession', () => {
     const opened = await openDocumentForSession(input);
 
     expect(opened).toBe(false);
-    expect(input.host.dialog.pickMarkdownFile).not.toHaveBeenCalled();
+    expect(input.host.dialog.pickDocumentFile).not.toHaveBeenCalled();
     expect(input.host.file.readTextFileForEdit).not.toHaveBeenCalled();
   });
 
@@ -122,7 +140,7 @@ describe('restoreExternalLaunchDraftAfterCommit', () => {
     const host = createHost();
     const commitOpenedDocument = vi.fn<OpenDocumentForSessionInput['commitOpenedDocument']>();
     const pushToast = vi.fn<OpenDocumentForSessionInput['pushToast']>();
-    host.recovery.loadFileDraft = vi.fn().mockResolvedValue({ markdown: '# Draft\n', savedAt: 2000 });
+    host.recovery.loadFileDraft = vi.fn().mockResolvedValue({ markdown: '# Draft\n', savedAt: 2000, format: 'markdown' });
     host.recovery.shouldOfferFileDraftRestore = vi.fn().mockReturnValue(true);
 
     await restoreExternalLaunchDraftAfterCommit({
@@ -131,13 +149,13 @@ describe('restoreExternalLaunchDraftAfterCommit', () => {
       response: readResponse('# Disk\n'),
       preferredMode: 'visual',
       isStillCurrentDocument: () => true,
-      getCurrentMarkdown: () => '# Disk\n',
+      getCurrentSourceText: () => '# Disk\n',
       commitOpenedDocument,
       pushToast,
       draftRestoreTimeoutMs: 20,
     });
 
-    expect(commitOpenedDocument).toHaveBeenCalledWith(path, '# Draft\n', readResponse('# Disk\n').metadata, 'visual', '# Disk\n');
+    expect(commitOpenedDocument).toHaveBeenCalledWith(path, '# Draft\n', readResponse('# Disk\n').metadata, 'visual', '# Disk\n', 'markdown');
     expect(pushToast).toHaveBeenCalledWith('Restored unsaved file draft.', 'warning');
     expect(diagnosticEventTypes(host)).toEqual([
       'document-open-draft-check-start',
@@ -149,7 +167,7 @@ describe('restoreExternalLaunchDraftAfterCommit', () => {
     const host = createHost();
     const commitOpenedDocument = vi.fn<OpenDocumentForSessionInput['commitOpenedDocument']>();
     const pushToast = vi.fn<OpenDocumentForSessionInput['pushToast']>();
-    host.recovery.loadFileDraft = vi.fn().mockResolvedValue({ markdown: '# Draft\n', savedAt: 2000 });
+    host.recovery.loadFileDraft = vi.fn().mockResolvedValue({ markdown: '# Draft\n', savedAt: 2000, format: 'markdown' });
     host.recovery.shouldOfferFileDraftRestore = vi.fn().mockReturnValue(true);
 
     await restoreExternalLaunchDraftAfterCommit({
@@ -158,7 +176,7 @@ describe('restoreExternalLaunchDraftAfterCommit', () => {
       response: readResponse('# Disk\n'),
       preferredMode: 'visual',
       isStillCurrentDocument: () => false,
-      getCurrentMarkdown: () => '# Disk\n',
+      getCurrentSourceText: () => '# Disk\n',
       commitOpenedDocument,
       pushToast,
       draftRestoreTimeoutMs: 20,
@@ -178,7 +196,7 @@ function createOpenInput(overrides: Partial<OpenDocumentForSessionInput> = {}): 
     setSettings: vi.fn<(settings: PersistedSettings | ((current: PersistedSettings) => PersistedSettings)) => void>(),
     isLatestOpenRequest: vi.fn<OpenDocumentForSessionInput['isLatestOpenRequest']>().mockReturnValue(true),
     isExternalLaunchDocumentCurrent: vi.fn<OpenDocumentForSessionInput['isExternalLaunchDocumentCurrent']>().mockReturnValue(true),
-    getCurrentMarkdown: vi.fn<OpenDocumentForSessionInput['getCurrentMarkdown']>().mockReturnValue('# Disk\n'),
+    getCurrentSourceText: vi.fn<OpenDocumentForSessionInput['getCurrentSourceText']>().mockReturnValue('# Disk\n'),
     settleDirtyDocumentBeforeReplace: vi.fn<OpenDocumentForSessionInput['settleDirtyDocumentBeforeReplace']>().mockResolvedValue(true),
     preserveDirtyDraftBeforeExternalOpen: vi.fn<OpenDocumentForSessionInput['preserveDirtyDraftBeforeExternalOpen']>(),
     showDocumentOpenStatus: vi.fn<OpenDocumentForSessionInput['showDocumentOpenStatus']>(() => {
@@ -203,12 +221,19 @@ function createHost(): DocumentHost {
     },
     dialog: {
       pickMarkdownFile: vi.fn().mockResolvedValue('C:\\docs\\picked.md'),
+      pickDocumentFile: vi.fn().mockResolvedValue('C:\\docs\\picked.md'),
+      pickJsonSchemaFile: vi.fn().mockResolvedValue(null),
       pickSavePath: vi.fn().mockResolvedValue(null),
     },
     launch: {
       getInitialMarkdownPath: vi.fn().mockResolvedValue(null),
+      getInitialDocumentPath: vi.fn().mockResolvedValue(null),
       peekPendingMarkdownOpen: vi.fn().mockResolvedValue(null),
+      peekPendingDocumentOpen: vi.fn().mockResolvedValue(null),
+      takePendingMarkdownOpen: vi.fn().mockResolvedValue(null),
+      takePendingDocumentOpen: vi.fn().mockResolvedValue(null),
       clearPendingMarkdownOpen: vi.fn().mockResolvedValue(undefined),
+      clearPendingDocumentOpen: vi.fn().mockResolvedValue(undefined),
       listenSingleInstanceOpen: vi.fn().mockResolvedValue(vi.fn()),
     },
     recovery: {

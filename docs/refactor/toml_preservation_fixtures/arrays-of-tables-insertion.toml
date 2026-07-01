@@ -1,0 +1,15 @@
+# Array-of-tables insertion fixture
+
+[catalog]
+title = "Reagents"
+
+[[reagents]]
+id = "R-001"
+name = "Acetone"
+hazards = ["flammable"]
+
+[[reagents]]
+id = "R-002"
+name = "Ethanol"
+hazards = ["flammable", "irritant"]
+

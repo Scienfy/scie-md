@@ -4,9 +4,18 @@ import type { EditorMode, FileMetadata } from '../documentState';
 import { DEFAULT_METADATA } from '../documentState';
 import { createInsertionAuthorshipMark } from '../../markdown/authorship';
 import type { AuthorshipMark } from '../../markdown/authorship';
-import { createDiffHunks, createReviewPlan } from '@sciemd/core';
-import type { DiffHunk, ReviewPlan } from '@sciemd/core';
-import { isMarkdownPath } from '../../markdown/supportedMarkdown';
+import {
+  canonicalizeStructuredIngressText,
+  createDiffHunks,
+  createReviewPlan,
+  formatBrowserTextIngressBudgetBytes,
+  formatByteLengthUtf8,
+  formatBytes,
+  formatClipboardIngressBudgetBytes,
+  formatRuntimePolicyFor,
+  inferStructuredDocument,
+} from '@sciemd/core';
+import type { DelimitedTextConversionPreview, DiffHunk, DocumentFormat, ReviewPlan } from '@sciemd/core';
 import { desktopPlatformHost } from '../host/desktopPlatformHost';
 import type { DesktopPlatformHost } from '../host/platformHost';
 
@@ -29,23 +38,37 @@ export interface PasteReviewState {
   open: boolean;
 }
 
+export interface TabularPasteState {
+  source: string;
+  preview: DelimitedTextConversionPreview;
+  createdAtMs: number;
+}
+
 interface DocumentDropPasteParams {
-  markdownRef: MutableRefObject<string>;
+  sourceTextRef: MutableRefObject<string>;
   documentEpochRef: MutableRefObject<number>;
   insertImageBlob: (blob: Blob, preferredName?: string) => Promise<void>;
   insertImageFromPath: (imagePath: string, promptForAlt?: boolean) => Promise<void>;
   openDocumentPath: (path: string) => Promise<void>;
   settleDirtyDocumentBeforeReplace: () => Promise<boolean>;
-  commitOpenedDocument: (path: string | null, content: string, metadata: FileMetadata, preferredMode?: EditorMode) => void;
-  validateNow: (markdown: string, sizeBytes?: number) => unknown;
+  commitOpenedDocument: (
+    path: string | null,
+    content: string,
+    metadata: FileMetadata,
+    preferredMode?: EditorMode,
+    savedSourceText?: string,
+    documentFormat?: DocumentFormat,
+  ) => void;
+  validateNow: (sourceText: string, sizeBytes?: number) => unknown;
   setAuthorshipMarks: Dispatch<SetStateAction<AuthorshipMark[]>>;
   setPasteReview: Dispatch<SetStateAction<PasteReviewState | null>>;
+  setTabularPaste: Dispatch<SetStateAction<TabularPasteState | null>>;
   pushToast: (text: string, tone?: 'info' | 'success' | 'warning' | 'error') => void;
   platformHost?: DesktopPlatformHost;
 }
 
 export function useDocumentDropPaste({
-  markdownRef,
+  sourceTextRef,
   documentEpochRef,
   insertImageBlob,
   insertImageFromPath,
@@ -55,13 +78,19 @@ export function useDocumentDropPaste({
   validateNow,
   setAuthorshipMarks,
   setPasteReview,
+  setTabularPaste,
   pushToast,
   platformHost = desktopPlatformHost,
 }: DocumentDropPasteParams) {
   const handleDroppedPaths = useCallback(async (paths: string[]) => {
-    const markdownPath = paths.find(isMarkdownPath);
-    if (markdownPath) {
-      await openDocumentPath(markdownPath);
+    const documentPath = paths.find((path) => isDroppedDocumentFormat(inferStructuredDocument({
+      text: '',
+      path,
+      origin: 'drop',
+      trust: 'userConfirmed',
+    }).format));
+    if (documentPath) {
+      await openDocumentPath(documentPath);
       return;
     }
 
@@ -108,13 +137,39 @@ export function useDocumentDropPaste({
       }
     }
 
-    const text = event.clipboardData.getData('text/plain');
+    const rawText = event.clipboardData.getData('text/plain');
+    if (rawText && formatByteLengthUtf8(rawText) > formatClipboardIngressBudgetBytes(null)) {
+      pushToast(
+        `Large clipboard text was pasted without structured preview or diff review because it exceeds ${formatBytes(formatClipboardIngressBudgetBytes(null))}.`,
+        'warning',
+      );
+      return;
+    }
+
+    const { text } = canonicalizeStructuredIngressText(rawText);
+    const ingest = inferStructuredDocument({
+      text,
+      mimeType: 'text/plain',
+      origin: 'clipboard',
+      trust: 'transient',
+    });
+    if (ingest.tabularPreview) {
+      event.preventDefault();
+      setTabularPaste({
+        source: text,
+        preview: ingest.tabularPreview,
+        createdAtMs: Date.now(),
+      });
+      pushToast('Delimited data detected. Choose an output format before inserting.', 'info');
+      return;
+    }
+
     if (text.length > PASTE_REVIEW_THRESHOLD_CHARS) {
-      const before = markdownRef.current;
+      const before = sourceTextRef.current;
       const pasteDocumentEpoch = documentEpochRef.current;
       window.setTimeout(() => {
         if (documentEpochRef.current !== pasteDocumentEpoch) return;
-        const after = markdownRef.current;
+        const after = sourceTextRef.current;
         validateNow(after);
         if (after === before) return;
         const hunks = createDiffHunks(before, after);
@@ -135,23 +190,49 @@ export function useDocumentDropPaste({
         );
       }, 80);
     }
-  }, [documentEpochRef, insertImageBlob, markdownRef, pushToast, setAuthorshipMarks, setPasteReview, validateNow]);
+  }, [documentEpochRef, insertImageBlob, pushToast, setAuthorshipMarks, setPasteReview, setTabularPaste, sourceTextRef, validateNow]);
 
   const handleDropCapture = useCallback((event: ReactDragEvent<HTMLElement>) => {
     const files = Array.from(event.dataTransfer.files);
     if (files.length === 0) return;
 
-    const markdownFile = files.find((file) => isMarkdownPath(file.name));
-    if (markdownFile) {
+    const documentCandidate = files
+      .map((file) => ({
+        file,
+        ingest: inferStructuredDocument({
+          text: '',
+          path: file.name,
+          mimeType: file.type,
+          origin: 'drop',
+          trust: 'userConfirmed',
+        }),
+      }))
+      .find((candidate) => isDroppedDocumentFormat(candidate.ingest.format));
+    if (documentCandidate) {
       event.preventDefault();
+      const { file: documentFile, ingest: initialIngest } = documentCandidate;
+      const budgetBytes = formatBrowserTextIngressBudgetBytes(initialIngest.format);
+      if (documentFile.size > budgetBytes) {
+        pushToast(
+          `${documentFile.name} is too large for browser drag-and-drop import (${formatBytes(documentFile.size)} > ${formatBytes(budgetBytes)}). Open it through the file picker instead.`,
+          'warning',
+        );
+        return;
+      }
       void (async () => {
         if (!(await settleDirtyDocumentBeforeReplace())) return;
-        const content = await markdownFile.text();
-        validateNow(content);
-        commitOpenedDocument(null, content, DEFAULT_METADATA, 'visual');
+        const { text: content } = canonicalizeStructuredIngressText(await documentFile.text());
+        const ingest = inferStructuredDocument({
+          text: content,
+          path: documentFile.name,
+          mimeType: documentFile.type,
+          origin: 'drop',
+          trust: 'userConfirmed',
+        });
+        commitOpenedDocument(null, content, DEFAULT_METADATA, 'visual', content, ingest.format);
       })().catch((error) => {
-        console.warn('Dropped Markdown file could not be opened.', error);
-        pushToast(error instanceof Error ? error.message : 'Could not open dropped Markdown.', 'error');
+        console.warn('Dropped document file could not be opened.', error);
+        pushToast(error instanceof Error ? error.message : 'Could not open dropped document.', 'error');
       });
       return;
     }
@@ -170,6 +251,10 @@ export function useDocumentDropPaste({
     handlePasteCapture,
     handleDropCapture,
   };
+}
+
+function isDroppedDocumentFormat(format: DocumentFormat): boolean {
+  return formatRuntimePolicyFor(format).canOpenAsDocument;
 }
 
 function createBulkReviewPlan(hunks: DiffHunk[]): ReviewPlan {

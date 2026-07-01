@@ -7,7 +7,7 @@ import { useAutosaveTimer } from './useAutosaveTimer';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 type SaveCurrent = (options?: { autosave?: boolean; forceSaveAs?: boolean }) => Promise<string | false>;
-type SetAutosaveStatus = (status: 'idle' | 'pending' | 'saving' | 'saved' | 'error' | 'conflict') => void;
+type SetAutosaveStatus = (status: 'idle' | 'pending' | 'paused' | 'saving' | 'saved' | 'error' | 'conflict') => void;
 type MockedCallback<T extends (...args: any[]) => unknown> = T & ReturnType<typeof vi.fn>;
 
 describe('useAutosaveTimer', () => {
@@ -35,13 +35,13 @@ describe('useAutosaveTimer', () => {
     vi.useRealTimers();
   });
 
-  it('debounces autosave again when markdown changes while dirty remains true', () => {
-    renderAutosave({ markdown: 'draft one', dirty: true });
+  it('debounces autosave again when sourceText changes while dirty remains true', () => {
+    renderAutosave({ sourceText: 'draft one', dirty: true });
 
     act(() => {
       vi.advanceTimersByTime(AUTOSAVE_DELAY_MS - 1);
     });
-    renderAutosave({ markdown: 'draft two', dirty: true });
+    renderAutosave({ sourceText: 'draft two', dirty: true });
     act(() => {
       vi.advanceTimersByTime(1);
     });
@@ -57,7 +57,7 @@ describe('useAutosaveTimer', () => {
   });
 
   it('flushes immediately and cancels the pending timer', async () => {
-    renderAutosave({ markdown: 'draft one', dirty: true });
+    renderAutosave({ sourceText: 'draft one', dirty: true });
 
     await act(async () => {
       await controls?.flushAutosave();
@@ -71,7 +71,7 @@ describe('useAutosaveTimer', () => {
   });
 
   it('returns false when flushing a dirty document while autosave is blocked', async () => {
-    renderAutosave({ markdown: 'draft one', dirty: true, autosaveBlocked: true });
+    renderAutosave({ sourceText: 'draft one', dirty: true, autosaveBlocked: true });
 
     let result: unknown = true;
     await act(async () => {
@@ -82,9 +82,21 @@ describe('useAutosaveTimer', () => {
     expect(saveCurrent).not.toHaveBeenCalled();
   });
 
+  it('marks a dirty saved document as paused while autosave is blocked', () => {
+    renderAutosave({ sourceText: 'invalid structured source', dirty: true, autosaveBlocked: true });
+
+    act(() => {
+      vi.advanceTimersByTime(AUTOSAVE_DELAY_MS);
+    });
+
+    expect(setAutosaveStatus).toHaveBeenCalledWith('pending');
+    expect(setAutosaveStatus).toHaveBeenCalledWith('paused');
+    expect(saveCurrent).not.toHaveBeenCalled();
+  });
+
   it('marks autosave as error when the scheduled save rejects', async () => {
     saveCurrent.mockRejectedValueOnce(new Error('disk full'));
-    renderAutosave({ markdown: 'draft one', dirty: true });
+    renderAutosave({ sourceText: 'draft one', dirty: true });
 
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DELAY_MS);
@@ -102,7 +114,7 @@ describe('useAutosaveTimer', () => {
         resolveFirstSave = resolve;
       }) as ReturnType<SaveCurrent>)
       .mockResolvedValueOnce('C:\\docs\\paper.md');
-    renderAutosave({ markdown: 'draft one', dirty: true });
+    renderAutosave({ sourceText: 'draft one', dirty: true });
 
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DELAY_MS);
@@ -110,7 +122,7 @@ describe('useAutosaveTimer', () => {
     });
     expect(saveCurrent).toHaveBeenCalledTimes(1);
 
-    renderAutosave({ markdown: 'draft two', dirty: true });
+    renderAutosave({ sourceText: 'draft two', dirty: true });
     await act(async () => {
       vi.advanceTimersByTime(AUTOSAVE_DELAY_MS);
       await Promise.resolve();
@@ -128,7 +140,7 @@ describe('useAutosaveTimer', () => {
   });
 
   it('resumes autosave after the dirty close dialog is canceled', async () => {
-    renderAutosave({ markdown: 'draft one', dirty: true });
+    renderAutosave({ sourceText: 'draft one', dirty: true });
 
     act(() => {
       controls?.cancelAutosave();
@@ -149,13 +161,13 @@ describe('useAutosaveTimer', () => {
   });
 
   it('runs autosave at max-wait even when continuous typing keeps resetting the debounce timer', async () => {
-    renderAutosave({ markdown: 'draft 0', dirty: true });
+    renderAutosave({ sourceText: 'draft 0', dirty: true });
 
     for (let index = 1; index <= 6; index += 1) {
       act(() => {
         vi.advanceTimersByTime(AUTOSAVE_DELAY_MS - 1);
       });
-      renderAutosave({ markdown: `draft ${index}`, dirty: true });
+      renderAutosave({ sourceText: `draft ${index}`, dirty: true });
       expect(saveCurrent).not.toHaveBeenCalled();
     }
 
@@ -171,7 +183,7 @@ describe('useAutosaveTimer', () => {
   });
 
   function renderAutosave(props: {
-    markdown: string;
+    sourceText: string;
     dirty: boolean;
     autosaveBlocked?: boolean;
   }) {
@@ -179,7 +191,7 @@ describe('useAutosaveTimer', () => {
       root.render(
         <Harness
           filePath="C:\\docs\\paper.md"
-          markdown={props.markdown}
+          sourceText={props.sourceText}
           dirty={props.dirty}
           autosaveBlocked={props.autosaveBlocked}
           saveCurrent={saveCurrent}
@@ -195,7 +207,7 @@ describe('useAutosaveTimer', () => {
 
 function Harness({
   filePath,
-  markdown,
+  sourceText,
   dirty,
   autosaveBlocked,
   saveCurrent,
@@ -203,7 +215,7 @@ function Harness({
   onControls,
 }: {
   filePath: string | null;
-  markdown: string;
+  sourceText: string;
   dirty: boolean;
   autosaveBlocked?: boolean;
   saveCurrent: SaveCurrent;
@@ -212,7 +224,7 @@ function Harness({
 }) {
   const controls = useAutosaveTimer({
     filePath,
-    markdown,
+    sourceText,
     dirty,
     externalConflict: false,
     autosaveBlocked,

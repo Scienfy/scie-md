@@ -459,6 +459,107 @@
   font-weight: 750;
 }
 
+.structured-navigation-panel {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.structured-navigation-summary {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border), transparent 22%);
+  border-radius: 6px;
+  padding: 7px 8px;
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.structured-navigation-search {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.structured-navigation-list {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.structured-navigation-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 2px 6px;
+  align-items: center;
+  width: 100%;
+  min-height: 34px;
+  margin: 1px 0;
+  overflow: hidden;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.structured-navigation-item.level-2 { padding-left: 16px; }
+.structured-navigation-item.level-3 { padding-left: 28px; }
+.structured-navigation-item.level-4,
+.structured-navigation-item.level-5,
+.structured-navigation-item.level-6 { padding-left: 40px; }
+
+.structured-navigation-item.active {
+  background: var(--button-hover);
+  border-color: var(--accent-soft);
+  color: var(--text-strong);
+}
+
+.structured-navigation-item.warning .structured-navigation-kind,
+.structured-navigation-item.error .structured-navigation-kind {
+  color: var(--warning);
+}
+
+.structured-navigation-item.error {
+  border-color: color-mix(in srgb, var(--error), transparent 62%);
+}
+
+.structured-navigation-kind {
+  grid-row: 1 / span 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.structured-navigation-label,
+.structured-navigation-item small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.structured-navigation-label {
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.structured-navigation-item small {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  line-height: 1.2;
+}
+
 .explorer-panel {
   display: grid;
   gap: 8px;

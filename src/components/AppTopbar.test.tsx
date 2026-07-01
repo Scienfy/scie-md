@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppTopbarMenuId as MenuId } from './AppTopbar';
 import { AppTopbar } from './AppTopbar';
 import type { RecentFilePreview } from '../markdown/documentIntelligence';
+import { formatCapabilitiesFor } from '../app/formatCapabilities';
+import { parseSourceFormatDiagnostics } from '../app/formatDiagnostics';
+import { createStructuredSurfaceNavigationModel } from '../app/structuredSurfaceNavigation';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -41,7 +44,8 @@ describe('AppTopbar menu architecture', () => {
     renderTopbar('file');
 
     const text = menuText();
-    expect(text).toContain('New from Template');
+    expect(text).toContain('New Document');
+    expect(text).not.toContain('Open New Document Chooser');
     expect(text).toContain('Open Recent');
     expect(text).toContain('Styled HTML');
     expect(text).toContain('PDF');
@@ -67,6 +71,105 @@ describe('AppTopbar menu architecture', () => {
     expect(menuText()).toContain('Show Last Export Log');
     expect(menuText()).toContain('Export Diagnostics Bundle');
   });
+
+  it('labels JSON read-only mode as Tree and hides Markdown visual style controls', () => {
+    renderTopbar('view', [], {
+      mode: 'visual',
+      formatCapabilities: formatCapabilitiesFor('json'),
+    });
+
+    const text = menuText();
+    expect(text).toContain('Tree Mode');
+    expect(text).toContain('Source Mode');
+    expect(text).not.toContain('Visual Mode');
+    expect(text).not.toContain('Visual style');
+    expect(container.querySelector('.editor-mode-toggle')?.textContent).toContain('Tree');
+  });
+
+  it('labels JSONL read-only mode as Records', () => {
+    renderTopbar('view', [], {
+      mode: 'visual',
+      formatCapabilities: formatCapabilitiesFor('jsonl'),
+    });
+
+    const text = menuText();
+    expect(text).toContain('Records Mode');
+    expect(text).toContain('Source Mode');
+    expect(text).not.toContain('Tree Mode');
+    expect(text).not.toContain('Visual Mode');
+    expect(container.querySelector('.editor-mode-toggle')?.textContent).toContain('Records');
+  });
+
+  it('labels CSV preview mode as Table', () => {
+    renderTopbar('view', [], {
+      mode: 'visual',
+      formatCapabilities: formatCapabilitiesFor('csv'),
+    });
+
+    const text = menuText();
+    expect(text).toContain('Table Mode');
+    expect(text).toContain('Source Mode');
+    expect(text).not.toContain('Tree Mode');
+    expect(text).not.toContain('Records Mode');
+    expect(text).not.toContain('Visual Mode');
+    expect(container.querySelector('.editor-mode-toggle')?.textContent).toContain('Table');
+  });
+
+  it('uses format-aware untitled names without a mode toggle for source-only plain text documents', () => {
+    renderTopbar(null, [], {
+      mode: 'source',
+      format: 'plainText',
+      formatCapabilities: formatCapabilitiesFor('plainText'),
+    });
+
+    const title = container.querySelector('.document-title');
+    expect(title?.textContent).toBe('Untitled.txt');
+    expect(title?.getAttribute('title')).toBe('Untitled.txt');
+    expect(container.querySelector('.editor-mode-toggle')).toBeNull();
+    expect(container.querySelector('.structured-surface-toggle')).toBeNull();
+    expect(container.querySelector('[aria-label="Theme: dark"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Toggle navigation sidebar"]')).not.toBeNull();
+  });
+
+  it('renders explicit structured surface controls and disabled reasons', () => {
+    const onStructuredSurfaceChange = vi.fn();
+    const structuredSurfaceNavigation = createStructuredSurfaceNavigationModel({
+      format: 'json',
+      mode: 'visual',
+      formatCapabilities: formatCapabilitiesFor('json'),
+      preferredVisualSurface: 'tree',
+      jsonAnalysis: parseSourceFormatDiagnostics('json', '{"study":{"id":"S-001"}}', null).jsonAnalysis,
+      jsonArrayTableAvailable: false,
+    });
+
+    renderTopbar('view', [], {
+      mode: 'visual',
+      formatCapabilities: formatCapabilitiesFor('json'),
+      structuredSurfaceNavigation,
+      onStructuredSurfaceChange,
+    });
+
+    const toggle = container.querySelector('.structured-surface-toggle');
+    expect(toggle?.textContent).toContain('Tree');
+    expect(toggle?.textContent).toContain('Table');
+    expect(toggle?.textContent).toContain('Cards');
+    expect(toggle?.textContent).toContain('Health');
+    expect(toggle?.textContent).toContain('Source');
+    expect(toggle?.querySelector<HTMLButtonElement>('button[title="No table-shaped object array is selected or discoverable."]')?.disabled).toBe(true);
+    expect(menuText()).toContain('Tree Mode');
+    expect(menuText()).toContain('Table Mode');
+    expect(menuText()).toContain('Cards Mode');
+    expect(menuText()).toContain('Health Mode');
+    expect(menuText()).toContain('Source Mode');
+
+    const sourceButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.structured-surface-toggle button'))
+      .find((button) => button.textContent === 'Source');
+    act(() => {
+      sourceButton?.click();
+    });
+    expect(onStructuredSurfaceChange).toHaveBeenCalledWith('source');
+  });
+
 
   it('keeps quick actions focused on insert, search, and command palette', () => {
     renderTopbar(null);
@@ -109,6 +212,58 @@ describe('AppTopbar menu architecture', () => {
     expect(menuText()).not.toContain('Generate Submission Readiness Report');
     expect(menuText()).not.toContain('Copy for LLM');
     expect(menuText()).not.toContain('Copy Current Section');
+  });
+
+  it('exposes structured context actions from the LLM menu for JSON without Markdown marker commands', () => {
+    const onCopyStructuredContext = vi.fn();
+    const onCopyParserDiagnostics = vi.fn();
+    renderTopbar('review', [], {
+      formatCapabilities: formatCapabilitiesFor('json'),
+      structuredContextAvailable: true,
+      structuredPasteBackValidationAvailable: true,
+      onCopyStructuredContext,
+      onCopyParserDiagnostics,
+    });
+
+    const text = menuText();
+    expect(text).toContain('Structured context');
+    expect(text).toContain('Local copy/export only');
+    expect(text).toContain('Copy structured context');
+    expect(text).toContain('Copy selected path context');
+    expect(text).toContain('Copy schema-aware JSON context');
+    expect(text).toContain('Copy parser diagnostics');
+    expect(text).toContain('Validate structured clipboard');
+    expect(text).not.toContain('Copy ScieMD LLM Skill');
+    expect(text).not.toContain('Review Pasted Changes');
+
+    act(() => {
+      findMenuButton('Copy structured context')?.click();
+    });
+    expect(onCopyStructuredContext).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      findMenuButton('Copy parser diagnostics')?.click();
+    });
+    expect(onCopyParserDiagnostics).toHaveBeenCalledTimes(1);
+  });
+
+  it('exposes table sample context for CSV without schema-aware JSON context', () => {
+    const onCopyStructuredTableSample = vi.fn();
+    renderTopbar('review', [], {
+      formatCapabilities: formatCapabilitiesFor('csv'),
+      structuredContextAvailable: true,
+      structuredTableSampleAvailable: true,
+      structuredPasteBackValidationAvailable: true,
+      onCopyStructuredTableSample,
+    });
+
+    expect(menuText()).toContain('Copy table sample');
+    expect(menuText()).not.toContain('Copy schema-aware JSON context');
+
+    act(() => {
+      findMenuButton('Copy table sample')?.click();
+    });
+    expect(onCopyStructuredTableSample).toHaveBeenCalledTimes(1);
   });
 
   it('enables paste review only when pasted changes are available', () => {
@@ -180,24 +335,30 @@ describe('AppTopbar menu architecture', () => {
 function renderTopbar(
   activeMenu: MenuId | null,
   recentFiles: RecentFilePreview[] = [],
-  overrides: Partial<Pick<ComponentProps<typeof AppTopbar>, 'hasPasteReview' | 'onOpenPasteReview'>> = {},
+  overrides: Partial<ComponentProps<typeof AppTopbar>> = {},
 ) {
   const handler = vi.fn();
   act(() => {
     root.render(
       <AppTopbar
-        mode="visual"
+        mode={overrides.mode ?? 'visual'}
+        format={overrides.format ?? 'markdown'}
+        formatCapabilities={overrides.formatCapabilities}
         activeMenu={activeMenu}
         filePath={null}
         dirty={false}
         outlineOpen
         inspectorOpen={false}
         focusMode={false}
+        structuredSurfaceNavigation={overrides.structuredSurfaceNavigation}
         themeMode="dark"
         currentVisualStyle={{ label: 'Scienfy', shortLabel: 'Scienfy' }}
         selectedVisualStyle="scienfy"
         recentFiles={recentFiles}
         hasPasteReview={overrides.hasPasteReview ?? false}
+        structuredContextAvailable={overrides.structuredContextAvailable}
+        structuredTableSampleAvailable={overrides.structuredTableSampleAvailable}
+        structuredPasteBackValidationAvailable={overrides.structuredPasteBackValidationAvailable}
         onToggleMenu={handler}
         onCloseMenus={noop}
         onNew={noop}
@@ -229,6 +390,13 @@ function renderTopbar(
         onSyncBibliography={noop}
         onCopyScieMDLlmSkill={noop}
         onGenerateScieMDLlmSkill={noop}
+        onCopyStructuredContext={overrides.onCopyStructuredContext ?? noop}
+        onCopySelectedStructureContext={overrides.onCopySelectedStructureContext ?? noop}
+        onCopySchemaAwareJsonContext={overrides.onCopySchemaAwareJsonContext ?? noop}
+        onCopyStructuredTableSample={overrides.onCopyStructuredTableSample ?? noop}
+        onCopyParserDiagnostics={overrides.onCopyParserDiagnostics ?? noop}
+        onCopyRedactedStructuredPreview={overrides.onCopyRedactedStructuredPreview ?? noop}
+        onValidateStructuredClipboard={overrides.onValidateStructuredClipboard ?? noop}
         onGenerateSubmissionReadiness={noop}
         onOpenPasteReview={overrides.onOpenPasteReview ?? noop}
         onOpenExportDialog={noop}
@@ -248,6 +416,7 @@ function renderTopbar(
         onOpenCommandPalette={noop}
         onOpenSlashMenu={noop}
         onModeChange={noop}
+        onStructuredSurfaceChange={overrides.onStructuredSurfaceChange}
         onSetVisualStyle={noop}
         onSetThemeMode={noop}
         onIncreaseFont={noop}
@@ -268,6 +437,7 @@ function renderTopbar(
     );
   });
 }
+
 
 function menuText(): string {
   return container.querySelector('.app-menu-panel')?.textContent ?? '';

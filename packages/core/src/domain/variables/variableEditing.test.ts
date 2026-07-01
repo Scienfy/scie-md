@@ -28,6 +28,21 @@ describe('variableEditing', () => {
     expect(edited).toContain('keep {{ old_name }}');
   });
 
+  it('preserves CRLF line endings when editing front matter variables', () => {
+    const markdown = [
+      '---',
+      'variables:',
+      '  old_name: 1',
+      '---',
+      'Use {{ old_name }} here.',
+      '',
+    ].join('\r\n');
+    const edited = renameVariableAndUpdateUsages(markdown, 'old_name', 'new_name', '2');
+
+    expect(edited).toContain('variables:\r\n  new_name: "2"\r\n---\r\nUse {{ new_name }} here.');
+    expect(edited).not.toContain('\nvariables:\n');
+  });
+
   it('generates the next available variable name', () => {
     expect(nextVariableName([
       { name: 'variable_1', value: 'a', source: 'frontmatter' },

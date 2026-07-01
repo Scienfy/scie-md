@@ -113,6 +113,33 @@ describe('variableIndex', () => {
     });
   });
 
+  it('records source offsets and substitutes variables without normalizing CRLF front matter', () => {
+    const markdown = [
+      '---',
+      'variables:',
+      '  sample_count: 12',
+      '---',
+      'Value {{ sample_count }}.',
+      '',
+    ].join('\r\n');
+
+    const usage = buildVariableIndex(markdown, parseFrontmatter(markdown)).usages[0];
+    expect(usage).toMatchObject({
+      name: 'sample_count',
+      line: 5,
+      from: markdown.indexOf('{{ sample_count }}'),
+      to: markdown.indexOf('{{ sample_count }}') + '{{ sample_count }}'.length,
+    });
+    expect(substituteVariables(markdown)).toBe([
+      '---',
+      'variables:',
+      '  sample_count: 12',
+      '---',
+      'Value 12.',
+      '',
+    ].join('\r\n'));
+  });
+
   it('parses JSON and CSV variable data files', () => {
     expect(parseVariableDataFile('{"exp1":{"p_value":0.023},"sample_count":12}', 'results.json')).toEqual([
       { name: 'exp1.p_value', value: '0.023', source: 'external', file: 'results.json' },

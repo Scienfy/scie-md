@@ -117,10 +117,52 @@ const divergentMirrorClassifications = new Map([
     },
   ],
   [
+    'components/InspectorPane.tsx',
+    {
+      category: 'hostAdapter',
+      reason: 'desktop inspector includes structured-format diagnostics and trees; the extension uses a separate read-only structured preview webview path.',
+    },
+  ],
+  [
     'components/NavigationSidebar.tsx',
     {
       category: 'hostAdapter',
       reason: 'desktop file-explorer image previews use native resource conversion that is not part of the VSIX runtime surface.',
+    },
+  ],
+  [
+    'components/NavigationSidebar.test.tsx',
+    {
+      category: 'hostAdapter',
+      reason: 'desktop navigation tests cover native file-explorer and structured-document routing that are not mirrored in the VS Code webview.',
+    },
+  ],
+  [
+    'components/QuickOutlineHover.tsx',
+    {
+      category: 'hostAdapter',
+      reason: 'desktop quick outline owns context-menu affordances and copy feedback; the VS Code webview keeps a reduced outline without desktop context-menu plumbing.',
+    },
+  ],
+  [
+    'components/StatusBar.tsx',
+    {
+      category: 'hostAdapter',
+      reason: 'desktop status chrome reports multi-format document state; the extension owns a reduced VS Code webview status surface.',
+    },
+  ],
+  [
+    'components/StatusBar.test.tsx',
+    {
+      category: 'hostAdapter',
+      reason: 'desktop status tests cover multi-format document state that the extension does not mirror directly.',
+    },
+  ],
+  [
+    'components/TemplateDialog.tsx',
+    {
+      category: 'hostAdapter',
+      reason: 'desktop exposes Markdown, structured, and plain-text new-document templates; the VS Code webview keeps a reduced Markdown template chooser.',
     },
   ],
   [
@@ -194,10 +236,45 @@ const divergentMirrorClassifications = new Map([
     },
   ],
   [
+    'styles/app.dialogs.css',
+    {
+      category: 'hostAdapter',
+      reason: 'desktop dialog styles include native structured workflows; the extension keeps VS Code webview-specific dialogs in its own stylesheet.',
+    },
+  ],
+  [
     'styles/app.editor.css',
     {
       category: 'hostAdapter',
       reason: 'desktop editor chrome includes startup-open fallback styling that is not part of the VS Code webview host.',
+    },
+  ],
+  [
+    'styles/app.navigation.css',
+    {
+      category: 'hostAdapter',
+      reason: 'desktop navigation includes structured-data sidebar affordances; the extension uses separate structured preview webview navigation.',
+    },
+  ],
+  [
+    'styles/app.panels.css',
+    {
+      category: 'hostAdapter',
+      reason: 'desktop panel styles include structured inspectors and conflict UI that are represented by separate extension webview styles.',
+    },
+  ],
+  [
+    'styles/app.shell.css',
+    {
+      category: 'hostAdapter',
+      reason: 'desktop shell styles include structured surface toggles and context menus that are not mirrored in the reduced VS Code webview shell.',
+    },
+  ],
+  [
+    'styles/app.source-editor.css',
+    {
+      category: 'hostAdapter',
+      reason: 'desktop source editor styles include structured parser status badges; the extension keeps structured preview status in its own VS Code webview styles.',
     },
   ],
   [

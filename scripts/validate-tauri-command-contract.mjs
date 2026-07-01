@@ -3,25 +3,54 @@ import path from 'node:path';
 
 const repoRoot = process.cwd();
 const libPath = path.join(repoRoot, 'src-tauri', 'src', 'lib.rs');
+const dialogsPath = path.join(repoRoot, 'src-tauri', 'src', 'commands', 'dialogs.rs');
 const configPath = path.join(repoRoot, 'src-tauri', 'tauri.conf.json');
 const cargoManifestPath = path.join(repoRoot, 'src-tauri', 'Cargo.toml');
+const nsisHooksPath = path.join(repoRoot, 'src-tauri', 'windows', 'nsis-hooks.nsh');
+const tomlSourceMapPath = path.join(repoRoot, 'src-tauri', 'src', 'commands', 'toml_source_map.rs');
 const sourceRoot = path.join(repoRoot, 'src');
 const failures = [];
 
-const registeredCommands = parseRegisteredCommands(readFileSync(libPath, 'utf8'));
+const libSource = readFileSync(libPath, 'utf8');
+const dialogsSource = readFileSync(dialogsPath, 'utf8');
 const invokedCommands = scanInvokedCommands(sourceRoot);
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 const cargoManifest = readFileSync(cargoManifestPath, 'utf8');
+const nsisHooksSource = readFileSync(nsisHooksPath, 'utf8');
+const tomlSourceMapSource = readFileSync(tomlSourceMapPath, 'utf8');
+const registeredCommands = parseRegisteredCommands(libSource);
+
+const DOCUMENT_ASSOCIATION_PROGIDS = new Map([
+  ['md', 'ScieMD.Markdown'],
+  ['markdown', 'ScieMD.Markdown'],
+  ['json', 'ScieMD.JSON'],
+  ['jsonl', 'ScieMD.JSONLines'],
+  ['ndjson', 'ScieMD.JSONLines'],
+  ['yaml', 'ScieMD.YAML'],
+  ['yml', 'ScieMD.YAML'],
+  ['toml', 'ScieMD.TOML'],
+  ['xml', 'ScieMD.XML'],
+  ['tsv', 'ScieMD.TSV'],
+  ['txt', 'ScieMD.PlainText'],
+  ['text', 'ScieMD.PlainText'],
+]);
+const DOCUMENT_ASSOCIATION_EXTENSIONS = [...DOCUMENT_ASSOCIATION_PROGIDS.keys()];
 
 const requiredCommandGroups = {
   startup: [
+    'initial_document_path',
     'initial_markdown_path',
+    'peek_pending_document_open',
     'peek_pending_markdown_open',
+    'take_pending_document_open',
     'take_pending_markdown_open',
+    'clear_pending_document_open',
     'clear_pending_markdown_open',
   ],
   dialogs: [
     'pick_markdown_file',
+    'pick_document_file',
+    'pick_json_schema_file',
     'pick_image_file',
     'pick_citation_style_file',
     'pick_folder',
@@ -85,7 +114,6 @@ for (const command of invokedCommands) {
   }
 }
 
-const libSource = readFileSync(libPath, 'utf8');
 if (!libSource.includes('.register_uri_scheme_protocol("scie-md-local-image"')) {
   failures.push('Rust app does not register the grant-checked scie-md-local-image protocol.');
 }
@@ -104,6 +132,12 @@ if (cargoManifest.includes('protocol-asset')) {
   failures.push('Cargo.toml must not enable Tauri protocol-asset; local images use scie-md-local-image.');
 }
 
+validateDocumentAssociationPolicy(config);
+validateDocumentLaunchPolicy(libSource);
+validateWindowsInstallerDocumentPolicy(nsisHooksSource);
+validateManualStructuredOpenPolicy(dialogsSource);
+validateExperimentalTomlSourceMapPolicy(tomlSourceMapSource, registeredCommands, invokedCommands);
+
 if (failures.length > 0) {
   console.error('[tauri-contract] Native command contract failed:');
   for (const failure of failures) console.error(`- ${failure}`);
@@ -111,7 +145,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `[tauri-contract] ${registeredCommands.size} registered commands cover ${invokedCommands.size} TypeScript invoke calls; local-image protocol policy is locked.`,
+  `[tauri-contract] ${registeredCommands.size} registered commands cover ${invokedCommands.size} TypeScript invoke calls; local-image and supported-document association policies are locked.`,
 );
 
 function parseRegisteredCommands(source) {
@@ -161,4 +195,146 @@ function listSourceFiles(root) {
     files.push(fullPath);
   }
   return files.sort();
+}
+
+function validateDocumentAssociationPolicy(tauriConfig) {
+  const associations = Array.isArray(tauriConfig.bundle?.fileAssociations)
+    ? tauriConfig.bundle.fileAssociations
+    : [];
+  const associatedExtensions = new Map();
+
+  for (const association of associations) {
+    for (const extension of normalizeExtensions(association.ext ?? association.extensions)) {
+      associatedExtensions.set(extension, association.name);
+    }
+  }
+
+  for (const [extension, expectedProgId] of DOCUMENT_ASSOCIATION_PROGIDS) {
+    const actualProgId = associatedExtensions.get(extension);
+    if (!actualProgId) {
+      failures.push(`Tauri fileAssociations must register .${extension} for document open-with support.`);
+    } else if (actualProgId !== expectedProgId) {
+      failures.push(`Tauri fileAssociations must map .${extension} to ${expectedProgId}, got ${actualProgId}.`);
+    }
+  }
+
+  for (const extension of associatedExtensions.keys()) {
+    if (!DOCUMENT_ASSOCIATION_PROGIDS.has(extension)) {
+      failures.push(`Tauri fileAssociations registers unsupported document extension .${extension}.`);
+    }
+  }
+}
+
+function validateDocumentLaunchPolicy(source) {
+  const match = source.match(/const\s+LAUNCH_DOCUMENT_EXTENSIONS:\s*&\[[^\]]+\]\s*=\s*&\[(.*?)\];/s);
+  if (!match) {
+    failures.push('src-tauri/src/lib.rs must define LAUNCH_DOCUMENT_EXTENSIONS for startup/open-with gating.');
+    return;
+  }
+  const launchExtensions = parseQuotedStrings(match[1]);
+  for (const extension of DOCUMENT_ASSOCIATION_EXTENSIONS) {
+    if (!launchExtensions.includes(extension)) {
+      failures.push(`Document launch gate must accept .${extension}.`);
+    }
+  }
+  for (const extension of launchExtensions) {
+    if (!DOCUMENT_ASSOCIATION_PROGIDS.has(extension)) {
+      failures.push(`Document launch gate accepts unsupported extension .${extension}.`);
+    }
+  }
+  if (!source.includes('resolve_supported_document_launch_path')) {
+    failures.push('src-tauri/src/lib.rs must keep startup and single-instance launch paths behind supported-document filtering.');
+  }
+}
+
+function validateWindowsInstallerDocumentPolicy(source) {
+  if (/!insertmacro\s+RegisterScieMdDocumentExtension\s+"csv"/i.test(source)) {
+    failures.push('Windows installer hooks must not actively register .csv; CSV stays available only through in-app open/save.');
+  }
+  if (/!insertmacro\s+RegisterScieMdDocumentProgId\s+"ScieMD\.CSV"/i.test(source)) {
+    failures.push('Windows installer hooks must not actively register ScieMD.CSV as a document ProgID.');
+  }
+  if (!source.includes('ClearLegacyScieMdCsvAssociation')) {
+    failures.push('Windows installer hooks must clean stale ScieMD CSV associations from older installers.');
+  }
+  if (!source.includes('PromptForScieMdDefaultAppsSelection')) {
+    failures.push('Windows installer hooks must offer to open Windows Default Apps after registering document associations.');
+  }
+  if (!source.includes('ms-settings:defaultapps?registeredAppUser=${PRODUCTNAME}')) {
+    failures.push('Windows installer hooks must use the official Default Apps settings URI for user-approved default selection.');
+  }
+  if (!source.includes('WriteRegStr HKCU "Software\\Classes\\.${EXT}" "" "${PROGID}"')) {
+    failures.push('Windows installer hooks must set the per-user extension ProgID value for each supported extension.');
+  }
+  if (!source.includes('ReadRegStr $0 HKCU "Software\\Classes\\.${EXT}" ""')) {
+    failures.push('Windows uninstaller must inspect each extension default before removing ScieMD ProgID ownership.');
+  }
+  if (!source.includes('DeleteRegValue HKCU "Software\\Classes\\.${EXT}" ""')) {
+    failures.push('Windows uninstaller must remove extension defaults only when they still point to ScieMD.');
+  }
+  for (const [extension, progId] of DOCUMENT_ASSOCIATION_PROGIDS) {
+    const registerPattern = new RegExp(String.raw`!insertmacro\s+RegisterScieMdDocumentExtension\s+"${escapeRegExp(extension)}"\s+"${escapeRegExp(progId)}"`);
+    const unregisterPattern = new RegExp(String.raw`!insertmacro\s+UnregisterScieMdDocumentExtension\s+"${escapeRegExp(extension)}"\s+"${escapeRegExp(progId)}"`);
+    if (!registerPattern.test(source)) {
+      failures.push(`Windows installer hooks must register .${extension} through RegisterScieMdDocumentExtension.`);
+    }
+    if (!unregisterPattern.test(source)) {
+      failures.push(`Windows installer hooks must unregister .${extension} through UnregisterScieMdDocumentExtension.`);
+    }
+  }
+  for (const registryKey of ['OpenWithProgids', 'SupportedTypes', 'Capabilities\\FileAssociations', 'RegisteredApplications']) {
+    if (!source.includes(registryKey)) {
+      failures.push(`Windows installer hooks must keep ${registryKey} registration for document open-with support.`);
+    }
+  }
+}
+
+function validateManualStructuredOpenPolicy(source) {
+  const expectedFilters = [
+    'add_filter("JSON", JSON_EXTENSIONS)',
+    'add_filter("JSON Lines", JSONL_EXTENSIONS)',
+    'add_filter("YAML", YAML_EXTENSIONS)',
+    'add_filter("TOML", TOML_EXTENSIONS)',
+    'add_filter("XML", XML_EXTENSIONS)',
+    'add_filter("CSV", CSV_EXTENSIONS)',
+    'add_filter("TSV", TSV_EXTENSIONS)',
+    'add_filter("Plain Text", PLAIN_TEXT_EXTENSIONS)',
+  ];
+  for (const filter of expectedFilters) {
+    if (!source.includes(filter)) {
+      failures.push(`Manual document picker must keep structured open support: missing ${filter}.`);
+    }
+  }
+}
+
+function validateExperimentalTomlSourceMapPolicy(source, registeredCommands, invokedCommands) {
+  if (!registeredCommands.has('inspect_toml_source_map')) {
+    failures.push('Experimental TOML source-map evidence command must stay registered while the preservation spike is active.');
+  }
+  if (invokedCommands.has('inspect_toml_source_map')) {
+    failures.push('TypeScript must not invoke inspect_toml_source_map until a typed host bridge and edit planner are implemented.');
+  }
+  if (!source.includes('experimental-readonly-evidence') || !source.includes('inspect-source-map-only')) {
+    failures.push('TOML source-map command must advertise itself as experimental read-only evidence.');
+  }
+  if (!source.includes('visual_writes_enabled: false')) {
+    failures.push('TOML source-map command must keep visual_writes_enabled false.');
+  }
+}
+
+function normalizeExtensions(value) {
+  if (value === undefined || value === null) return [];
+  const values = Array.isArray(value) ? value : [value];
+  return values
+    .filter((item) => typeof item === 'string')
+    .map((item) => item.trim().replace(/^\./, '').toLowerCase())
+    .filter(Boolean);
+}
+
+function parseQuotedStrings(value) {
+  return [...value.matchAll(/"([^"]+)"/g)].map((match) => match[1].trim().replace(/^\./, '').toLowerCase());
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

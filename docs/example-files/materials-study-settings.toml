@@ -1,0 +1,136 @@
+# ScieMD TOML feature coverage file.
+# This file is valid TOML and intentionally includes source-preservation-sensitive features.
+
+schema_version = 2
+study_id = "SCMD-STRUCT-2026-001"
+title = "Ultrasonic spray coating parameter sweep"
+status = "analysis-ready"
+created_at = 2026-06-30T13:45:00Z
+active = true
+
+owner.name = "Amina Rahman"
+owner.email = "amina.rahman@example.test"
+owner.roles = ["principal_investigator", "reviewer"]
+
+[paths]
+workspace = "C:\\Lab\\ScieMD\\structured-demo"
+raw_data = "data/raw"
+processed_data = "data/processed"
+reports = "reports"
+
+[environment]
+temperature_c = 22.5
+relative_humidity_percent = 38.2
+pressure_kpa = 101.3
+notes = """
+The TOML file includes multiline strings, arrays, inline tables,
+dotted keys, and arrays of tables for preservation testing.
+"""
+
+[acceptance.thickness_nm]
+min = 90
+target = 120
+max = 155
+
+[acceptance.roughness_nm]
+min = 0
+target = 8
+max = 18
+
+[instrumentation.spray_head]
+model = "USC-2L"
+serial = "USC2L-042"
+frequency_khz = 120
+nozzle_diameter_mm = 0.6
+calibration = { date = 2026-06-20, operator = "AR", passed = true }
+
+[instrumentation.microscopy]
+detectors = ["secondary_electron", "backscatter"]
+image_formats = ["tif", "png"]
+profilometer = { model = "PRF-900", vertical_resolution_nm = 2.5 }
+
+[[protocol.steps]]
+index = 1
+name = "Substrate clean"
+duration_min = 12
+reagents = ["isopropanol", "deionized_water"]
+
+[[protocol.steps]]
+index = 2
+name = "Primer deposition"
+duration_min = 6
+reagents = ["primer_A"]
+
+[[protocol.steps]]
+index = 3
+name = "Active layer spray"
+duration_min = 18
+reagents = ["ink_alpha", "ink_beta"]
+
+[[samples]]
+sample_id = "S-001"
+batch = "B-2026-06-A"
+substrate = "glass"
+operator = "AR"
+tags = ["baseline", "pass"]
+
+[samples.parameters]
+flow_rate_ml_min = 0.18
+stage_speed_mm_s = 8.5
+passes = 3
+anneal_profile = [25, 60, 85, 85, 40]
+
+[samples.measurements]
+thickness_nm = 118.4
+roughness_nm = 7.8
+defect_density_per_mm2 = 0.3
+coverage_percent = 98.7
+
+[[samples]]
+sample_id = "S-002"
+batch = "B-2026-06-A"
+substrate = "glass"
+operator = "MC"
+tags = ["review", "roughness"]
+
+[samples.parameters]
+flow_rate_ml_min = 0.22
+stage_speed_mm_s = 8.5
+passes = 3
+anneal_profile = [25, 60, 85, 85, 40]
+
+[samples.measurements]
+thickness_nm = 141.2
+roughness_nm = 12.4
+defect_density_per_mm2 = 1.2
+coverage_percent = 97.9
+
+[[samples]]
+sample_id = "S-003"
+batch = "B-2026-06-B"
+substrate = "silicon"
+operator = "AR"
+tags = ["best_candidate", "pass"]
+
+[samples.parameters]
+flow_rate_ml_min = 0.16
+stage_speed_mm_s = 10.0
+passes = 4
+anneal_profile = [25, 70, 90, 90, 45]
+
+[samples.measurements]
+thickness_nm = 109.9
+roughness_nm = 6.4
+defect_density_per_mm2 = 0.2
+coverage_percent = 99.1
+
+[analysis]
+primary_metric = "coverage_percent"
+secondary_metrics = ["thickness_nm", "roughness_nm", "defect_density_per_mm2"]
+literal_note = '''Literal strings keep backslashes like C:\Lab\ScieMD without escaping.'''
+
+[analysis.model]
+name = "random_forest_regressor"
+version = "0.4.1"
+random_seed = 72630
+performance = { rmse = 3.42, r2 = 0.83, fold_scores = [0.81, 0.84, 0.82, 0.86, 0.80] }

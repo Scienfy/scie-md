@@ -2,6 +2,24 @@
 
 All notable ScieMD release changes are tracked here.
 
+## 1.1.0 - Structured Data Visual Editing
+
+- Added structured document support for JSON, JSONL/NDJSON, YAML, TOML, XML,
+  CSV/TSV, and plain text alongside Markdown.
+- Added visual structured views for JSON trees, object-array tables, JSONL records,
+  tabular data, health diagnostics, schema-aware JSON checks, and read-only
+  YAML/TOML/XML previews.
+- Added guarded visual editing for JSON, JSONL, CSV, and TSV with source-aware
+  validation, stale-review checks, conflict review, and safer numeric/text
+  preservation.
+- Added structured context menus, copy/export actions, example files, large-data
+  validation, and release/package budget guards for the expanded format surface.
+- Expanded Windows installer associations for supported non-CSV structured formats
+  and added a Default Apps handoff prompt while leaving CSV available inside ScieMD
+  but unclaimed at the OS level.
+- Added command-based structured preview support in the VS Code extension without
+  hijacking JSON/YAML/TOML/XML default editor associations.
+
 ## 1.0.12 - Merge Gate And Preview Release Readiness
 
 - Added a repeatable pre-merge gate for release validation, packaged desktop build,
